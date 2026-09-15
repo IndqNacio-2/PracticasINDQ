@@ -1,0 +1,10 @@
+{
+  "description": "Generates tailored prompts to enhance creativity and productivity, helping users quickly create effective content ideas and writing inspiration.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
