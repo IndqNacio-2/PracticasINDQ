@@ -1,0 +1,81 @@
+version: "3.9"
+
+networks:
+  PracticasINDQ:
+    driver: bridge
+
+services:
+  postgres:
+    image: postgres:16
+    restart: always
+    environment:
+      POSTGRES_DB: sistema_reservacion_clases
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./database/postgres/data:/var/lib/postgresql/data
+    networks:
+      - PracticasINDQ
+
+  mongo:
+    image: mongo:7
+    restart: always
+    ports:
+      - "27017:27017"
+    volumes:
+      - ./database/mongo/data:/data/db
+    networks:
+      - PracticasINDQ
+
+  # Descomentar cada bloque cuando la app tenga su backend/ y su Dockerfile
+  # (copiar docker/Dockerfile.backend.example a backend/Dockerfile)
+
+  # webAdministrativa-backend:
+  #   build: ./webAdministrativa/backend
+  #   env_file: ./webAdministrativa/backend/.env
+  #   ports:
+  #     - "3001:3001"
+  #   depends_on:
+  #     - postgres
+  #     - mongo
+  #   networks:
+  #     - PracticasINDQ
+
+  # webCobro-backend:
+  #   build: ./webCobro/backend
+  #   env_file: ./webCobro/backend/.env
+  #   ports:
+  #     - "3002:3002"
+  #   depends_on:
+  #     - postgres
+  #     - mongo
+  #   networks:
+  #     - PracticasINDQ
+
+  # webPuntoVenta-backend:
+  #   build: ./webPuntoVenta/backend
+  #   env_file: ./webPuntoVenta/backend/.env
+  #   ports:
+  #     - "3003:3003"
+  #   depends_on:
+  #     - postgres
+  #     - mongo
+  #   networks:
+  #     - PracticasINDQ
+
+  # webAsistencia-backend:
+  #   build: ./webAsistencia/backend
+  #   env_file: ./webAsistencia/backend/.env
+  #   ports:
+  #     - "3004:3004"
+  #   depends_on:
+  #     - postgres
+  #     - mongo
+  #   networks:
+  #     - PracticasINDQ
+
+  # Nota: movilClientes y movilOperativa NO tienen backend propio ni se
+  # levantan con Docker; son apps Flutter (flutter run) que consumen
+  # directamente las APIs de arriba (ver <app>/.env.example para las URLs).

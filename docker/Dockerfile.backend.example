@@ -1,0 +1,17 @@
+# Plantilla de Dockerfile para un backend Node+TS+Express
+# Copiar este archivo dentro de <tuApp>/backend/Dockerfile una vez
+# que el backend exista, y descomentar el servicio correspondiente
+# en docker-compose.yml
+
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm install
+
+COPY . .
+RUN npm run build
+
+EXPOSE 3000
+CMD ["npm", "start"]
