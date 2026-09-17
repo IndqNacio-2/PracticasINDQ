@@ -7,7 +7,7 @@ class Endpoints{
   static const perfilSalud= "/usuario/perfilSalud";
   static const perfilActividad = "/usuario/perfilActividad";
   static const clases = "/clases";
-  static const entrenadores = "/Entrenadores";
+  static const entrenadores = "/entrenadores";
   static const reservar = "/reservaciones";
   static const membresia = "/usuario/membresia";
 }
