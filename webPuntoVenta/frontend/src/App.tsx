@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useCallback, useEffect, useState, } from "react";
 import type { Product, CartItem, ToastMessage, SaleRecord } from './types';
 import { INITIAL_PRODUCTS, CATEGORIES } from './data';
 import ProductCard from './components/ProductCard';
@@ -8,6 +8,8 @@ import SaleSuccessModal from './components/SaleSuccessModal';
 import TicketModal from './components/TicketModal';
 import ConfirmCancelModal from './components/ConfirmCancelModal';
 import ToastContainer from './components/Toast';
+// funcion centralizada que consulta el estado del backend.
+import { getHealth } from "./services/api";
 
 let _toastId = 0;
 
@@ -20,6 +22,27 @@ export default function App() {
   const [lastSale, setLastSale] = useState<SaleRecord | null>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [folioCounter, setFolioCounter] = useState(125);
+
+  /**
+   * comprueba la cominicacion con el backend una sola vez
+   * cuando el componente principal aparece en pantalla
+   */
+  useEffect(() => {
+    async function checkBackend(): Promise<void> {
+      try {
+        const health = await getHealth();
+
+        console.log("Estado del backend:", health);
+      } catch (error) {
+        console.error(
+          "No fue posible conectar con el backend:",
+          error,
+        );
+      }
+    }
+
+    void checkBackend();
+  }, []);
 
   const addToast = useCallback((message: string, type: ToastMessage['type'] = 'success') => {
     const id = String(++_toastId);

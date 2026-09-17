@@ -32,3 +32,10 @@ export interface SaleRecord {
   change?: number;
   transferRef?: string;
 }
+
+export type AppModule =
+  | "sale"
+  | "inventory"
+  | "waste"
+  | "cash-closing"
+  | "reports";
