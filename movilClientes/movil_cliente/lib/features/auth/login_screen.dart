@@ -1,7 +1,7 @@
-// lib/features/auth/login_screen.dart
-
 import 'package:flutter/material.dart';
-import '../../core/api/api_client.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:movil_cliente/core/api/api_client.dart'; 
+import 'package:movil_cliente/core/api/auth_servide.dart'; 
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -14,11 +14,13 @@ class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-
-  final _apiClient = ApiClient();
+  
+  // Instancias de servicios
+  final ApiClient _apiClient = ApiClient();
+  final AuthService _authService = AuthService(ApiClient());
+  final _storage = const FlutterSecureStorage();
 
   bool _isLoading = false;
-  String? _errorMessage;
 
   @override
   void dispose() {
@@ -27,52 +29,60 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  // Método para manejar el login
+  // Método para manejar el login (Lógica nueva y única)
   Future<void> _handleLogin() async {
-    if (!_formKey.currentState!.validate()) {
-      return;
-    }
+    // 1. Validaciones de formato
+    if (!_formKey.currentState!.validate()) return;
 
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
+    setState(() => _isLoading = true);
 
     try {
-      // Simulación de petición a la API
-      await Future.delayed(const Duration(seconds: 1));
+      // 2. Intento de autenticación
+      final resultado = await _authService.login(
+        _emailController.text,
+        _passwordController.text,
+      );
 
-      // Simulación de éxito (luego conectaremos con el backend real)
-      final token = 'mock_token_12345';
-      await _apiClient.saveToken(token);
+      if (!mounted) return;
 
-      if (mounted) {
-        // Aquí navegaremos a la pantalla principal después de crearla
-        // por ahora mostramos un mensaje
+      if (resultado == null) {
+        // Credenciales inválidas
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Login exitoso (simulado)'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _errorMessage = 'Error: ${e.toString()}';
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(_errorMessage!),
+            content: Text('Email o contraseña incorrectos'),
             backgroundColor: Colors.red,
           ),
         );
+        return;
       }
+
+      // 3. Éxito: guardar token e ID
+      await _storage.write(key: 'auth_token', value: resultado.token);
+      await _storage.write(key: 'user_id', value: resultado.cliente.id);
+
+      if (!mounted) return;
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Bienvenido, ${resultado.cliente.nombre}!'),
+          backgroundColor: const Color(0xFF10B981),
+        ),
+      );
+      
+      // Redirigir a Home
+      Navigator.of(context).pushReplacementNamed('/home');
+
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error de conexión: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     } finally {
       if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
+        setState(() => _isLoading = false);
       }
     }
   }
@@ -127,7 +137,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     borderRadius: BorderRadius.circular(16),
                     boxShadow: [
                       BoxShadow(
-                        color: const Color(0x1A000000), 
+                        color: Colors.black.withOpacity(0.1),
                         blurRadius: 20,
                         offset: const Offset(0, 10),
                       ),
