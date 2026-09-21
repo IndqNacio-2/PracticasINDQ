@@ -1,4 +1,5 @@
 import { ReactNode, useEffect } from 'react';
+import { Icon } from './Icon';
 
 interface ModalProps {
   open: boolean;
@@ -25,10 +26,12 @@ export function Modal({ open, onClose, title, children, size = 'md' }: ModalProp
       <div className={`relative bg-white rounded-2xl shadow-2xl w-full mx-4 ${sizes[size]} max-h-[90vh] flex flex-col`}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <h2 className="text-lg font-semibold text-slate-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>{title}</h2>
-          <button onClick={onClose} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors">
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+            aria-label="Cerrar"
+          >
+            <Icon name="close" size={20} weight={500} />
           </button>
         </div>
         <div className="overflow-y-auto flex-1 px-6 py-5">{children}</div>

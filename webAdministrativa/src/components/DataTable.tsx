@@ -1,4 +1,5 @@
 import { useState, ReactNode } from 'react';
+import { Icon } from './Icon';
 
 interface Column<T> {
   key: string;
@@ -24,8 +25,8 @@ export function DataTable<T extends Record<string, unknown>>({
 
   const filtered = search
     ? data.filter(row =>
-        searchKeys.some(k => String(row[k] ?? '').toLowerCase().includes(search.toLowerCase()))
-      )
+      searchKeys.some(k => String(row[k] ?? '').toLowerCase().includes(search.toLowerCase()))
+    )
     : data;
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
@@ -35,9 +36,12 @@ export function DataTable<T extends Record<string, unknown>>({
     <div className="space-y-3">
       {searchKeys.length > 0 && (
         <div className="relative">
-          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
+          <Icon
+            name="search"
+            size={18}
+            weight={500}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+          />
           <input
             type="text"
             placeholder="Buscar..."
@@ -83,9 +87,13 @@ export function DataTable<T extends Record<string, unknown>>({
         <div className="flex items-center justify-between text-sm text-slate-500">
           <span>{filtered.length} registros · Página {page} de {totalPages}</span>
           <div className="flex gap-1">
-            <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
-              className="px-3 py-1 rounded-lg border border-slate-200 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
-              ‹
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page === 1}
+              aria-label="Página anterior"
+              className="flex items-center px-2 py-1 rounded-lg border border-slate-200 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              <Icon name="chevron_left" size={18} weight={500} />
             </button>
             {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
               const p = Math.max(1, Math.min(totalPages - 4, page - 2)) + i;
@@ -96,9 +104,13 @@ export function DataTable<T extends Record<string, unknown>>({
                 </button>
               );
             })}
-            <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
-              className="px-3 py-1 rounded-lg border border-slate-200 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
-              ›
+            <button
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              aria-label="Página siguiente"
+              className="flex items-center px-2 py-1 rounded-lg border border-slate-200 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              <Icon name="chevron_right" size={18} weight={500} />
             </button>
           </div>
         </div>

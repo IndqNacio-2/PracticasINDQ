@@ -2,48 +2,24 @@ import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router';
 import { useAuth } from '../context/AuthContext';
 import type { UserRole } from '../types';
+import { Icon } from './Icon';
 
 interface NavItem {
   path: string;
   label: string;
-  icon: React.ReactNode;
+  icon: string;
   roles: UserRole[];
-  children?: { path: string; label: string }[];
 }
 
 const navItems: NavItem[] = [
-  {
-    path: '/dashboard', label: 'Dashboard', roles: ['administrador', 'entrenador', 'recepcion'],
-    icon: <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h18M3 12h18M3 17h18" /></svg>
-  },
-  {
-    path: '/usuarios', label: 'Usuarios', roles: ['administrador'],
-    icon: <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
-  },
-  {
-    path: '/clientes', label: 'Clientes', roles: ['administrador', 'recepcion'],
-    icon: <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-  },
-  {
-    path: '/clases', label: 'Clases', roles: ['administrador', 'entrenador', 'recepcion'],
-    icon: <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
-  },
-  {
-    path: '/horarios', label: 'Horarios', roles: ['administrador', 'entrenador', 'recepcion'],
-    icon: <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-  },
-  {
-    path: '/reservaciones', label: 'Reservaciones', roles: ['administrador', 'recepcion', 'entrenador'],
-    icon: <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
-  },
-  {
-    path: '/productos', label: 'Inventario', roles: ['administrador', 'recepcion'],
-    icon: <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>
-  },
-  {
-    path: '/reportes', label: 'Reportes', roles: ['administrador'],
-    icon: <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
-  },
+  { path: '/dashboard', label: 'Dashboard', icon: 'dashboard', roles: ['administrador', 'entrenador', 'recepcion'] },
+  { path: '/usuarios', label: 'Usuarios', icon: 'manage_accounts', roles: ['administrador'] },
+  { path: '/clientes', label: 'Clientes', icon: 'groups', roles: ['administrador', 'recepcion'] },
+  { path: '/clases', label: 'Clases', icon: 'fitness_center', roles: ['administrador', 'entrenador', 'recepcion'] },
+  { path: '/horarios', label: 'Horarios', icon: 'calendar_month', roles: ['administrador', 'entrenador', 'recepcion'] },
+  { path: '/reservaciones', label: 'Reservaciones', icon: 'event_available', roles: ['administrador', 'recepcion', 'entrenador'] },
+  { path: '/productos', label: 'Inventario', icon: 'inventory_2', roles: ['administrador', 'recepcion'] },
+  { path: '/reportes', label: 'Reportes', icon: 'bar_chart', roles: ['administrador'] },
 ];
 
 export function Layout() {
@@ -73,9 +49,7 @@ export function Layout() {
         {/* Logo */}
         <div className="flex items-center gap-3 px-4 py-5 border-b border-slate-700/50">
           <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 bg-emerald-500">
-            <svg className="w-4.5 h-4.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
+            <Icon name="bolt" size={20} filled className="text-white" />
           </div>
           {!collapsed && (
             <div className="overflow-hidden">
@@ -94,7 +68,9 @@ export function Layout() {
               className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
               title={collapsed ? item.label : undefined}
             >
-              <span className="flex-shrink-0">{item.icon}</span>
+              <span className="flex-shrink-0 flex items-center">
+                <Icon name={item.icon} size={22} weight={500} />
+              </span>
               {!collapsed && <span className="truncate">{item.label}</span>}
             </NavLink>
           ))}
@@ -119,18 +95,18 @@ export function Layout() {
               className="flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 transition-colors"
               title={collapsed ? 'Expandir' : 'Colapsar'}
             >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={collapsed ? 'M13 5l7 7-7 7M5 5l7 7-7 7' : 'M11 19l-7-7 7-7m8 14l-7-7 7-7'} />
-              </svg>
+              <Icon
+                name={collapsed ? 'keyboard_double_arrow_right' : 'keyboard_double_arrow_left'}
+                size={20}
+                weight={500}
+              />
             </button>
             <button
               onClick={handleLogout}
               className="flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-900/20 transition-colors"
               title="Cerrar sesión"
             >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-              </svg>
+              <Icon name="logout" size={20} weight={500} />
             </button>
           </div>
         </div>
