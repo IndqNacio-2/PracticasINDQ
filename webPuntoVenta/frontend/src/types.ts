@@ -1,10 +1,36 @@
+/**
+ * Estados administrativos que puede tener un producto
+ * 
+ * un producto inactivo permanece en el inventario, pero no debe
+ * aparecer disponible para vender en el punto de venta
+ */
+export type ProductStatus = "active" | "inactive";
+
+/**
+ * Representa un prodcuto disponible dentro de la aplicacion
+ */
 export interface Product {
+  // Identificacdor interno temporal
   id: number;
+  // codigo o SKU para localizar el producto
+  code: string;
+  // Nombre que vera el usuario
   name: string;
+  // Categoria utilizada en los filtros
   category: string;
+  // Precio que paga el cliente
   price: number;
+  // costo estimado que tuvo el producto para el negocio
+  cost: number;
+  // cantidad disponible actualmente
   stock: number;
-  emoji: string;
+  // cantidad a partir de la cual se considera stock bajo
+  minimumStock: number;
+  // determinar si el producto puede venderse
+  status: ProductStatus;
+  // nombre del material symbol utilizando en la interfaz
+  icon: string;
+  // color de fondo utilizando en la tarjeta del producto
   bgColor: string;
 }
 

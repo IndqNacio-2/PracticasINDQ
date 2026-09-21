@@ -1,4 +1,5 @@
-import type { Product } from '../types';
+import type { Product } from "../types";
+import MaterialIcon from "./MaterialIcon";
 
 const fmt = (n: number) => `$${n.toFixed(2)}`;
 
@@ -20,7 +21,7 @@ export default function ProductCard({ product, cartQty, onAdd }: ProductCardProp
         : 'border-[#E5E7EB] hover:border-[#FF5C00]/40 hover:shadow-md cursor-pointer'
     }`}>
       <div className="relative h-28 flex items-center justify-center" style={{ backgroundColor: product.bgColor }}>
-        <span className="text-5xl select-none">{product.emoji}</span>
+        <MaterialIcon name={product.icon} className="select-none text-5xl text-[#374151]" filled />
 
         {cartQty > 0 && (
           <span className="absolute top-2 left-2 w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center text-white"

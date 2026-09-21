@@ -1,4 +1,5 @@
 import type { SaleRecord } from '../types';
+import MaterialIcon from './MaterialIcon';
 
 const fmt = (n: number) => `$${n.toFixed(2)}`;
 const METHOD_LABELS = { efectivo: 'Efectivo', tarjeta: 'Tarjeta', transferencia: 'Transferencia' };
@@ -16,9 +17,7 @@ export default function SaleSuccessModal({ sale, onNewSale, onShowTicket }: Sale
         {/* Success header */}
         <div className="bg-[#F0FDF4] px-6 py-7 text-center">
           <div className="w-16 h-16 bg-[#10B981] rounded-full flex items-center justify-center mx-auto mb-3 shadow-lg shadow-green-200">
-            <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-            </svg>
+            <MaterialIcon name="check" className="text-4xl text-white" filled />
           </div>
           <h2 className="text-xl font-bold text-[#065F46]">Venta realizada correctamente</h2>
         </div>
@@ -49,17 +48,21 @@ export default function SaleSuccessModal({ sale, onNewSale, onShowTicket }: Sale
 
           <div className="flex flex-col gap-2">
             <button
+              type="button"
               onClick={onShowTicket}
-              className="w-full py-2.5 border-2 font-semibold rounded-xl transition-colors text-sm hover:bg-[#FFF5F0]"
+              className="flex w-full items-center justify-center gap-2 py-2.5 border-2 font-semibold rounded-xl transition-colors text-sm hover:bg-[#FFF5F0]"
               style={{ borderColor: '#FF5C00', color: '#FF5C00' }}
             >
+              <MaterialIcon name="receipt_long" className="text-lg" />
               Imprimir ticket
             </button>
             <button
+              type="button"
               onClick={onNewSale}
-              className="w-full py-3 text-white font-bold rounded-xl transition-all hover:opacity-90 active:scale-[0.98]"
+              className="flex w-full items-center justify-center gap-2 py-3 text-white font-bold rounded-xl transition-all hover:opacity-90 active:scale-[0.98]"
               style={{ fontFamily: 'Outfit, sans-serif', backgroundColor: '#FF5C00' }}
             >
+              <MaterialIcon name="add_shopping_cart" className="text-lg" />
               Nueva venta
             </button>
           </div>

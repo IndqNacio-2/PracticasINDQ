@@ -1,4 +1,5 @@
 import type { SaleRecord } from '../types';
+import MaterialIcon from './MaterialIcon';
 
 const fmt = (n: number) => `$${n.toFixed(2)}`;
 const METHOD_LABELS = { efectivo: 'Efectivo', tarjeta: 'Tarjeta', transferencia: 'Transferencia' };
@@ -9,10 +10,8 @@ export default function TicketModal({ sale, onClose }: { sale: SaleRecord; onClo
       <div className="modal-enter bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden">
         <div className="bg-[#0D0F14] px-6 py-4 flex items-center justify-between">
           <h2 className="text-white font-bold text-sm">Vista previa del ticket</h2>
-          <button onClick={onClose} className="text-white/50 hover:text-white transition-colors">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
+          <button type="button" onClick={onClose} aria-label="Cerrar ticket" className="text-white/50 hover:text-white transition-colors">
+            <MaterialIcon name="close" className="text-xl" />
           </button>
         </div>
 
@@ -77,15 +76,18 @@ export default function TicketModal({ sale, onClose }: { sale: SaleRecord; onClo
         {/* Actions */}
         <div className="px-6 py-4 border-t border-[#E5E7EB] flex gap-3">
           <button
+            type="button"
             onClick={onClose}
             className="flex-1 py-2.5 border border-[#E5E7EB] text-[#6B7280] rounded-xl hover:bg-[#F9FAFB] transition-colors text-sm font-medium"
           >
             Cerrar
           </button>
           <button
+            type="button"
             onClick={() => window.print()}
-            className="flex-1 py-2.5 bg-[#0D0F14] text-white rounded-xl hover:bg-[#1F2937] transition-colors text-sm font-semibold"
+            className="flex flex-1 items-center justify-center gap-2 py-2.5 bg-[#0D0F14] text-white rounded-xl hover:bg-[#1F2937] transition-colors text-sm font-semibold"
           >
+            <MaterialIcon name="print" className="text-lg" />
             Imprimir
           </button>
         </div>

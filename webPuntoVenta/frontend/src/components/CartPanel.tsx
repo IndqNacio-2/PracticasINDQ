@@ -1,4 +1,5 @@
 import type { Product, CartItem } from '../types';
+import MaterialIcon from "./MaterialIcon";
 
 const fmt = (n: number) => `$${n.toFixed(2)}`;
 
@@ -39,10 +40,7 @@ export default function CartPanel({
         {cart.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center gap-3 pb-8">
             <div className="w-16 h-16 bg-[#F9FAFB] rounded-full flex items-center justify-center">
-              <svg className="w-7 h-7 text-[#D1D5DB]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                  d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
-              </svg>
+                <MaterialIcon name="shopping_cart" className="text-3xl text-[#D1D5DB]" />
             </div>
             <p className="text-sm text-[#9CA3AF] leading-snug max-w-[180px]">
               Agrega productos para comenzar una venta
@@ -56,39 +54,43 @@ export default function CartPanel({
                 <div key={item.productId} className="bg-[#F9FAFB] rounded-xl p-3">
                   <div className="flex items-start justify-between mb-2.5">
                     <div className="flex items-center gap-2 min-w-0 flex-1">
-                      <span className="text-xl flex-shrink-0">{p.emoji}</span>
+                      <MaterialIcon name={p.icon} className="flex-shrink-0 text-[#6B7280]" filled />
                       <div className="min-w-0">
                         <p className="text-sm font-semibold text-[#0D0F14] truncate">{p.name}</p>
                         <p className="text-xs text-[#9CA3AF]">{fmt(p.price)} c/u</p>
                       </div>
                     </div>
                     <button
+                      type="button"
                       onClick={() => onRemove(item.productId)}
+                      aria-label={`Eliminar ${p.name} del carrito`}
                       className="w-6 h-6 flex items-center justify-center text-[#D1D5DB] hover:text-[#EF4444] hover:bg-[#FEE2E2] rounded-lg transition-colors flex-shrink-0 ml-1"
                     >
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
+                      <MaterialIcon name="close" className="text-base" />
                     </button>
                   </div>
 
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <button
+                        type="button"
                         onClick={() => onUpdateQuantity(item.productId, -1)}
+                        aria-label={`Disminuir cantidad de ${p.name}`}
                         className="w-7 h-7 bg-white border border-[#E5E7EB] rounded-lg flex items-center justify-center text-[#374151] hover:border-[#FF5C00] hover:text-[#FF5C00] transition-colors text-base font-bold leading-none"
                       >
-                        −
+                        <MaterialIcon name="remove" className="text-lg" />
                       </button>
                       <span className="text-sm font-bold text-[#0D0F14] w-6 text-center tabular-nums">
                         {item.quantity}
                       </span>
                       <button
+                        type="button"
                         onClick={() => onUpdateQuantity(item.productId, 1)}
                         disabled={item.quantity >= p.stock}
+                        aria-label={`Aumentar cantidad de ${p.name}`}
                         className="w-7 h-7 bg-white border border-[#E5E7EB] rounded-lg flex items-center justify-center text-[#374151] hover:border-[#FF5C00] hover:text-[#FF5C00] transition-colors text-base font-bold leading-none disabled:opacity-30 disabled:cursor-not-allowed"
                       >
-                        +
+                        <MaterialIcon name="add" className="text-lg" />
                       </button>
                     </div>
                     <span className="text-sm font-bold text-[#0D0F14] tabular-nums">

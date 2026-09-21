@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, } from "react";
-import type { Product, CartItem, ToastMessage, SaleRecord } from './types';
+import type { Product, CartItem, ToastMessage, SaleRecord, AppModule, } from './types';
 import { INITIAL_PRODUCTS, CATEGORIES } from './data';
 import ProductCard from './components/ProductCard';
 import CartPanel from './components/CartPanel';
@@ -10,10 +10,15 @@ import ConfirmCancelModal from './components/ConfirmCancelModal';
 import ToastContainer from './components/Toast';
 // funcion centralizada que consulta el estado del backend.
 import { getHealth } from "./services/api";
+import Sidebar from "./components/Sidebar";
+import ModulePlaceholder from "./components/ModulePlaceholder";
+import MaterialIcon from "./components/MaterialIcon";
+import InventoryPage from "./components/InventoryPage";
 
 let _toastId = 0;
 
 export default function App() {
+  const [activeModule, setActiveModule] = useState<AppModule>("sale");
   const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [search, setSearch] = useState('');
@@ -53,10 +58,22 @@ export default function App() {
   const getProduct = (id: number) => products.find(p => p.id === id)!;
   const getCartItem = (productId: number) => cart.find(i => i.productId === productId);
 
-  const filteredProducts = products.filter(p => {
-    const matchesCat = activeCategory === 'Todos' || p.category === activeCategory;
-    const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase());
-    return matchesCat && matchesSearch;
+  /**
+   * En el punto de venta solamente se muestran productos activos
+   * los inactivos permanecen visibles en inventario
+   */
+  const filteredProducts = products.filter((product) => {
+    const matchesCategory =
+      activeCategory === "Todos" ||
+      product.category === activeCategory;
+
+    const matchesSearch = product.name
+      .toLowerCase()
+      .includes(search.toLowerCase());
+
+    const isActive = product.status === "active";
+
+    return matchesCategory && matchesSearch && isActive;
   });
 
   const cartSubtotal = cart.reduce((sum, item) => sum + getProduct(item.productId).price * item.quantity, 0);
@@ -149,17 +166,29 @@ export default function App() {
   };
 
   return (
-    <div className="flex overflow-hidden" style={{ height: '100dvh', backgroundColor: '#F0F2F7' }}>
+    <div className="flex h-screen overflow-hidden">
+      <Sidebar
+        activeModule={activeModule}
+        onModuleChange={setActiveModule}
+      />
+
+      <main className="min-w-0 flex-1 overflow-hidden">
+        {activeModule === "sale" && (
+          <div
+            className="flex h-full overflow-hidden"
+            style={{ backgroundColor: "#F0F2F7" }}
+          >
       {/* Left panel — Products */}
       <div className="flex flex-col min-w-0" style={{ width: '65%' }}>
         {/* Top bar */}
         <div className="flex-shrink-0 px-6 pt-5 pb-4" style={{ backgroundColor: '#F0F2F7' }}>
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-lg shadow-md"
-                style={{ backgroundColor: '#FF5C00' }}>
-                ⚡
-              </div>
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white shadow-md"
+              style={{ backgroundColor: "#FF5C00" }}
+            >
+              <MaterialIcon name="point_of_sale" className="text-2xl" filled />
+            </div>
               <h1 className="text-2xl font-bold text-[#0D0F14]">Punto de Venta</h1>
             </div>
             <span className="text-xs bg-white text-[#6B7280] border border-[#E5E7EB] px-3 py-1.5 rounded-full font-medium">
@@ -169,9 +198,7 @@ export default function App() {
 
           {/* Search */}
           <div className="relative mb-3">
-            <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#9CA3AF]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
+            <MaterialIcon name="search" className="absolute left-3.5 top-1/2 -translate-y-1/2 text-lg text-[#9CA3AF]" />
             <input
               type="text"
               value={search}
@@ -182,12 +209,12 @@ export default function App() {
             />
             {search && (
               <button
+                type="button"
                 onClick={() => setSearch('')}
+                aria-label="Limpiar búsqueda"
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-[#9CA3AF] hover:text-[#374151] transition-colors"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
+                <MaterialIcon name="close" className="text-lg" />
               </button>
             )}
           </div>
@@ -215,7 +242,7 @@ export default function App() {
         <div className="flex-1 overflow-y-auto px-6 pb-6">
           {filteredProducts.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center gap-3">
-              <span className="text-5xl">🔍</span>
+              <MaterialIcon name="search_off" className="text-5xl text-[#CBD5E1]" />
               <p className="text-sm text-[#9CA3AF] font-medium">No se encontraron productos</p>
               {search && (
                 <button onClick={() => setSearch('')} className="text-sm font-semibold hover:underline" style={{ color: '#FF5C00' }}>
@@ -284,5 +311,52 @@ export default function App() {
 
       <ToastContainer toasts={toasts} />
     </div>
-  );
+  )}
+
+  {activeModule === "inventory" && (
+    <InventoryPage
+      products={products}
+      onNewProduct={() =>
+        addToast(
+          "El formulario de nuevo producto será el siguiente paso",
+          "info",
+        )
+      }
+      onEditProduct={(product) =>
+        addToast(
+          `Edición pendiente: ${product.name}`,
+          "info",
+        )
+      }
+    />
+  )}
+
+
+  {activeModule === "waste" && (
+    <ModulePlaceholder
+      icon="delete_sweep"
+      title="Registro de mermas"
+      description="Aquí podrás registrar productos dañados, caducados, perdidos o utilizados internamente."
+    />
+  )}
+
+  {activeModule === "cash-closing" && (
+    <ModulePlaceholder
+      icon="payments"
+      title="Corte de caja"
+      description="Aquí podrás consultar el resumen del turno y comparar el efectivo esperado con el efectivo contado."
+    />
+  
+  )}
+
+  {activeModule === "reports" && (
+    <ModulePlaceholder
+      icon="bar_chart"
+      title="Reportes"
+      description="Aquí podrás consultar reportes simulados de ventas y mermas."
+    />
+  )}
+</main>
+</div>
+);
 }

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import MaterialIcon from './MaterialIcon';
 
 type PayMethod = 'efectivo' | 'tarjeta' | 'transferencia';
 
@@ -12,10 +13,8 @@ const fmt = (n: number) => `$${n.toFixed(2)}`;
 
 function BackBtn({ onClick }: { onClick: () => void }) {
   return (
-    <button onClick={onClick} className="flex items-center gap-1 text-sm text-[#9CA3AF] hover:text-[#FF5C00] mb-5 transition-colors">
-      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-      </svg>
+    <button type="button" onClick={onClick} className="flex items-center gap-1 text-sm text-[#9CA3AF] hover:text-[#FF5C00] mb-5 transition-colors">
+      <MaterialIcon name="arrow_back" className="text-lg" />
       Cambiar método
     </button>
   );
@@ -55,12 +54,12 @@ export default function PaymentModal({ total, onConfirm, onClose }: PaymentModal
             )}
           </div>
           <button
+            type="button"
             onClick={onClose}
+            aria-label="Cerrar ventana de cobro"
             className="w-8 h-8 flex items-center justify-center text-[#9CA3AF] hover:text-[#374151] hover:bg-[#F3F4F6] rounded-lg transition-colors"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
+            <MaterialIcon name="close" className="text-xl" />
           </button>
         </div>
 
@@ -79,16 +78,17 @@ export default function PaymentModal({ total, onConfirm, onClose }: PaymentModal
               <p className="text-xs font-semibold text-[#9CA3AF] uppercase tracking-widest mb-4">Método de pago</p>
               <div className="grid grid-cols-3 gap-3">
                 {[
-                  { key: 'efectivo' as PayMethod, label: 'Efectivo', icon: '💵' },
-                  { key: 'tarjeta' as PayMethod, label: 'Tarjeta', icon: '💳' },
-                  { key: 'transferencia' as PayMethod, label: 'Transferencia', icon: '📲' },
+                  { key: 'efectivo' as PayMethod, label: 'Efectivo', icon: 'payments' },
+                  { key: 'tarjeta' as PayMethod, label: 'Tarjeta', icon: 'credit_card' },
+                  { key: 'transferencia' as PayMethod, label: 'Transferencia', icon: 'account_balance' },
                 ].map(opt => (
                   <button
+                    type="button"
                     key={opt.key}
                     onClick={() => setMethod(opt.key)}
                     className="flex flex-col items-center gap-2.5 p-4 rounded-xl border-2 border-[#E5E7EB] hover:border-[#FF5C00] hover:bg-[#FFF5F0] transition-all duration-150 active:scale-95"
                   >
-                    <span className="text-3xl">{opt.icon}</span>
+                    <MaterialIcon name={opt.icon} className="text-3xl" />
                     <span className="text-sm font-semibold text-[#0D0F14]">{opt.label}</span>
                   </button>
                 ))}
@@ -119,7 +119,7 @@ export default function PaymentModal({ total, onConfirm, onClose }: PaymentModal
                 </div>
                 {cashInsufficient && (
                   <p className="text-xs text-[#EF4444] font-semibold mt-1.5 flex items-center gap-1">
-                    <span>⚠</span> Efectivo insuficiente
+                    <MaterialIcon name="warning" className="text-base" filled /> Efectivo insuficiente
                   </p>
                 )}
               </div>
@@ -142,7 +142,7 @@ export default function PaymentModal({ total, onConfirm, onClose }: PaymentModal
             <div>
               <BackBtn onClick={() => setMethod(null)} />
               <div className="bg-[#F9FAFB] rounded-xl p-5 text-center mb-4 border border-[#E5E7EB]">
-                <span className="text-4xl mb-2 block">💳</span>
+                <MaterialIcon name="credit_card" className="mb-2 text-5xl text-[#6B7280]" />
                 <p className="text-xs text-[#9CA3AF] uppercase tracking-wide mb-1">Total a cobrar</p>
                 <p className="text-3xl font-bold text-[#0D0F14] tabular-nums" style={{ fontFamily: 'Outfit, sans-serif' }}>
                   {fmt(total)}
