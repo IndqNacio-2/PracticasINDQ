@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:movil_cliente/core/api/api_client.dart'; 
 import 'package:movil_cliente/core/api/auth_servide.dart'; 
+import '../../features/auth/registro_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -284,17 +285,48 @@ class _LoginScreenState extends State<LoginScreen> {
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
+                                  
+                          ),
+                          
+                        ),
+                       const SizedBox(height: 12), // separación visual
+
+                        TextButton(
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const RegistroScreen(),
+                              ),
+                            );
+                          },
+                          child: RichText(
+                            text: const TextSpan(
+                              style: TextStyle(fontSize: 14, color: Colors.grey),
+                              children: [
+                                TextSpan(text: '¿No tienes cuenta? '),
+                                TextSpan(
+                                  text: 'Regístrate',
+                                  style: TextStyle(
+                                    color: Color(0xFF10B981), // mismo verde
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ],
+                      
                     ),
                   ),
                 ),
                 const SizedBox(height: 24),
+                
 
                 // Footer
                 const Text(
-                  '© 2024 GymFit · Sistema de Gestión',
+                  '© 2026 GymFit · Sistema de Gestión',
                   style: TextStyle(fontSize: 12, color: Colors.grey),
                 ),
               ],
