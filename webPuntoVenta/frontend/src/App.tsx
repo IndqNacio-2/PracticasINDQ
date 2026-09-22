@@ -55,6 +55,27 @@ export default function App() {
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000);
   }, []);
 
+  // Actualiza un producto y refleja el cambio en Venta e Inventario.
+  const updateProduct = (updatedProduct: Product) => {
+    setProducts((currentProducts) =>
+      currentProducts.map((product) =>
+        product.id === updatedProduct.id
+          ? updatedProduct
+          : product,
+      ),
+    );
+  };
+
+  // Agrega un producto local con un identificador nuevo.
+  const addProduct = (productData: Omit<Product, "id">) => {
+    const newId = Math.max(0, ...products.map((product) => product.id)) + 1;
+
+    setProducts((currentProducts) => [
+      ...currentProducts,
+      { ...productData, id: newId },
+    ]);
+  };
+
   const getProduct = (id: number) => products.find(p => p.id === id)!;
   const getCartItem = (productId: number) => cart.find(i => i.productId === productId);
 
@@ -316,18 +337,9 @@ export default function App() {
   {activeModule === "inventory" && (
     <InventoryPage
       products={products}
-      onNewProduct={() =>
-        addToast(
-          "El formulario de nuevo producto será el siguiente paso",
-          "info",
-        )
-      }
-      onEditProduct={(product) =>
-        addToast(
-          `Edición pendiente: ${product.name}`,
-          "info",
-        )
-      }
+      onUpdateProduct={updateProduct}
+      onAddProduct={addProduct}
+      addToast={addToast}
     />
   )}
 

@@ -16,6 +16,8 @@ export interface Product {
   code: string;
   // Nombre que vera el usuario
   name: string;
+  // Descripción breve para consultar los detalles del producto
+  description: string;
   // Categoria utilizada en los filtros
   category: string;
   // Precio que paga el cliente
