@@ -171,7 +171,7 @@ export default function Dashboard() {
     return (
       res.client.toLowerCase().includes(term) ||
       res.class.toLowerCase().includes(term) ||
-      res.time.toLowerCase().includes(term)
+      res.time.toLowerCase().includes(term) 
     );
   });
 
@@ -239,7 +239,7 @@ export default function Dashboard() {
             <div className="flex justify-between items-start">
               <div>
                 <p className="text-gray-500 text-sm font-medium">Ingresos del Día</p>
-                <h3 className="text-3xl font-bold text-gray-800 mt-1">$ {totalPaid}</h3>
+                <h3 className="text-3xl font-bold text-gray-800 mt-1">$ {totalPaid} MXN</h3>
               </div>
               <div className="bg-green-100 p-3 rounded-full">
                 <DollarSign className="h-6 w-6 text-green-600" />
@@ -299,6 +299,7 @@ export default function Dashboard() {
           <table className="w-full text-left border-collapse">
             <thead className="bg-gray-100 text-gray-600 uppercase text-xs font-semibold">
               <tr>
+                <th className = "px-6 py-4">ID CLIENTE</th>
                 <th className="px-6 py-4">Hora</th>
                 <th className="px-6 py-4">Cliente</th>
                 <th className="px-6 py-4">Clase</th>
@@ -317,6 +318,7 @@ export default function Dashboard() {
               ) : (
                 filteredReservations.map((res) => (
                   <tr key={res.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-6 py-4 text-gray-800 font-medium">{res.id}</td>
                     <td className="px-6 py-4 text-gray-800 font-medium">{res.time}</td>
                     <td className="px-6 py-4 text-gray-800">{res.client}</td>
                     <td className="px-6 py-4 text-gray-600">{res.class}</td>
