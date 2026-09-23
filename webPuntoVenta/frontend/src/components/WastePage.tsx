@@ -7,6 +7,9 @@ import type {
 } from "../types";
 
 import MaterialIcon from "./MaterialIcon";
+import WasteFormModal, {
+  type WasteFormData,
+} from "./waste/WasteFormModal";
 
 /*
  * Defino la información que recibe el módulo de Mermas.
@@ -14,7 +17,7 @@ import MaterialIcon from "./MaterialIcon";
 interface WastePageProps {
   products: Product[];
   wasteRecords: WasteRecord[];
-  onNewWaste: () => void;
+  onAddWaste: (waste: WasteFormData) => void;
 }
 
 /*
@@ -87,11 +90,12 @@ const formatDate = (value: string): string =>
 export default function WastePage({
   products,
   wasteRecords,
-  onNewWaste,
+  onAddWaste,
 }: WastePageProps) {
   const [search, setSearch] = useState("");
   const [reasonFilter, setReasonFilter] =
     useState<"all" | WasteReason>("all");
+  const [isFormOpen, setIsFormOpen] = useState(false);
 
   /*
    * Busco el producto relacionado con cada registro.
@@ -183,7 +187,7 @@ export default function WastePage({
 
         <button
           type="button"
-          onClick={onNewWaste}
+          onClick={() => setIsFormOpen(true)}
           className="flex items-center gap-2 rounded-xl bg-[#FF5C00] px-4 py-2.5 text-sm font-bold text-white transition-opacity hover:opacity-90 active:scale-[0.98]"
         >
           <MaterialIcon
@@ -446,6 +450,17 @@ export default function WastePage({
           {damagedRecords} registros dañados
         </span>
       </div>
+
+      {isFormOpen && (
+        <WasteFormModal
+          products={products}
+          onSave={(waste) => {
+            onAddWaste(waste);
+            setIsFormOpen(false);
+          }}
+          onCancel={() => setIsFormOpen(false)}
+        />
+      )}
     </section>
   );
 }

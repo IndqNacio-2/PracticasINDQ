@@ -15,6 +15,7 @@ import ModulePlaceholder from "./components/ModulePlaceholder";
 import MaterialIcon from "./components/MaterialIcon";
 import InventoryPage from "./components/InventoryPage";
 import WastePage from "./components/WastePage";
+import type { WasteFormData } from "./components/waste/WasteFormModal";
 
 let _toastId = 0;
 
@@ -80,6 +81,37 @@ export default function App() {
       ...currentProducts,
       { ...productData, id: newId },
     ]);
+  };
+
+  /*
+   * Registro la merma en el historial local.
+   * El descuento de inventario queda preparado para la siguiente etapa.
+   */
+  const addWasteRecord = (wasteData: WasteFormData) => {
+    const newId = Math.max(
+      0,
+      ...wasteRecords.map((record) => record.id),
+    ) + 1;
+
+    const newRecord: WasteRecord = {
+      id: newId,
+      folio: `M-${String(newId).padStart(6, "0")}`,
+      productId: wasteData.productId,
+      quantity: wasteData.quantity,
+      reason: wasteData.reason,
+      observations: wasteData.observations,
+      createdAt: new Date().toISOString(),
+      registeredBy: "Edgar Rodríguez",
+    };
+
+    setWasteRecords((currentRecords) => [
+      ...currentRecords,
+      newRecord,
+    ]);
+
+    addToast("Merma registrada correctamente", "success");
+
+    // Pendiente: descontar wasteData.quantity del producto seleccionado.
   };
 
   const getProduct = (id: number) => products.find(p => p.id === id)!;
@@ -353,12 +385,7 @@ export default function App() {
     <WastePage
       products={products}
       wasteRecords={wasteRecords}
-      onNewWaste={() =>
-        addToast(
-          "El formulario de merma será el siguiente paso",
-          "info",
-        )
-      }
+      onAddWaste={addWasteRecord}
     />
   )}
 
