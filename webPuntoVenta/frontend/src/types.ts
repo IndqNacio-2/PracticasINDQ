@@ -36,6 +36,49 @@ export interface Product {
   bgColor: string;
 }
 
+/**
+ * Defino los motivos disponibles para registrar una merma
+ * 
+ * utilizo valores en ingles internamente para mantenerlos cortos.
+ */
+export type WasteReason =
+  | "damaged"
+  | "expired"
+  | "broken"
+  | "internal-use"
+  | "inventory-error"
+  | "lost"
+  | "other"
+
+/**
+ * Represento un registro de pérdida o merma de inventario.
+ */
+export interface WasteRecord {
+  // Identificador interno temporal del registro.
+  id: number;
+
+  // Folio visible para localizar la merma.
+  folio: string;
+
+  // Producto relacionado con la pérdida.
+  productId: number;
+
+  // Cantidad de unidades registradas como merma.
+  quantity: number;
+
+  // Motivo seleccionado por el usuario.
+  reason: WasteReason;
+
+  // Explicación adicional opcional.
+  observations: string;
+
+  // Fecha y hora del registro.
+  createdAt: string;
+
+  // Usuario que realizó el movimiento.
+  registeredBy: string;
+}
+
 export interface CartItem {
   productId: number;
   quantity: number;

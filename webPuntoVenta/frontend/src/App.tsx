@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, } from "react";
-import type { Product, CartItem, ToastMessage, SaleRecord, AppModule, } from './types';
-import { INITIAL_PRODUCTS, CATEGORIES } from './data';
+import type { Product, CartItem, ToastMessage, SaleRecord, AppModule, WasteRecord, } from './types';
+import { INITIAL_PRODUCTS, INITIAL_WASTE_RECORDS, CATEGORIES, } from './data';
 import ProductCard from './components/ProductCard';
 import CartPanel from './components/CartPanel';
 import PaymentModal from './components/PaymentModal';
@@ -14,12 +14,18 @@ import Sidebar from "./components/Sidebar";
 import ModulePlaceholder from "./components/ModulePlaceholder";
 import MaterialIcon from "./components/MaterialIcon";
 import InventoryPage from "./components/InventoryPage";
+import WastePage from "./components/WastePage";
 
 let _toastId = 0;
 
 export default function App() {
   const [activeModule, setActiveModule] = useState<AppModule>("sale");
   const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
+  /**
+   * Guardo temporalmente los registros de mermas en el estado
+   * principal para compartirlos despues con inventario
+   */
+  const [wasteRecords, setWasteRecords] = useState<WasteRecord[]>(INITIAL_WASTE_RECORDS);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState('Todos');
@@ -343,12 +349,16 @@ export default function App() {
     />
   )}
 
-
   {activeModule === "waste" && (
-    <ModulePlaceholder
-      icon="delete_sweep"
-      title="Registro de mermas"
-      description="Aquí podrás registrar productos dañados, caducados, perdidos o utilizados internamente."
+    <WastePage
+      products={products}
+      wasteRecords={wasteRecords}
+      onNewWaste={() =>
+        addToast(
+          "El formulario de merma será el siguiente paso",
+          "info",
+        )
+      }
     />
   )}
 

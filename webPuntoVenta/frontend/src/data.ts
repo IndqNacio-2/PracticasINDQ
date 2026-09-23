@@ -1,4 +1,4 @@
-import type { Product } from './types';
+import type { Product, WasteRecord } from './types';
 
 export const CATEGORIES = ['Todos', 'Bebidas', 'Suplementos', 'Botanas', 'Ropa', 'Accesorios'];
 
@@ -114,5 +114,54 @@ export const INITIAL_PRODUCTS: Product[] = [
     status: "inactive",
     icon: "apparel",
     bgColor: "#ECFDF5",
+  },
+];
+
+/**
+ * Creo registros simulados para desarrollar la pantalla de Mermas.
+ * 
+ * Estos movimientos todavía no descuentan existencias porque esa
+ * integración corresponde a la siguiente etapa.
+ */
+export const INITIAL_WASTE_RECORDS: WasteRecord[] = [
+  {
+    id: 1,
+    folio: "M-000001",
+    productId: 2,
+    quantity: 1,
+    reason: "damaged",
+    observations: "La lata presentó un golpe durante el acomodo.",
+    createdAt: "2026-09-23T09:35:00",
+    registeredBy: "Edgar Rodríguez",
+  },
+  {
+    id: 2,
+    folio: "M-000002",
+    productId: 5,
+    quantity: 2,
+    reason: "expired",
+    observations: "El producto superó su fecha recomendada de consumo.",
+    createdAt: "2026-09-23T11:10:00",
+    registeredBy: "Edgar Rodríguez",
+  },
+  {
+    id: 3,
+    folio: "M-000003",
+    productId: 1,
+    quantity: 3,
+    reason: "internal-use",
+    observations: "Productos utilizados durante un evento interno.",
+    createdAt: "2026-09-23T13:20:00",
+    registeredBy: "Edgar Rodríguez",
+  },
+  {
+    id: 4,
+    folio: "M-000004",
+    productId: 7,
+    quantity: 1,
+    reason: "lost",
+    observations: "No se encontró el producto durante el conteo.",
+    createdAt: "2026-09-23T15:05:00",
+    registeredBy: "Edgar Rodríguez",
   },
 ];
