@@ -17,7 +17,11 @@ import WasteFormModal, {
 interface WastePageProps {
   products: Product[];
   wasteRecords: WasteRecord[];
-  onAddWaste: (waste: WasteFormData) => void;
+  /*
+   * Recibo true cuando la merma se registra correctamente
+   * y false cuando la operación no puede completarse.
+   */
+  onAddWaste: (waste: WasteFormData) => boolean;
 }
 
 /*
@@ -455,8 +459,18 @@ export default function WastePage({
         <WasteFormModal
           products={products}
           onSave={(waste) => {
-            onAddWaste(waste);
-            setIsFormOpen(false);
+            /*
+            * Intento registrar la merma desde el estado principal.
+            */
+            const wasRegistered = onAddWaste(waste);
+
+            /*
+            * Solamente cierro el formulario cuando el registro
+            * y el descuento de inventario fueron correctos.
+            */
+            if (wasRegistered) {
+              setIsFormOpen(false);
+            }
           }}
           onCancel={() => setIsFormOpen(false)}
         />

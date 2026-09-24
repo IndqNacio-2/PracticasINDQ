@@ -15,6 +15,8 @@ import ModulePlaceholder from "./components/ModulePlaceholder";
 import MaterialIcon from "./components/MaterialIcon";
 import InventoryPage from "./components/InventoryPage";
 import WastePage from "./components/WastePage";
+// Importo la primera pantalla funcional del Corte de caja.
+import CashClosingPage from "./components/CashClosingPage";
 import type { WasteFormData } from "./components/waste/WasteFormModal";
 
 let _toastId = 0;
@@ -32,6 +34,11 @@ export default function App() {
   const [activeCategory, setActiveCategory] = useState('Todos');
   const [modal, setModal] = useState<'payment' | 'success' | 'cancel' | 'ticket' | null>(null);
   const [lastSale, setLastSale] = useState<SaleRecord | null>(null);
+  /**
+   * Guardo las ventas completadas durante la sesión actual
+   * para calcular el resumen del Corte de caja.
+   */
+  const [sales, setSales] = useState<SaleRecord[]>([]);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [folioCounter, setFolioCounter] = useState(125);
 
@@ -84,15 +91,85 @@ export default function App() {
   };
 
   /*
-   * Registro la merma en el historial local.
-   * El descuento de inventario queda preparado para la siguiente etapa.
-   */
-  const addWasteRecord = (wasteData: WasteFormData) => {
-    const newId = Math.max(
-      0,
-      ...wasteRecords.map((record) => record.id),
-    ) + 1;
+  * Registro una merma y descuento las unidades del inventario.
+  *
+  * Devuelvo true cuando el registro se completa correctamente
+  * y false cuando encuentro algún dato inválido.
+  */
+  const addWasteRecord = (
+    wasteData: WasteFormData,
+  ): boolean => {
+    /*
+    * Busco el producto relacionado con la merma para conocer
+    * su existencia actual antes de modificar el inventario.
+    */
+    const selectedProduct = products.find(
+      (product) => product.id === wasteData.productId,
+    );
 
+    /*
+    * Aunque el formulario solamente muestra productos válidos,
+    * vuelvo a comprobar que el producto exista porque esta función
+    * es la responsable final de actualizar el inventario.
+    */
+    if (!selectedProduct) {
+      addToast(
+        "No fue posible encontrar el producto seleccionado",
+        "error",
+      );
+
+      return false;
+    }
+
+    /*
+    * Verifico que la cantidad sea un número entero y mayor que cero.
+    * No permito cantidades decimales porque manejo unidades completas.
+    */
+    if (
+      !Number.isInteger(wasteData.quantity) ||
+      wasteData.quantity <= 0
+    ) {
+      addToast(
+        "La cantidad de la merma debe ser un número entero mayor que cero",
+        "error",
+      );
+
+      return false;
+    }
+
+    /*
+    * Evito que el descuento genere una existencia negativa.
+    */
+    if (wasteData.quantity > selectedProduct.stock) {
+      addToast(
+        `Solamente hay ${selectedProduct.stock} unidades disponibles`,
+        "error",
+      );
+
+      return false;
+    }
+
+    /*
+    * Calculo la existencia que tendrá el producto después
+    * de aplicar la merma.
+    */
+    const resultingStock =
+      selectedProduct.stock - wasteData.quantity;
+
+    /*
+    * Obtengo el siguiente identificador disponible para crear
+    * un folio único dentro de los registros locales.
+    */
+    const newId =
+      Math.max(
+        0,
+        ...wasteRecords.map((record) => record.id),
+      ) + 1;
+
+    /*
+    * Construyo el registro completo de la merma con la fecha,
+    * el usuario y los datos recibidos desde el formulario.
+    */
     const newRecord: WasteRecord = {
       id: newId,
       folio: `M-${String(newId).padStart(6, "0")}`,
@@ -104,15 +181,98 @@ export default function App() {
       registeredBy: "Edgar Rodríguez",
     };
 
+    /*
+    * Agrego la nueva merma al historial sin modificar directamente
+    * el arreglo anterior.
+    */
     setWasteRecords((currentRecords) => [
       ...currentRecords,
       newRecord,
     ]);
 
-    addToast("Merma registrada correctamente", "success");
+    /*
+    * Actualizo solamente el producto seleccionado y conservo
+    * los demás productos sin cambios.
+    *
+    * Como Venta, Inventario y Mermas reciben este mismo estado,
+    * las tres pantallas mostrarán automáticamente el nuevo stock.
+    */
+    setProducts((currentProducts) =>
+      currentProducts.map((product) =>
+        product.id === selectedProduct.id
+          ? {
+              ...product,
+              stock: resultingStock,
+            }
+          : product,
+      ),
+    );
 
-    // Pendiente: descontar wasteData.quantity del producto seleccionado.
+    /*
+    * Si el producto se encontraba en el carrito, reviso que la
+    * cantidad apartada no sea mayor que la existencia resultante.
+    *
+    * Si el stock llegó a cero, retiro el producto del carrito.
+    * Si todavía existe stock, reduzco la cantidad al máximo disponible.
+    */
+    const cartItem = cart.find(
+      (item) => item.productId === selectedProduct.id,
+    );
+
+    const cartNeedsAdjustment =
+      cartItem !== undefined &&
+      cartItem.quantity > resultingStock;
+
+    if (cartNeedsAdjustment) {
+      setCart((currentCart) =>
+        currentCart.flatMap((item) => {
+          if (item.productId !== selectedProduct.id) {
+            return [item];
+          }
+
+          if (resultingStock === 0) {
+            return [];
+          }
+
+          return [
+            {
+              ...item,
+              quantity: resultingStock,
+            },
+          ];
+        }),
+      );
+    }
+
+    /*
+    * Informo al usuario que el registro y el descuento
+    * de inventario se realizaron correctamente.
+    */
+    addToast(
+      `Merma registrada. Nuevo stock de ${selectedProduct.name}: ${resultingStock}`,
+      "success",
+    );
+
+    /*
+    * Si fue necesario modificar el carrito, también aviso al usuario
+    * para que conozca el cambio antes de continuar con la venta.
+    */
+    if (cartNeedsAdjustment) {
+      addToast(
+        resultingStock === 0
+          ? `${selectedProduct.name} se retiró del carrito porque quedó agotado`
+          : `La cantidad de ${selectedProduct.name} en el carrito se ajustó a ${resultingStock}`,
+        "warning",
+      );
+    }
+
+    /*
+    * Devuelvo true para indicar que la operación terminó correctamente
+    * y permitir que el formulario de merma se cierre.
+    */
+    return true;
   };
+
 
   const getProduct = (id: number) => products.find(p => p.id === id)!;
   const getCartItem = (productId: number) => cart.find(i => i.productId === productId);
@@ -205,6 +365,15 @@ export default function App() {
       const ci = cart.find(i => i.productId === p.id);
       return ci ? { ...p, stock: p.stock - ci.quantity } : p;
     }));
+
+    /*
+     * Agrego la venta al historial que utiliza Corte de caja.
+     * Este historial es temporal hasta conectarlo con el backend.
+     */
+    setSales((currentSales) => [
+      ...currentSales,
+      sale,
+    ]);
 
     setFolioCounter(prev => prev + 1);
     setLastSale(sale);
@@ -390,12 +559,7 @@ export default function App() {
   )}
 
   {activeModule === "cash-closing" && (
-    <ModulePlaceholder
-      icon="payments"
-      title="Corte de caja"
-      description="Aquí podrás consultar el resumen del turno y comparar el efectivo esperado con el efectivo contado."
-    />
-  
+    <CashClosingPage sales={sales} />
   )}
 
   {activeModule === "reports" && (

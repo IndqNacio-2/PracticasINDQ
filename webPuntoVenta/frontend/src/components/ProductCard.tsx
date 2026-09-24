@@ -10,9 +10,28 @@ interface ProductCardProps {
 }
 
 export default function ProductCard({ product, cartQty, onAdd }: ProductCardProps) {
+  /*
+  * Considero agotado el producto cuando ya no tiene
+  * ninguna unidad disponible.
+  */
   const isOut = product.stock === 0;
-  const isLow = product.stock > 0 && product.stock <= 3;
-  const atMax = cartQty >= product.stock && !isOut;
+
+  /*
+  * Considero que existe stock bajo cuando todavía hay unidades,
+  * pero la cantidad es igual o menor al mínimo configurado
+  * específicamente para este producto.
+  */
+  const isLow =
+    product.stock > 0 &&
+    product.stock <= product.minimumStock;
+
+  /*
+  * Evito agregar más unidades cuando la cantidad del carrito
+  * ya alcanzó la existencia disponible.
+  */
+  const atMax =
+    cartQty >= product.stock &&
+    !isOut;
 
   return (
     <div className={`bg-white rounded-2xl overflow-hidden border transition-all duration-150 ${

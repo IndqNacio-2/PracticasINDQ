@@ -255,7 +255,11 @@ export default function WasteFormModal({
                     className={
                       resultingStock < 0
                         ? "text-[#EF4444]"
-                        : "text-[#0D0F14]"
+                        : resultingStock === 0
+                          ? "text-[#EF4444]"
+                          : resultingStock <= selectedProduct.minimumStock
+                            ? "text-[#F59E0B]"
+                            : "text-[#10B981]"
                     }
                   >
                     {resultingStock} unidades
