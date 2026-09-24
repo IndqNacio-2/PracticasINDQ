@@ -1,4 +1,4 @@
-import { useState, } from 'react';
+import { useState,useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { LogOut, Calendar, Clock, DollarSign, UserPlus, AlertCircle, CheckCircle, CreditCard, X } from 'lucide-react';
@@ -37,6 +37,16 @@ export default function Dashboard() {
     time: '',
     price: ''
   });
+
+  //CARGA DE DATOS DESDE EL BACKEND
+  const API = 'http://localhost:3001';
+ 
+      useEffect(() => {
+      fetch(`${API}/api/reservas`)
+      .then(res => res.json())
+      .then(data => setReservations(data))
+      .catch(() => console.warn('Backend no disponible, usando datos locales.'));
+      }, []);
 
   // ========== FUNCIONES DE ACCIONES PRINCIPALES ==========
   
@@ -137,8 +147,7 @@ export default function Dashboard() {
          time: newReservation.time,
         price: Number(newReservation.price),
         status: 'pendiente'};
-        nextId += 1; // asegura unicidad aunque haya renders extra
-
+        
       setReservations(prev => [...prev, reservation]);
       showNotification(`Reservación creada para ${reservation.client}.`, 'success');
       closeModal();
