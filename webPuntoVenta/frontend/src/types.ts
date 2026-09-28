@@ -104,6 +104,44 @@ export interface SaleRecord {
   transferRef?: string;
 }
 
+/**
+ * Represento un corte de caja realizado al cerrar un turno.
+ */
+export interface CashClosingRecord {
+  // Folio visible para localizar el corte.
+  folio: string;
+
+  // Fecha y hora en que se realizó el cierre.
+  date: string;
+  time: string;
+
+  // Cantidad de ventas incluidas en el turno.
+  salesCount: number;
+
+  // Importe total vendido durante el turno.
+  totalSales: number;
+
+  // Importes separados por método de pago.
+  cashSales: number;
+  cardSales: number;
+  transferSales: number;
+
+  // Dinero con el que inició el turno.
+  initialFund: number;
+
+  // Efectivo que debía existir en la caja.
+  expectedCash: number;
+
+  // Efectivo que el usuario contó al final del turno.
+  countedCash: number;
+
+  // Resultado de restar el efectivo esperado al efectivo contado.
+  difference: number;
+
+  // Usuario que realizó el corte.
+  registeredBy: string;
+}
+
 export type AppModule =
   | "sale"
   | "inventory"

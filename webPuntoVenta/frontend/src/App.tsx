@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useState, } from "react";
-import type { Product, CartItem, ToastMessage, SaleRecord, AppModule, WasteRecord, } from './types';
+import { useCallback, useEffect, useMemo, useState, } from "react";
+// Importo el tipo CSSProperties de forma explicita en lugar de usar el global React.
+import type { CSSProperties } from "react";
+import type { Product, CartItem, ToastMessage, SaleRecord, AppModule, WasteRecord, CashClosingRecord, } from './types';
 import { INITIAL_PRODUCTS, INITIAL_WASTE_RECORDS, CATEGORIES, } from './data';
 import ProductCard from './components/ProductCard';
 import CartPanel from './components/CartPanel';
@@ -11,12 +13,12 @@ import ToastContainer from './components/Toast';
 // funcion centralizada que consulta el estado del backend.
 import { getHealth } from "./services/api";
 import Sidebar from "./components/Sidebar";
-import ModulePlaceholder from "./components/ModulePlaceholder";
 import MaterialIcon from "./components/MaterialIcon";
 import InventoryPage from "./components/InventoryPage";
 import WastePage from "./components/WastePage";
 // Importo la primera pantalla funcional del Corte de caja.
 import CashClosingPage from "./components/CashClosingPage";
+import ReportsPage from "./components/ReportsPage";
 import type { WasteFormData } from "./components/waste/WasteFormModal";
 
 let _toastId = 0;
@@ -41,6 +43,22 @@ export default function App() {
   const [sales, setSales] = useState<SaleRecord[]>([]);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [folioCounter, setFolioCounter] = useState(125);
+  /**
+   * Guardo los cortes de caja realizados durante la sesión
+   * para mostrarlos en el historial del módulo.
+   */
+  const [cashClosings, setCashClosings] = useState<CashClosingRecord[]>([]);
+  /**
+   * Cuento cuántas ventas ya quedaron incluidas en un corte.
+   * Así puedo saber cuáles pertenecen al turno vigente.
+   */
+  const [closedSalesCount, setClosedSalesCount] = useState(0);
+  /**
+   * Conservo el fondo inicial y el efectivo contado del turno actual
+   * para no perderlos cuando el usuario cambia de módulo.
+   */
+  const [initialFund, setInitialFund] = useState(0);
+  const [countedCash, setCountedCash] = useState(0);
 
   /**
    * comprueba la cominicacion con el backend una sola vez
@@ -68,6 +86,40 @@ export default function App() {
     setToasts(prev => [...prev, { id, message, type }]);
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000);
   }, []);
+
+  /**
+   * Obtengo las ventas que pertenecen al turno vigente.
+   *
+   * Las ventas anteriores se conservan en el historial general
+   * para que los reportes puedan consultarlas más adelante.
+   */
+  const shiftSales = useMemo(
+    () => sales.slice(closedSalesCount),
+    [sales, closedSalesCount],
+  );
+
+  /**
+   * Registro el corte de caja que llegó desde el módulo.
+   *
+   * Guardo el corte en el historial, marco las ventas del turno
+   * como cerradas y reinicio el fondo y el efectivo contado
+   * para que el siguiente turno comience desde cero.
+   */
+  const confirmCashClosing = (closing: CashClosingRecord) => {
+    setCashClosings((currentClosings) => [
+      ...currentClosings,
+      closing,
+    ]);
+
+    setClosedSalesCount(sales.length);
+    setInitialFund(0);
+    setCountedCash(0);
+
+    addToast(
+      `Corte ${closing.folio} registrado correctamente`,
+      'success',
+    );
+  };
 
   // Actualiza un producto y refleja el cambio en Venta e Inventario.
   const updateProduct = (updatedProduct: Product) => {
@@ -406,170 +458,178 @@ export default function App() {
             className="flex h-full overflow-hidden"
             style={{ backgroundColor: "#F0F2F7" }}
           >
-      {/* Left panel — Products */}
-      <div className="flex flex-col min-w-0" style={{ width: '65%' }}>
-        {/* Top bar */}
-        <div className="flex-shrink-0 px-6 pt-5 pb-4" style={{ backgroundColor: '#F0F2F7' }}>
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white shadow-md"
-              style={{ backgroundColor: "#FF5C00" }}
-            >
-              <MaterialIcon name="point_of_sale" className="text-2xl" filled />
-            </div>
-              <h1 className="text-2xl font-bold text-[#0D0F14]">Punto de Venta</h1>
-            </div>
-            <span className="text-xs bg-white text-[#6B7280] border border-[#E5E7EB] px-3 py-1.5 rounded-full font-medium">
-              {filteredProducts.length} producto{filteredProducts.length !== 1 ? 's' : ''}
-            </span>
-          </div>
+            {/* Left panel — Products */}
+            <div className="flex flex-col min-w-0" style={{ width: '65%' }}>
+              {/* Top bar */}
+              <div className="flex-shrink-0 px-6 pt-5 pb-4" style={{ backgroundColor: '#F0F2F7' }}>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="w-9 h-9 rounded-xl flex items-center justify-center text-white shadow-md"
+                      style={{ backgroundColor: "#FF5C00" }}
+                    >
+                      <MaterialIcon name="point_of_sale" className="text-2xl" filled />
+                    </div>
+                  </div>
+                  <span className="text-xs bg-white text-[#6B7280] border border-[#E5E7EB] px-3 py-1.5 rounded-full font-medium">
+                    {filteredProducts.length} producto{filteredProducts.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
 
-          {/* Search */}
-          <div className="relative mb-3">
-            <MaterialIcon name="search" className="absolute left-3.5 top-1/2 -translate-y-1/2 text-lg text-[#9CA3AF]" />
-            <input
-              type="text"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Buscar producto..."
-              className="w-full pl-10 pr-4 py-2.5 bg-white border border-[#E5E7EB] rounded-xl text-sm text-[#0D0F14] placeholder-[#9CA3AF] focus:outline-none focus:ring-2 transition-all"
-              style={{ '--tw-ring-color': '#FF5C00' } as React.CSSProperties}
+                {/* Search */}
+                <div className="relative mb-3">
+                  <MaterialIcon name="search" className="absolute left-3.5 top-1/2 -translate-y-1/2 text-lg text-[#9CA3AF]" />
+                  <input
+                    type="text"
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    placeholder="Buscar producto..."
+                    className="w-full pl-10 pr-4 py-2.5 bg-white border border-[#E5E7EB] rounded-xl text-sm text-[#0D0F14] placeholder-[#9CA3AF] focus:outline-none focus:ring-2 transition-all"
+                    style={{ '--tw-ring-color': '#FF5C00' } as CSSProperties}
+                  />
+                  {search && (
+                    <button
+                      type="button"
+                      onClick={() => setSearch('')}
+                      aria-label="Limpiar búsqueda"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#9CA3AF] hover:text-[#374151] transition-colors"
+                    >
+                      <MaterialIcon name="close" className="text-lg" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Category filter */}
+                <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+                  {CATEGORIES.map(cat => (
+                    <button
+                      key={cat}
+                      onClick={() => setActiveCategory(cat)}
+                      className={`px-4 py-1.5 rounded-full text-sm font-semibold whitespace-nowrap transition-all duration-150 flex-shrink-0 ${
+                        activeCategory === cat
+                          ? 'text-white shadow-md'
+                          : 'bg-white text-[#6B7280] border border-[#E5E7EB] hover:border-[#FF5C00] hover:text-[#FF5C00]'
+                      }`}
+                      style={activeCategory === cat ? { backgroundColor: '#FF5C00' } : {}}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Product grid */}
+              <div className="flex-1 overflow-y-auto px-6 pb-6">
+                {filteredProducts.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full text-center gap-3">
+                    <MaterialIcon name="search_off" className="text-5xl text-[#CBD5E1]" />
+                    <p className="text-sm text-[#9CA3AF] font-medium">No se encontraron productos</p>
+                    {search && (
+                      <button onClick={() => setSearch('')} className="text-sm font-semibold hover:underline" style={{ color: '#FF5C00' }}>
+                        Limpiar búsqueda
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))' }}>
+                    {filteredProducts.map(product => (
+                      <ProductCard
+                        key={product.id}
+                        product={product}
+                        cartQty={getCartItem(product.id)?.quantity ?? 0}
+                        onAdd={() => addToCart(product.id)}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Right panel — Cart */}
+            <CartPanel
+              cart={cart}
+              products={products}
+              subtotal={cartSubtotal}
+              discount={discount}
+              total={cartTotal}
+              onUpdateQuantity={updateQuantity}
+              onRemove={removeFromCart}
+              onCobrar={() => setModal('payment')}
+              onCancelVenta={() => setModal('cancel')}
             />
-            {search && (
-              <button
-                type="button"
-                onClick={() => setSearch('')}
-                aria-label="Limpiar búsqueda"
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#9CA3AF] hover:text-[#374151] transition-colors"
-              >
-                <MaterialIcon name="close" className="text-lg" />
-              </button>
+
+            {/* Modals */}
+            {modal === 'payment' && (
+              <PaymentModal
+                total={cartTotal}
+                onConfirm={handleConfirmPayment}
+                onClose={() => setModal(null)}
+              />
             )}
+
+            {modal === 'success' && lastSale && (
+              <SaleSuccessModal
+                sale={lastSale}
+                onNewSale={handleNewSale}
+                onShowTicket={() => setModal('ticket')}
+              />
+            )}
+
+            {modal === 'ticket' && lastSale && (
+              <TicketModal
+                sale={lastSale}
+                onClose={() => setModal('success')}
+              />
+            )}
+
+            {modal === 'cancel' && (
+              <ConfirmCancelModal
+                onConfirm={confirmCancelVenta}
+                onCancel={() => setModal(null)}
+              />
+            )}
+
+            <ToastContainer toasts={toasts} />
           </div>
+        )}
 
-          {/* Category filter */}
-          <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
-            {CATEGORIES.map(cat => (
-              <button
-                key={cat}
-                onClick={() => setActiveCategory(cat)}
-                className={`px-4 py-1.5 rounded-full text-sm font-semibold whitespace-nowrap transition-all duration-150 flex-shrink-0 ${
-                  activeCategory === cat
-                    ? 'text-white shadow-md'
-                    : 'bg-white text-[#6B7280] border border-[#E5E7EB] hover:border-[#FF5C00] hover:text-[#FF5C00]'
-                }`}
-                style={activeCategory === cat ? { backgroundColor: '#FF5C00' } : {}}
-              >
-                {cat}
-              </button>
-            ))}
-          </div>
-        </div>
+        {activeModule === "inventory" && (
+          <InventoryPage
+            products={products}
+            onUpdateProduct={updateProduct}
+            onAddProduct={addProduct}
+            addToast={addToast}
+          />
+        )}
 
-        {/* Product grid */}
-        <div className="flex-1 overflow-y-auto px-6 pb-6">
-          {filteredProducts.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-center gap-3">
-              <MaterialIcon name="search_off" className="text-5xl text-[#CBD5E1]" />
-              <p className="text-sm text-[#9CA3AF] font-medium">No se encontraron productos</p>
-              {search && (
-                <button onClick={() => setSearch('')} className="text-sm font-semibold hover:underline" style={{ color: '#FF5C00' }}>
-                  Limpiar búsqueda
-                </button>
-              )}
-            </div>
-          ) : (
-            <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))' }}>
-              {filteredProducts.map(product => (
-                <ProductCard
-                  key={product.id}
-                  product={product}
-                  cartQty={getCartItem(product.id)?.quantity ?? 0}
-                  onAdd={() => addToCart(product.id)}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
+        {activeModule === "waste" && (
+          <WastePage
+            products={products}
+            wasteRecords={wasteRecords}
+            onAddWaste={addWasteRecord}
+          />
+        )}
 
-      {/* Right panel — Cart */}
-      <CartPanel
-        cart={cart}
-        products={products}
-        subtotal={cartSubtotal}
-        discount={discount}
-        total={cartTotal}
-        onUpdateQuantity={updateQuantity}
-        onRemove={removeFromCart}
-        onCobrar={() => setModal('payment')}
-        onCancelVenta={() => setModal('cancel')}
-      />
+        {activeModule === "cash-closing" && (
+          <CashClosingPage
+            sales={shiftSales}
+            closings={cashClosings}
+            initialFund={initialFund}
+            countedCash={countedCash}
+            onInitialFundChange={setInitialFund}
+            onCountedCashChange={setCountedCash}
+            onConfirmClosing={confirmCashClosing}
+          />
+        )}
 
-      {/* Modals */}
-      {modal === 'payment' && (
-        <PaymentModal
-          total={cartTotal}
-          onConfirm={handleConfirmPayment}
-          onClose={() => setModal(null)}
-        />
-      )}
-
-      {modal === 'success' && lastSale && (
-        <SaleSuccessModal
-          sale={lastSale}
-          onNewSale={handleNewSale}
-          onShowTicket={() => setModal('ticket')}
-        />
-      )}
-
-      {modal === 'ticket' && lastSale && (
-        <TicketModal
-          sale={lastSale}
-          onClose={() => setModal('success')}
-        />
-      )}
-
-      {modal === 'cancel' && (
-        <ConfirmCancelModal
-          onConfirm={confirmCancelVenta}
-          onCancel={() => setModal(null)}
-        />
-      )}
-
-      <ToastContainer toasts={toasts} />
+        {activeModule === "reports" && (
+          <ReportsPage
+            sales={sales}
+            wasteRecords={wasteRecords}
+            products={products}
+          />
+        )}
+      </main>
     </div>
-  )}
-
-  {activeModule === "inventory" && (
-    <InventoryPage
-      products={products}
-      onUpdateProduct={updateProduct}
-      onAddProduct={addProduct}
-      addToast={addToast}
-    />
-  )}
-
-  {activeModule === "waste" && (
-    <WastePage
-      products={products}
-      wasteRecords={wasteRecords}
-      onAddWaste={addWasteRecord}
-    />
-  )}
-
-  {activeModule === "cash-closing" && (
-    <CashClosingPage sales={sales} />
-  )}
-
-  {activeModule === "reports" && (
-    <ModulePlaceholder
-      icon="bar_chart"
-      title="Reportes"
-      description="Aquí podrás consultar reportes simulados de ventas y mermas."
-    />
-  )}
-</main>
-</div>
-);
+  );
 }

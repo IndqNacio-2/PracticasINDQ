@@ -1,4 +1,6 @@
 import { useState } from "react";
+// Importo el tipo ReactNode de forma explicita en lugar de usar el global React.
+import type { ReactNode } from "react";
 
 import type { Product } from "../../types";
 import { CATEGORIES } from "../../data";
@@ -179,7 +181,7 @@ function inputClass(hasError: boolean): string {
   return `w-full rounded-lg border px-3 py-2 text-sm text-[#0D0F14] outline-none transition-colors ${hasError ? "border-[#EF4444]" : "border-[#E5E7EB] focus:border-[#FF5C00]"}`;
 }
 
-function FormSection({ title, icon, children }: { title: string; icon: string; children: React.ReactNode }) {
+function FormSection({ title, icon, children }: { title: string; icon: string; children: ReactNode }) {
   return (
     <section>
       <div className="mb-3 flex items-center gap-2 border-b border-[#F3F4F6] pb-2">
@@ -191,7 +193,7 @@ function FormSection({ title, icon, children }: { title: string; icon: string; c
   );
 }
 
-function FormField({ label, required, error, children }: { label: string; required?: boolean; error?: string; children: React.ReactNode }) {
+function FormField({ label, required, error, children }: { label: string; required?: boolean; error?: string; children: ReactNode }) {
   return (
     <label className="block">
       <span className="mb-1 block text-sm font-medium text-[#374151]">{label} {required && <span className="text-[#EF4444]">*</span>}</span>

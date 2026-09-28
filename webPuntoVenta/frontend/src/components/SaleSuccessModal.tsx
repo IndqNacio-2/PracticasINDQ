@@ -1,3 +1,5 @@
+// Importo el tipo ReactNode de forma explicita en lugar de usar el global React.
+import type { ReactNode } from "react";
 import type { SaleRecord } from '../types';
 import MaterialIcon from './MaterialIcon';
 
@@ -72,7 +74,7 @@ export default function SaleSuccessModal({ sale, onNewSale, onShowTicket }: Sale
   );
 }
 
-function Row({ label, value }: { label: string; value: React.ReactNode }) {
+function Row({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="flex justify-between">
       <span className="text-[#6B7280]">{label}</span>
