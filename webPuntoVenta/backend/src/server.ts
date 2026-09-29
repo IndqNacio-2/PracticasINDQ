@@ -14,6 +14,9 @@ import { checkMongoDBConnection } from "./config/mongodb.js";
 // Importa la funcion que comprobara la conexion con PostgreSQL.
 import { checkPostgresConnection } from "./config/postgres.js";
 
+// Importa las rutas del modulo de productos.
+import { productRouter } from "./products/product.routes.js";
+
 
 // Crea una instancia de la aplicación Express.
 const app = express();
@@ -35,6 +38,12 @@ app.use(
 // Convierte automáticamente los cuerpos JSON de las peticiones en objetos.
 // Más adelante permitirá recibir productos, ventas y clientes desde React.
 app.use(express.json());
+
+// Rutas del catalogo de productos:
+// GET /api/products, GET /api/products/:id, POST /api/products,
+// PUT /api/products/:id, PATCH /api/products/:id/status
+// y POST /api/products/:id/stock.
+app.use("/api/products", productRouter);
 
 // Ruta informativa para quien visite la dirección principal del backend.
 app.get("/", (_request, response) => {
