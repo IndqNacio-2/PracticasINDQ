@@ -30,6 +30,9 @@ export default function Dashboard() {
   const [tipoReserva, setTipoReserva] = useState('cliente');
   const [selectedClient, setSelectedClient] = useState(null);
   const [showClientList, setShowClientList] = useState(false);
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [selectedReservationForPayment, setSelectedReservationForPayment] = useState(null);
+  const [paymentLoading, setPaymentLoading] = useState(false);
   const [newReservation, setNewReservation] = useState({
     client: '',
     class: '',
@@ -100,21 +103,57 @@ export default function Dashboard() {
     }
   };
 
-  const handlePayment = (id) => {
-    try {
+     const handlePayment = (id) =>{
       const reservation = reservations.find(r => r.id === id);
-      if (!reservation) throw new Error('No se encontró la reservación a cobrar.');
-      if (reservation.status === 'pagado') throw new Error('Esta clase ya fue cobrada.');
-      if (!reservation.price || reservation.price <= 0) throw new Error('El monto no es válido.');
+      if(!reservation){
+        showNotification('No se encontró la reservación.', 'error');
+        return;
+      }
+      if (reservation.status === 'pagado'){
+        showNotification('Esta clase ya fue cobrada.', 'error');
+        return;
+      }
+      setSelectedReservationForPayment(reservation);
+      setIsPaymentModalOpen(true);
+     };
 
+      const handleConfirmPayment = async () => {
+       if (!selectedReservationForPayment) return;
+
+        setPaymentLoading(true);
+        try {
+        const response = await fetch(`${API}/api/cobros`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+          clienteId: selectedReservationForPayment.id,
+          monto: selectedReservationForPayment.price
+          })
+        });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+      throw new Error(data.error || 'Error al procesar el cobro');
+      }
+
+      // Actualizar estado local
       setReservations(prev => prev.map(res =>
-        res.id === id ? { ...res, status: 'pagado' } : res
-      ));
-      showNotification(`Cobro de $${reservation.price} registrado.`, 'success');
-    } catch (error) {
-      showNotification(error.message, 'error');
-    }
-  };
+      res.id === selectedReservationForPayment.id 
+        ? { ...res, status: 'pagado' } 
+        : res
+        ));
+
+        showNotification(`Cobro de $${selectedReservationForPayment.price} registrado.`, 'success');
+        setIsPaymentModalOpen(false);
+        setSelectedReservationForPayment(null);
+
+        } catch (error) { 
+        showNotification(error.message, 'error');
+        } finally {
+        setPaymentLoading(false);
+        }
+          };
 
   const handleCancel = (id) => {
     try {
@@ -588,6 +627,75 @@ export default function Dashboard() {
             </div>
           </div>
         )}
+
+        {/* ========== MODAL DE COBRO ========== */}
+{isPaymentModalOpen && selectedReservationForPayment && (
+  <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
+    <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden">
+      <div className="bg-green-600 px-6 py-4 flex justify-between items-center">
+        <h3 className="text-lg font-bold text-white">Confirmar Cobro</h3>
+        <button
+          onClick={() => setIsPaymentModalOpen(false)}
+          className="text-gray-200 hover:text-white transition-colors"
+        >
+          <X className="h-6 w-6" />
+        </button>
+      </div>
+
+      <div className="p-6 space-y-4">
+        {/* Resumen */}
+        <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+          <div className="flex justify-between">
+            <span className="text-gray-600 text-sm">Cliente:</span>
+            <span className="font-semibold text-gray-800">{selectedReservationForPayment.client}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-600 text-sm">Clase:</span>
+            <span className="font-semibold text-gray-800">{selectedReservationForPayment.class}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-600 text-sm">Hora:</span>
+            <span className="font-semibold text-gray-800">{selectedReservationForPayment.time}</span>
+          </div>
+          <div className="border-t border-gray-200 pt-2 mt-2 flex justify-between">
+            <span className="text-gray-600 font-medium">Monto a cobrar:</span>
+            <span className="text-2xl font-bold text-green-600">${selectedReservationForPayment.price}</span>
+          </div>
+        </div>
+
+        {/* Botones */}
+        <div className="flex gap-3 pt-2">
+          <button
+            type="button"
+            onClick={() => setIsPaymentModalOpen(false)}
+            disabled={paymentLoading}
+            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors font-medium disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={handleConfirmPayment}
+            disabled={paymentLoading}
+            className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-300 text-white rounded-lg font-medium transition-colors disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          >
+            {paymentLoading ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                Procesando...
+              </>
+            ) : (
+              <>
+                <CreditCard className="h-4 w-4" />
+                Confirmar Cobro
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
 
       </main>
     </div>
