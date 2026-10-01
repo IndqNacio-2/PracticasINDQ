@@ -1,0 +1,21 @@
+{
+  "name": "backend-cobro",
+  "version": "1.0.0",
+  "description": "API de la aplicación web de cobro front desk",
+  "main": "serverWebCobro.js",
+  "scripts": {
+    "dev": "nodemon serverWebCobro.js",
+    "start": "node serverWebCobro.js",
+    "db:setup": "node src/db/setup-database.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "nodemon": "^3.1.14",
+    "pg": "^8.23.0"
+  }
+}

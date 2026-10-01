@@ -1,7 +1,31 @@
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,400;0,14..32,500;0,14..32,600&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200');
+/* Fuente que usaba la sección webAdministrativa en su proyecto original. */
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@500;600;700&display=swap');
 @import 'tailwindcss';
+
+/* ---- Sección webCobro (trabajo de un compañero) ----
+   Colores personalizados que su proyecto definía en tailwind.config.js.
+   En Tailwind v4 los colores del tema se declaran aquí con @theme. */
+@theme {
+  --color-dark-900: #0f172a;
+  --color-dark-800: #1e293b;
+  --color-primary: #10b981;
+  --color-primary-hover: #059669;
+}
+
+/* ---- Sección webAdministrativa (trabajo de un compañero) ----
+   Estilos de la barra lateral que su proyecto definía en su index.css. */
+@layer components {
+  .sidebar-link {
+    @apply flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-400 transition-colors hover:text-slate-200 hover:bg-slate-700/40;
+  }
+
+  .sidebar-link.active {
+    @apply bg-emerald-500/15 text-emerald-400;
+  }
+}
 
 :root {
   --primary: #FF5C00;
