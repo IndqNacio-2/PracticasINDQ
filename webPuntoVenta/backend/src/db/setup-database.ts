@@ -1,4 +1,4 @@
-// Ejecuta los scripts SQL de la base de datos en orden: esquema y datos.
+// Ejecuta los scripts SQL de la base de datos en orden: esquemas y datos.
 //
 // Lo uso para levantar la base con un solo comando (npm run db:setup),
 // sin tener que pegar cada archivo en pgAdmin a mano.
@@ -43,23 +43,31 @@ const pool = new Pool({
   password: getRequiredEnvironmentVariable("POSTGRES_PASSWORD"),
 });
 
-// Ejecuta schema.sql y luego seed.sql, y comprueba el resultado.
+// Ejecuta los archivos SQL en orden, uno por uno.
+async function ejecutarArchivo(nombre: string): Promise<void> {
+  const sql = await readFile(join(dbDir, nombre), "utf8");
+
+  console.log(`Aplicando ${nombre}...`);
+  await pool.query(sql);
+  console.log(`${nombre} listo.`);
+}
+
+// Ejecuta todos los esquemas y luego los datos iniciales, y comprueba el
+// resultado.
 async function main(): Promise<void> {
-  // Leo los dos archivos tal cual estan en backend/db.
-  const schemaSql = await readFile(join(dbDir, "schema.sql"), "utf8");
-  const seedSql = await readFile(join(dbDir, "seed.sql"), "utf8");
+  // 1. Esquema del Punto de Venta: crea "webpontoventa" y sus cinco tablas
+  //    (se puede repetir sin borrar datos).
+  await ejecutarArchivo("schema.sql");
 
-  // 1. Creo el esquema y las tablas (se puede repetir sin borrar datos).
-  console.log("Aplicando schema.sql...");
-  await pool.query(schemaSql);
-  console.log("Esquema listo.");
+  // 2. Esquema completo de la aplicacion: crea "webadministrativa" con las
+  //    tablas de usuarios, clientes, membresias, clases, horarios,
+  //    reservaciones, productos, movimientos, ventas y venta_detalle.
+  await ejecutarArchivo("esquema-completo.sql");
 
-  // 2. Cargo los productos iniciales (se puede repetir sin duplicarlos).
-  console.log("Aplicando seed.sql...");
-  await pool.query(seedSql);
-  console.log("Datos iniciales listos.");
+  // 3. Datos iniciales de productos (se puede repetir sin duplicarlos).
+  await ejecutarArchivo("seed.sql");
 
-  // 3. Compruebo cuantos productos quedaron cargados.
+  // 4. Compruebo cuantos productos quedaron cargados.
   const result = await pool.query(
     "SELECT COUNT(*)::int AS total FROM webpontoventa.products",
   );

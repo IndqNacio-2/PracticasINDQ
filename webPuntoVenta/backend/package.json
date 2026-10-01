@@ -8,7 +8,8 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
-    "db:setup": "tsx src/db/setup-database.ts"
+    "db:setup": "tsx src/db/setup-database.ts",
+    "db:diagrama": "tsx src/db/generar-diagrama.ts"
   },
   "keywords": [],
   "author": "",
