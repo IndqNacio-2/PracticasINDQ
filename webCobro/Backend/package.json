@@ -3,15 +3,19 @@
   "version": "1.0.0",
   "description": "",
   "main": "serverWebCobro.js",
+  "type": "module",
   "scripts": {
-    "dev": "nodemon serverWebCobro.js"
-  },
+  "dev": "nodemon --env-file=.env serverWebCobro.js"
+},
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
     "cors": "^2.8.6",
+    "dotenv": "^18.0.5",
     "express": "^5.2.1",
-    "nodemon": "^3.1.14"
+    "mongoose": "^9.11.0",
+    "nodemon": "^3.1.14",
+    "pg": "^8.23.1"
   }
 }

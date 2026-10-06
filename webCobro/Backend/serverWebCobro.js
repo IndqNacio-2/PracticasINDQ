@@ -1,18 +1,23 @@
-const express = require('express');
-const cors = require('cors');
-const { Pool } = require('pg');
-const mongoose = require('mongoose');
-require('dotenv').config();
+import express from 'express';
+import cors from 'cors';
+import { Pool } from 'pg';
+import mongoose from 'mongoose';
+import 'dotenv/config';
+
+/* global process */
 
 const app = express();
 
-app.use(cors());//permite que react en el puerto 5173 hable con el puerto 3001
+app.use(cors());
 app.use(express.json());
 
+const PORT = process.env.PORT || 3001;
 const BACKEND_ADMIN_URL = process.env.BACKEND_ADMIN_URL || 'http://localhost:4000';
+const MONGODB_URL = process.env.MONGO_URL || 'mongodb://admin:MongoVenta2026@localhost:27017/punto_venta_documentos?authSource=admin';
+const PG_URL = process.env.PG_URL || 'postgresql://admin:PuntoVenta2026@localhost:5432/punto_venta';
 
 const pool = new Pool({
-  connectionString: process.env.PG_URL
+  connectionString: PG_URL
 });
 
 //conexion con postgres
@@ -21,9 +26,21 @@ pool.connect()
 .catch(err => console.error('Error al conectar a PostgreSQL', err));
 
 //conexion con mongo
-mongoose.connect(process.env.MONGO_URL)
+mongoose.connect(MONGODB_URL)
 .then(()=> console.log('MongoDB conectado'))
 .catch(err => console.error('Error al conectar a MongoDB', err));
+
+
+//Schema para la asistencia 
+const AsistenciaSchema = new mongoose.Schema({
+  codigo: { type: String, required: true},
+  nombre: {type: String, required: true},
+  tipo: {type: String, enum:['entrada', 'salida'], required: true},
+  fecha: {type:Date, required:true},
+  ts: {type:Number, required:true}
+});
+
+const Asistencia = mongoose.model('Asistencia', AsistenciaSchema);
 
 
 
@@ -154,6 +171,7 @@ app.post('/api/cobros', async (req, res) => {
       totalReservas: 0
     });
   } catch (error) {
+    console.error('Error calculando KPIs:', error);
     res.status(500).json({ error: 'Error calculando KPIs' });
   }
 });
@@ -174,13 +192,13 @@ app.post('/api/cobros', async (req, res) => {
     await registro.save();
     res.json(registro);
     } catch (error) {
+    console.error('Error al registrar asistencia:', error);
     res.status(500).json({ error: 'Error al registrar asistencia' });
     }
     });
 
 
    //Iniciar Servidor
-   const PORT = 3001;
-   app.listen(PORT,()=>{
-    console.log(`Backend corriendo en http://localhost:${PORT}`)
+   app.listen(PORT, () => {
+    console.log(`Backend corriendo en http://localhost:${PORT}`);
    })

@@ -33,6 +33,7 @@ export default function Dashboard() {
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [selectedReservationForPayment, setSelectedReservationForPayment] = useState(null);
   const [paymentLoading, setPaymentLoading] = useState(false);
+  const [kpis, setKpis] = useState({ ingresosHoy: 0, clientesEsperados: 0, totalReservas: 0 });
   const [newReservation, setNewReservation] = useState({
     client: '',
     class: '',
@@ -40,25 +41,62 @@ export default function Dashboard() {
     price: ''
   });
 
+    
+
+ 
+  
+  
   // ========== CARGA DE DATOS DESDE EL BACKEND ==========
-  const API = 'http://localhost:3001';
+   const API = 'http://localhost:3001';
 
-  useEffect(() => {
-    fetch(`${API}/api/reservas`)
-      .then(res => res.json())
-      .then(data => setReservations(data))
-      .catch(() => console.warn('Backend no disponible, usando datos locales.'));
+  // ========== FUNCIONES AUXILIARES ==========
+  const cargarKpis = async () => {
+    try {
+      const res = await fetch(`${API}/api/kpis`);
+      if (res.ok) setKpis(await res.json());
+    } catch (err) {
+      console.warn('No se pudieron cargar los KPIs:', err);
+    }
+  };
 
-    fetch(`${API}/api/clientes`)
-      .then(res => res.json())
-      .then(data => setClientes(data))
-      .catch(() => console.warn('No se pudieron cargar los clientes.'));
+ useEffect(() => {
+  const cargarDatos = async () => {
+    try {
+      const [reservasRes, clientesRes, clasesRes, kpisRes] = await Promise.all([
+        fetch(`${API}/api/reservas`),
+        fetch(`${API}/api/clientes`),
+        fetch(`${API}/api/clases`),
+        fetch(`${API}/api/kpis`)
+      ]);
 
-    fetch(`${API}/api/clases`)
-      .then(res => res.json())
-      .then(data => setClasses(data))
-      .catch(() => console.warn('No se pudieron cargar las clases.'));
-  }, []);
+      if (reservasRes.ok) {
+        const data = await reservasRes.json();
+        setReservations(data);
+      }
+
+      if (clientesRes.ok) {
+        const data = await clientesRes.json();
+        setClientes(data);
+      }
+
+      if (clasesRes.ok) {
+        const data = await clasesRes.json();
+        setClasses(data);
+      }
+
+      if (kpisRes.ok) {
+        const data = await kpisRes.json();
+        setKpis(data);
+      }
+
+    } catch (error) {
+      console.warn('No se pudieron cargar los datos:', error);
+    }
+  };
+
+  cargarDatos();
+}, []);
+
 
   // ========== FUNCIONES DE VALIDACIÓN ==========
 
@@ -84,7 +122,7 @@ export default function Dashboard() {
     }
 
     return true;
-  };
+  };    
 
   // ========== FUNCIONES DE ACCIONES PRINCIPALES ==========
 
@@ -118,42 +156,52 @@ export default function Dashboard() {
      };
 
       const handleConfirmPayment = async () => {
-       if (!selectedReservationForPayment) return;
+  if (!selectedReservationForPayment) return;
 
-        setPaymentLoading(true);
-        try {
-        const response = await fetch(`${API}/api/cobros`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-          clienteId: selectedReservationForPayment.id,
-          monto: selectedReservationForPayment.price
-          })
-        });
+  if (!selectedReservationForPayment.clientId) {
+    showNotification('No se puede cobrar a visitantes con este método.', 'error');
+    return;
+  }
 
-      const data = await response.json();
+  setPaymentLoading(true);
+  try {
+    const response = await fetch(`${API}/api/cobros`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clienteId: selectedReservationForPayment.clientId,
+        monto: selectedReservationForPayment.price
+      })
+    });
 
-      if (!response.ok) {
+    const data = await response.json();
+
+    if (!response.ok) {
       throw new Error(data.error || 'Error al procesar el cobro');
-      }
+    }
 
-      // Actualizar estado local
-      setReservations(prev => prev.map(res =>
-      res.id === selectedReservationForPayment.id 
-        ? { ...res, status: 'pagado' } 
+    // Actualizar estado local
+    setReservations(prev => prev.map(res =>
+      res.id === selectedReservationForPayment.id
+        ? { ...res, status: 'pagado' }
         : res
-        ));
+    ));
 
-        showNotification(`Cobro de $${selectedReservationForPayment.price} registrado.`, 'success');
-        setIsPaymentModalOpen(false);
-        setSelectedReservationForPayment(null);
+    showNotification(`✅ Cobro de $${selectedReservationForPayment.price} registrado.`, 'success');
+    
+    // ← AQUÍ: Recargar KPIs después del cobro exitoso
+    await cargarKpis();
+    
+    setIsPaymentModalOpen(false);
+    setSelectedReservationForPayment(null);
 
-        } catch (error) { 
-        showNotification(error.message, 'error');
-        } finally {
-        setPaymentLoading(false);
-        }
-          };
+  } catch (error) {
+    console.error('Error en cobro:', error);
+    showNotification(error.message, 'error');
+  } finally {
+    setPaymentLoading(false);
+  }
+};
 
   const handleCancel = (id) => {
     try {
@@ -184,47 +232,51 @@ export default function Dashboard() {
 
   const closeModal = () => setIsModalOpen(false);
 
-  const handleCreateReservation = (e) => {
-    e.preventDefault();
-    try {
-      if (!newReservation.client || !newReservation.class || !newReservation.time) {
-        throw new Error('Completa cliente, clase y horario.');
-      }
-      if (newReservation.client.trim().length < 3) {
-        throw new Error('El nombre del cliente es demasiado corto.');
-      }
+  const handleCreateReservation = async (e) => {
+  e.preventDefault();
+  try {
+    if (!newReservation.client || !newReservation.class || !newReservation.time) {
+      throw new Error('Completa cliente, clase y horario.');
+    }
+    validateTime(newReservation.time);
 
-      validateTime(newReservation.time);
-
-      const exists = reservations.some(
-        r => r.class === newReservation.class && r.time === newReservation.time
-      );
-      if (exists) {
-        throw new Error('Ya existe una reservación en ese horario.');
-      }
-
-      if (tipoReserva === 'visitante' && Number(newReservation.price) <= 0) {
-        throw new Error('El visitante debe pagar la tarifa de la clase.');
-      }
-
-      const reservation = {
-        id: nextId++,
+    const response = await fetch(`${API}/api/reservas`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
         client: newReservation.client,
-        type: tipoReserva,
+        clientId: selectedClient?.id ?? null,
         class: newReservation.class,
         time: newReservation.time,
         price: Number(newReservation.price),
-        status: 'pendiente'
-      };
+        type: tipoReserva
+      })
+    });
 
-      setReservations(prev => [...prev, reservation]);
-      showNotification(`Reservación creada para ${reservation.client}.`, 'success');
-      closeModal();
-    } catch (error) {
-      showNotification(error.message, 'error');
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || 'No se pudo guardar la reserva');
     }
-  };
 
+    const creada = await response.json();
+
+    setReservations(prev => [...prev, {
+      id: creada.id ?? nextId++,
+      clientId: selectedClient?.id ?? null,
+      client: newReservation.client,
+      type: tipoReserva,
+      class: newReservation.class,
+      time: newReservation.time,
+      price: Number(newReservation.price),
+      status: 'pendiente'
+    }]);
+
+    showNotification(`Reservación creada para ${newReservation.client}.`, 'success');
+    closeModal();
+  } catch (error) {
+    showNotification(error.message, 'error');
+  }
+};
   // ========== FUNCIÓN DE NOTIFICACIONES ==========
 
   const showNotification = (message, type = 'success') => {
@@ -240,7 +292,7 @@ export default function Dashboard() {
   // ========== CÁLCULOS DE RESUMEN Y FILTRADO ==========
 
   const totalPending = reservations.filter(r => r.status === 'pendiente').length;
-  const totalPaid = reservations.filter(r => r.status === 'pagado').reduce((sum, r) => sum + r.price, 0);
+
 
   const filteredReservations = reservations.filter(res => {
     const term = searchTerm.toLowerCase();
@@ -306,7 +358,7 @@ export default function Dashboard() {
             <div className="flex justify-between items-start">
               <div>
                 <p className="text-gray-500 text-sm font-medium">Ingresos del Día</p>
-                <h3 className="text-3xl font-bold text-gray-800 mt-1">${totalPaid} MXN</h3>
+                <h3 className="text-3xl font-bold text-gray-800 mt-1">${kpis.ingresosHoy} MXN</h3>
               </div>
               <div className="bg-green-100 p-3 rounded-full"><DollarSign className="h-6 w-6 text-green-600" /></div>
             </div>
