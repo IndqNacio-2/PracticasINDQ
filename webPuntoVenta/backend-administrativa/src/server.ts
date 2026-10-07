@@ -33,13 +33,26 @@ app.use('/api/movimientos', movimientoRoutes);
 app.use('/api/usuarios', usuarioRoutes);
 app.use('/api/ventas', ventaRoutes);
 
+// Exporta la app para que el gateway unificado pueda montarla bajo su prefijo
+// (/admin) en un solo puerto. Con GATEWAY_MODE no abre su propio puerto y un
+// fallo de MongoDB solo afecta a esta sección: no apaga el proceso completo.
+export default app;
+
 connectDB()
   .then(() => {
+    if (process.env.GATEWAY_MODE) {
+      console.log('API administrativa conectada a MongoDB (gateway unificado)');
+      return;
+    }
     app.listen(PORT, () => {
       console.log(`API escuchando en http://localhost:${PORT}`);
     });
   })
   .catch((err) => {
+    if (process.env.GATEWAY_MODE) {
+      console.error('MongoDB no disponible; la sección administrativa fallará:', err);
+      return;
+    }
     console.error('No se pudo conectar a MongoDB:', err);
     process.exit(1);
   });

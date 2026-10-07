@@ -16,8 +16,14 @@ type InventoryModal = "add" | "edit" | "stock" | "status" | "detail" | null;
 
 interface InventoryPageProps {
   products: Product[];
-  onUpdateProduct: (product: Product) => void;
-  onAddProduct: (product: Omit<Product, "id">) => void;
+  /**
+   * Cada accion devuelve true cuando el backend confirmo el cambio.
+   * Si algo sale mal, el estado principal muestra el error en un toast.
+   */
+  onUpdateProduct: (product: Product) => Promise<boolean>;
+  onAddProduct: (product: Omit<Product, "id">) => Promise<boolean>;
+  onAdjustStock: (productId: number, quantity: number) => Promise<boolean>;
+  onToggleStatus: (productId: number, status: Product["status"]) => Promise<boolean>;
   addToast: (message: string, type?: ToastMessage["type"]) => void;
 }
 
@@ -38,7 +44,7 @@ const STATE_BADGES = {
   inactive: { label: "Inactivo", icon: "cancel", className: "bg-[#F3F4F6] text-[#6B7280]" },
 };
 
-export default function InventoryPage({ products, onUpdateProduct, onAddProduct, addToast }: InventoryPageProps) {
+export default function InventoryPage({ products, onUpdateProduct, onAddProduct, onAdjustStock, onToggleStatus, addToast }: InventoryPageProps) {
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("Todas");
   const [stateFilter, setStateFilter] = useState<ProductStateFilter>("all");
@@ -102,31 +108,50 @@ export default function InventoryPage({ products, onUpdateProduct, onAddProduct,
     setOpenMenuId(null);
   };
 
-  const saveProduct = (productData: Omit<Product, "id">) => {
-    if (modal === "edit" && selectedProduct) {
-      onUpdateProduct({ ...selectedProduct, ...productData });
-      addToast("Producto actualizado correctamente", "success");
-    } else {
-      onAddProduct(productData);
-      addToast("Producto guardado correctamente", "success");
+  /*
+   * Guardo el alta o la edicion del producto y espero la confirmacion
+   * del backend antes de cerrar el formulario y avisar al usuario.
+   */
+  const saveProduct = async (productData: Omit<Product, "id">) => {
+    const saved = modal === "edit" && selectedProduct
+      ? await onUpdateProduct({ ...selectedProduct, ...productData })
+      : await onAddProduct(productData);
+
+    if (saved) {
+      addToast(
+        modal === "edit" ? "Producto actualizado correctamente" : "Producto guardado correctamente",
+        "success",
+      );
+      setModal(null);
     }
-    setModal(null);
   };
 
-  const addStock = (quantity: number, observations: string) => {
+  /*
+   * Envio el ajuste de existencias (positivo para entrada y negativo
+   * para salida) y cierro el modal solamente si el servidor lo acepto.
+   */
+  const addStock = async (quantity: number, observations: string) => {
     if (!selectedProduct) return;
-    onUpdateProduct({ ...selectedProduct, stock: selectedProduct.stock + quantity });
-    addToast("Existencias actualizadas correctamente", "success");
-    if (observations.trim()) console.info(`Observación de inventario: ${observations}`);
-    setModal(null);
+    const updated = await onAdjustStock(selectedProduct.id, quantity);
+    if (updated) {
+      addToast("Existencias actualizadas correctamente", "success");
+      if (observations.trim()) console.info(`Observación de inventario: ${observations}`);
+      setModal(null);
+    }
   };
 
-  const toggleProductStatus = () => {
+  /*
+   * Cambio el estado del producto en la base de datos sin borrarlo:
+   * el inactivo deja de aparecer en el punto de venta.
+   */
+  const toggleProductStatus = async () => {
     if (!selectedProduct) return;
     const nextStatus = selectedProduct.status === "active" ? "inactive" : "active";
-    onUpdateProduct({ ...selectedProduct, status: nextStatus });
-    addToast(nextStatus === "active" ? "Producto activado correctamente" : "Producto desactivado correctamente", "success");
-    setModal(null);
+    const changed = await onToggleStatus(selectedProduct.id, nextStatus);
+    if (changed) {
+      addToast(nextStatus === "active" ? "Producto activado correctamente" : "Producto desactivado correctamente", "success");
+      setModal(null);
+    }
   };
 
   const quickCards = [

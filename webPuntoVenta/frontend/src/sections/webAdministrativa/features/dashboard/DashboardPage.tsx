@@ -1,9 +1,16 @@
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { StatCard } from '../../components/StatCard';
 import { Badge } from '../../components/Badge';
+import { Icon } from '../../components/Icon';
+import { useAuth } from '../../context/AuthContext';
 import { mockClientes, mockReservaciones, mockVentas, mockHorarios, ventasPorDia } from '../../data/mock';
 
 export function DashboardPage() {
+  // Regla de acceso: al Punto de Venta solo pueden entrar el administrador
+  // y el personal de recepción. El entrenador no tiene acceso.
+  const { hasRole } = useAuth();
+  const puedeEntrarAlPuntoDeVenta = hasRole(['administrador', 'recepcion']);
+
   const activeClients = mockClientes.filter(c => c.estatus === 'activo').length;
   const todayReservations = mockReservaciones.filter(r => r.fechaReservacion === '2024-09-16').length;
   const monthRevenue = mockVentas.reduce((s, v) => s + v.total, 0);
@@ -49,6 +56,54 @@ export function DashboardPage() {
           icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>}
         />
       </div>
+
+      {/* Accesos rápidos a los demás módulos del sistema.
+          Solo se muestran los módulos a los que el usuario tiene permiso. */}
+      {puedeEntrarAlPuntoDeVenta && (
+        <div className="space-y-3">
+          <h3 className="font-semibold text-slate-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>Accesos rápidos</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {/* Punto de Venta: navega a la sección del punto de venta (/) de
+                esta misma aplicación. Disponible solo para administrador y
+                recepción. */}
+            <a
+              href="/"
+              className="group bg-white rounded-2xl p-5 border border-slate-100 shadow-sm hover:border-emerald-200 hover:shadow-md transition-all flex items-start gap-4"
+            >
+              <div className="w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center flex-shrink-0">
+                <Icon name="point_of_sale" size={26} weight={600} className="text-emerald-600" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-slate-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>Punto de Venta</p>
+                <p className="text-xs text-slate-500 mt-0.5">Venta de productos, inventario, mermas y corte de caja</p>
+                <span className="inline-flex items-center gap-1 text-xs text-emerald-600 font-semibold mt-2">
+                  Abrir módulo
+                  <Icon name="arrow_forward" size={16} weight={600} />
+                </span>
+              </div>
+            </a>
+
+            {/* Cobro: navega a la sección de cobro (/cobro) de esta misma
+                aplicación, igual por enlace interno. */}
+            <a
+              href="/cobro"
+              className="group bg-white rounded-2xl p-5 border border-slate-100 shadow-sm hover:border-indigo-200 hover:shadow-md transition-all flex items-start gap-4"
+            >
+              <div className="w-12 h-12 rounded-xl bg-indigo-500/10 flex items-center justify-center flex-shrink-0">
+                <Icon name="payments" size={26} weight={600} className="text-indigo-600" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-slate-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>Cobro (Front Desk)</p>
+                <p className="text-xs text-slate-500 mt-0.5">Cobro de clases, reservas, asistencia y kpis</p>
+                <span className="inline-flex items-center gap-1 text-xs text-indigo-600 font-semibold mt-2">
+                  Abrir módulo
+                  <Icon name="arrow_forward" size={16} weight={600} />
+                </span>
+              </div>
+            </a>
+          </div>
+        </div>
+      )}
 
       {/* Charts row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

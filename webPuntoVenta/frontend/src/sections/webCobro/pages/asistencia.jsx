@@ -18,7 +18,7 @@ const Attendance = () => {
     setResultado(null);
 
     try {
-      const res = await fetch('http://localhost:3002/api/asistencia/marcar', {
+      const res = await fetch('/cobro/api/asistencia/marcar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ codigo: codigo.trim().toUpperCase() })

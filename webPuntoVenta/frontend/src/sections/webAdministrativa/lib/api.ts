@@ -1,9 +1,9 @@
 // Cliente HTTP centralizado para consumir la API real.
 // Ajusta VITE_API_URL en tu archivo .env (por ejemplo: VITE_API_URL=http://localhost:3000/api)
 // Este backend (el de webAdministrativa) escucha en el puerto 3001 fijo del
-// repositorio del equipo. Se deja fijo a propósito: la variable VITE_API_URL
-// del proyecto apunta al backend de Punto de Venta (puerto 3003).
-const API_BASE_URL = 'http://localhost:3001/api';
+// Backend unificado: la sección administrativa se monta bajo /admin/api en
+// el mismo puerto que el frontend (Vite lo reenvía al gateway en el 3000).
+const API_BASE_URL = '/admin/api';
 
 export class ApiError extends Error {
   status: number;

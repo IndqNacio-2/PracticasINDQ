@@ -29,6 +29,22 @@ pool.on('error', (error) => {
   console.error('Error inesperado en el pool de PostgreSQL:', error.message);
 });
 
+// Bitacora de consultas: imprime cada SQL con la hora que llega a PostgreSQL,
+// para que la terminal del backend muestre los SELECT, INSERT, UPDATE y
+// DELETE que se ejecutan al usar la aplicacion.
+const consultaOriginal = pool.query.bind(pool);
+pool.query = (texto, parametros) => {
+  if (typeof texto === 'string') {
+    const sql = texto.replace(/\s+/g, ' ').trim();
+    const hora = new Date().toLocaleTimeString('es-MX');
+    const datos = parametros && parametros.length
+      ? ` -- datos: ${JSON.stringify(parametros)}`
+      : '';
+    console.log(`[SQL ${hora}] ${sql}${datos}`);
+  }
+  return consultaOriginal(texto, parametros);
+};
+
 //Modulo para recepcion y cobro
 
 //GET para las reservas
@@ -255,14 +271,27 @@ app.post('/api/asistencia/marcar', async (req, res) => {
 //Iniciar Servidor
 const PORT = Number(process.env.PORT) || 3002;
 
+// Exporta la app para que el gateway unificado pueda montarla bajo su prefijo
+// (/cobro) en un solo puerto. Con GATEWAY_MODE no abre su propio puerto y un
+// fallo de PostgreSQL solo afecta a esta seccion: no apaga el proceso completo.
+module.exports = app;
+
 // Comprueba la conexion antes de escuchar peticiones.
 pool.query('SELECT 1')
   .then(() => {
+    if (process.env.GATEWAY_MODE) {
+      console.log('API cobro conectada a PostgreSQL (gateway unificado)');
+      return;
+    }
     app.listen(PORT, () => {
       console.log(`Backend corriendo en http://localhost:${PORT}`);
     });
   })
   .catch((error) => {
+    if (process.env.GATEWAY_MODE) {
+      console.error('PostgreSQL no disponible; la seccion de cobro fallara:', error.message);
+      return;
+    }
     console.error('No se pudo conectar a PostgreSQL:', error.message);
     process.exit(1);
   });

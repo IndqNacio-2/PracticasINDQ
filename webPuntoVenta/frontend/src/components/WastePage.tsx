@@ -18,10 +18,10 @@ interface WastePageProps {
   products: Product[];
   wasteRecords: WasteRecord[];
   /*
-   * Recibo true cuando la merma se registra correctamente
-   * y false cuando la operación no puede completarse.
+   * Espero true cuando la merma se registra correctamente en la
+   * base de datos y false cuando la operación no puede completarse.
    */
-  onAddWaste: (waste: WasteFormData) => boolean;
+  onAddWaste: (waste: WasteFormData) => Promise<boolean>;
 }
 
 /*
@@ -458,11 +458,12 @@ export default function WastePage({
       {isFormOpen && (
         <WasteFormModal
           products={products}
-          onSave={(waste) => {
+          onSave={async (waste) => {
             /*
-            * Intento registrar la merma desde el estado principal.
+            * Intento registrar la merma desde el estado principal
+            * y espero la respuesta del backend antes de continuar.
             */
-            const wasRegistered = onAddWaste(waste);
+            const wasRegistered = await onAddWaste(waste);
 
             /*
             * Solamente cierro el formulario cuando el registro

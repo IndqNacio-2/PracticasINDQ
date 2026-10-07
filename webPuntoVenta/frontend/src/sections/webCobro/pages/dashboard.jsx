@@ -41,9 +41,9 @@ export default function Dashboard() {
   });
 
   // ========== CARGA DE DATOS DESDE EL BACKEND ==========
-  // El backend de esta sección escucha en el puerto 3002 (el asignado a
-  // webCobro dentro del repositorio del equipo).
-  const API = 'http://localhost:3002';
+  // Backend unificado: la sección de cobro se monta bajo /cobro en el mismo
+  // puerto del frontend (Vite lo reenvía al gateway en el 3000).
+  const API = '/cobro';
 
   useEffect(() => {
     fetch(`${API}/api/reservas`)

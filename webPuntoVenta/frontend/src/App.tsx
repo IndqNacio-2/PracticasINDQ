@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, } from "react";
 // Importo el tipo CSSProperties de forma explicita en lugar de usar el global React.
 import type { CSSProperties } from "react";
 import type { Product, CartItem, ToastMessage, SaleRecord, AppModule, WasteRecord, CashClosingRecord, } from './types';
-import { INITIAL_PRODUCTS, INITIAL_WASTE_RECORDS, CATEGORIES, } from './data';
+import { CATEGORIES } from './data';
 import ProductCard from './components/ProductCard';
 import CartPanel from './components/CartPanel';
 import PaymentModal from './components/PaymentModal';
@@ -10,8 +10,27 @@ import SaleSuccessModal from './components/SaleSuccessModal';
 import TicketModal from './components/TicketModal';
 import ConfirmCancelModal from './components/ConfirmCancelModal';
 import ToastContainer from './components/Toast';
-// funcion centralizada que consulta el estado del backend.
-import { getHealth } from "./services/api";
+import {
+  // Consulto el estado del backend para confirmar la conexion.
+  getHealth,
+  // Productos: consulta, alta, edicion, estado y existencias.
+  getProducts,
+  createProduct,
+  updateProduct as updateProductApi,
+  changeProductStatus,
+  adjustProductStock,
+  // Mermas del inventario.
+  getWasteRecords,
+  createWasteRecord,
+  // Ventas del punto de venta.
+  getSales,
+  createSale,
+  // Cortes de caja.
+  getCashClosings,
+  createCashClosing,
+  // Error con el mensaje que manda el backend.
+  ApiError,
+} from "./services/api";
 import Sidebar from "./components/Sidebar";
 import MaterialIcon from "./components/MaterialIcon";
 import InventoryPage from "./components/InventoryPage";
@@ -23,29 +42,48 @@ import type { WasteFormData } from "./components/waste/WasteFormModal";
 
 let _toastId = 0;
 
+/**
+ * Convierto cualquier error de la API en un mensaje listo para el toast.
+ *
+ * Si el backend mando una explicacion (ApiError) la uso tal cual; si no,
+ * aviso que no se pudo conectar con el servidor.
+ */
+const mensajeDeError = (error: unknown): string =>
+  error instanceof ApiError
+    ? error.message
+    : "No fue posible conectar con el servidor";
+
 export default function App() {
   const [activeModule, setActiveModule] = useState<AppModule>("sale");
-  const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
   /**
-   * Guardo temporalmente los registros de mermas en el estado
-   * principal para compartirlos despues con inventario
+   * Arranco con las listas vacias: la informacion se carga desde la
+   * base de datos apenas aparece la pantalla, ya no vive en el navegador.
    */
-  const [wasteRecords, setWasteRecords] = useState<WasteRecord[]>(INITIAL_WASTE_RECORDS);
+  const [products, setProducts] = useState<Product[]>([]);
+  /**
+   * Guardo los registros de mermas en el estado principal
+   * para compartirlos despues con inventario y reportes.
+   */
+  const [wasteRecords, setWasteRecords] = useState<WasteRecord[]>([]);
+  /**
+   * Mientras cargo la informacion desde la API oculto las pantallas
+   * para que no se vean listas vacias por un segundo.
+   */
+  const [isLoading, setIsLoading] = useState(true);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState('Todos');
   const [modal, setModal] = useState<'payment' | 'success' | 'cancel' | 'ticket' | null>(null);
   const [lastSale, setLastSale] = useState<SaleRecord | null>(null);
   /**
-   * Guardo las ventas completadas durante la sesión actual
-   * para calcular el resumen del Corte de caja.
+   * Guardo el historial de ventas que viene de la base de datos:
+   * lo usan el Corte de caja (turno) y el modulo de Reportes.
    */
   const [sales, setSales] = useState<SaleRecord[]>([]);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
-  const [folioCounter, setFolioCounter] = useState(125);
   /**
-   * Guardo los cortes de caja realizados durante la sesión
-   * para mostrarlos en el historial del módulo.
+   * Guardo los cortes de caja que vienen de la base de datos
+   * para mostrarlos en el historial del modulo.
    */
   const [cashClosings, setCashClosings] = useState<CashClosingRecord[]>([]);
   /**
@@ -88,6 +126,46 @@ export default function App() {
   }, []);
 
   /**
+   * Cargo toda la informacion de la base de datos una sola vez
+   * cuando la aplicacion abre: productos, mermas, ventas y cortes.
+   *
+   * Si el backend no responde, aviso con un toast y dejo las listas
+   * vacias para que la pantalla no se rompa.
+   */
+  useEffect(() => {
+    async function loadDatabase(): Promise<void> {
+      try {
+        const [loadedProducts, loadedWaste, loadedSales, loadedClosings] =
+          await Promise.all([
+            getProducts(),
+            getWasteRecords(),
+            getSales(),
+            getCashClosings(),
+          ]);
+
+        setProducts(loadedProducts);
+        setWasteRecords(loadedWaste);
+        setSales(loadedSales);
+        setCashClosings(loadedClosings);
+
+        /**
+         * Marco las ventas que ya vienen del historial como parte de un
+         * turno cerrado, para que el Corte de caja solo empiece a contar
+         * las ventas nuevas que haga hoy el usuario.
+         */
+        setClosedSalesCount(loadedSales.length);
+      } catch (error) {
+        console.error("No fue posible cargar la información:", error);
+        addToast(mensajeDeError(error), "error");
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    void loadDatabase();
+  }, [addToast]);
+
+  /**
    * Obtengo las ventas que pertenecen al turno vigente.
    *
    * Las ventas anteriores se conservan en el historial general
@@ -99,58 +177,146 @@ export default function App() {
   );
 
   /**
-   * Registro el corte de caja que llegó desde el módulo.
+   * Registro el corte de caja en la base de datos.
    *
-   * Guardo el corte en el historial, marco las ventas del turno
-   * como cerradas y reinicio el fondo y el efectivo contado
-   * para que el siguiente turno comience desde cero.
+   * Envio solamente los datos del turno: el folio y la fecha los genera
+   * el backend. Si la respuesta sale bien, agrego el corte al historial,
+   * marco las ventas del turno como cerradas y reinicio el fondo y el
+   * efectivo contado para que el siguiente turno comience desde cero.
    */
-  const confirmCashClosing = (closing: CashClosingRecord) => {
-    setCashClosings((currentClosings) => [
-      ...currentClosings,
-      closing,
-    ]);
+  const confirmCashClosing = async (closing: CashClosingRecord) => {
+    try {
+      const registeredClosing = await createCashClosing({
+        salesCount: closing.salesCount,
+        totalSales: closing.totalSales,
+        cashSales: closing.cashSales,
+        cardSales: closing.cardSales,
+        transferSales: closing.transferSales,
+        initialFund: closing.initialFund,
+        expectedCash: closing.expectedCash,
+        countedCash: closing.countedCash,
+        difference: closing.difference,
+        registeredBy: closing.registeredBy,
+      });
 
-    setClosedSalesCount(sales.length);
-    setInitialFund(0);
-    setCountedCash(0);
+      setCashClosings((currentClosings) => [
+        ...currentClosings,
+        registeredClosing,
+      ]);
 
-    addToast(
-      `Corte ${closing.folio} registrado correctamente`,
-      'success',
-    );
+      setClosedSalesCount(sales.length);
+      setInitialFund(0);
+      setCountedCash(0);
+
+      addToast(
+        `Corte ${registeredClosing.folio} registrado correctamente`,
+        'success',
+      );
+    } catch (error) {
+      addToast(mensajeDeError(error), 'error');
+    }
   };
 
-  // Actualiza un producto y refleja el cambio en Venta e Inventario.
-  const updateProduct = (updatedProduct: Product) => {
-    setProducts((currentProducts) =>
-      currentProducts.map((product) =>
-        product.id === updatedProduct.id
-          ? updatedProduct
-          : product,
-      ),
-    );
+  /**
+   * Guardo la edicion de un producto en la base de datos.
+   *
+   * El backend conserva la existencia actual (solo cambia con entradas
+   * de inventario o mermas), asi el precio o el nombre se pueden
+   * corregir sin afectar el stock. Devuelvo true cuando salio bien.
+   */
+  const updateProduct = async (updatedProduct: Product): Promise<boolean> => {
+    try {
+      const savedProduct = await updateProductApi(updatedProduct.id, updatedProduct);
+
+      setProducts((currentProducts) =>
+        currentProducts.map((product) =>
+          product.id === savedProduct.id ? savedProduct : product,
+        ),
+      );
+
+      return true;
+    } catch (error) {
+      addToast(mensajeDeError(error), "error");
+      return false;
+    }
   };
 
-  // Agrega un producto local con un identificador nuevo.
-  const addProduct = (productData: Omit<Product, "id">) => {
-    const newId = Math.max(0, ...products.map((product) => product.id)) + 1;
+  /**
+   * Creo un producto nuevo en la base de datos.
+   *
+   * El identificador lo asigna PostgreSQL, por eso el backend me
+   * devuelve el producto completo y ese es el que agrego a la lista.
+   */
+  const addProduct = async (productData: Omit<Product, "id">): Promise<boolean> => {
+    try {
+      const createdProduct = await createProduct(productData);
 
-    setProducts((currentProducts) => [
-      ...currentProducts,
-      { ...productData, id: newId },
-    ]);
+      setProducts((currentProducts) => [
+        ...currentProducts,
+        createdProduct,
+      ]);
+
+      return true;
+    } catch (error) {
+      addToast(mensajeDeError(error), "error");
+      return false;
+    }
+  };
+
+  /**
+   * Ajusto existencias con una cantidad firmada: positivo para entrada
+   * y negativo para salida. El backend rechaza bajar de cero.
+   */
+  const adjustStock = async (productId: number, quantity: number): Promise<boolean> => {
+    try {
+      const updatedProduct = await adjustProductStock(productId, quantity);
+
+      setProducts((currentProducts) =>
+        currentProducts.map((product) =>
+          product.id === updatedProduct.id ? updatedProduct : product,
+        ),
+      );
+
+      return true;
+    } catch (error) {
+      addToast(mensajeDeError(error), "error");
+      return false;
+    }
+  };
+
+  /**
+   * Activo o desactivo el producto en la base de datos sin borrarlo:
+   * el inactivo deja de aparecer en el punto de venta, pero sigue
+   * visible en inventario y en los reportes.
+   */
+  const toggleStatus = async (productId: number, status: Product["status"]): Promise<boolean> => {
+    try {
+      const updatedProduct = await changeProductStatus(productId, status);
+
+      setProducts((currentProducts) =>
+        currentProducts.map((product) =>
+          product.id === updatedProduct.id ? updatedProduct : product,
+        ),
+      );
+
+      return true;
+    } catch (error) {
+      addToast(mensajeDeError(error), "error");
+      return false;
+    }
   };
 
   /*
-  * Registro una merma y descuento las unidades del inventario.
+  * Registro una merma en la base de datos y actualizo el inventario.
   *
+  * El backend genera el folio y descuenta las existencias dentro de una
+  * misma transaccion, asi que si algo falla no queda nada a medias.
   * Devuelvo true cuando el registro se completa correctamente
   * y false cuando encuentro algún dato inválido.
   */
-  const addWasteRecord = (
+  const addWasteRecord = async (
     wasteData: WasteFormData,
-  ): boolean => {
+  ): Promise<boolean> => {
     /*
     * Busco el producto relacionado con la merma para conocer
     * su existencia actual antes de modificar el inventario.
@@ -209,56 +375,39 @@ export default function App() {
       selectedProduct.stock - wasteData.quantity;
 
     /*
-    * Obtengo el siguiente identificador disponible para crear
-    * un folio único dentro de los registros locales.
+    * Envio la merma al backend: el folio lo genera la base de datos y,
+    * dentro de la misma transaccion, descuenta la existencia del producto.
     */
-    const newId =
-      Math.max(
-        0,
-        ...wasteRecords.map((record) => record.id),
-      ) + 1;
+    try {
+      const newRecord = await createWasteRecord({
+        productId: wasteData.productId,
+        quantity: wasteData.quantity,
+        reason: wasteData.reason,
+        observations: wasteData.observations,
+      });
 
-    /*
-    * Construyo el registro completo de la merma con la fecha,
-    * el usuario y los datos recibidos desde el formulario.
-    */
-    const newRecord: WasteRecord = {
-      id: newId,
-      folio: `M-${String(newId).padStart(6, "0")}`,
-      productId: wasteData.productId,
-      quantity: wasteData.quantity,
-      reason: wasteData.reason,
-      observations: wasteData.observations,
-      createdAt: new Date().toISOString(),
-      registeredBy: "Edgar Rodríguez",
-    };
+      /*
+      * Agrego la merma que devuelve el servidor al historial que
+      * comparten las pantallas de Mermas y Reportes.
+      */
+      setWasteRecords((currentRecords) => [
+        ...currentRecords,
+        newRecord,
+      ]);
 
-    /*
-    * Agrego la nueva merma al historial sin modificar directamente
-    * el arreglo anterior.
-    */
-    setWasteRecords((currentRecords) => [
-      ...currentRecords,
-      newRecord,
-    ]);
-
-    /*
-    * Actualizo solamente el producto seleccionado y conservo
-    * los demás productos sin cambios.
-    *
-    * Como Venta, Inventario y Mermas reciben este mismo estado,
-    * las tres pantallas mostrarán automáticamente el nuevo stock.
-    */
-    setProducts((currentProducts) =>
-      currentProducts.map((product) =>
-        product.id === selectedProduct.id
-          ? {
-              ...product,
-              stock: resultingStock,
-            }
-          : product,
-      ),
-    );
+      /*
+      * Recargo los productos desde la base de datos para que Venta,
+      * Inventario y Reportes vean la existencia que dejo la merma.
+      */
+      setProducts(await getProducts());
+    } catch (error) {
+      /*
+      * Si el backend rechazó la merma (por ejemplo porque ya no quedan
+      * existencias), muestro su mensaje y dejo todo como estaba.
+      */
+      addToast(mensajeDeError(error), "error");
+      return false;
+    }
 
     /*
     * Si el producto se encontraba en el carrito, reviso que la
@@ -388,49 +537,57 @@ export default function App() {
     addToast('Producto eliminado', 'info');
   };
 
-  const handleConfirmPayment = (paymentData: {
+  /*
+   * Cobro la venta en la base de datos.
+   *
+   * No mando precios ni totales: el backend los calcula con el precio
+   * registrado del producto, genera el folio y descuenta las existencias
+   * dentro de una misma transaccion. Si todo sale bien, muestro la
+   * pantalla de exito con la venta que devuelve el servidor.
+   */
+  const handleConfirmPayment = async (paymentData: {
     method: 'efectivo' | 'tarjeta' | 'transferencia';
     cashReceived?: number;
     transferRef?: string;
-  }) => {
-    const now = new Date();
-    const folio = `V-${String(folioCounter).padStart(6, '0')}`;
-    const sale: SaleRecord = {
-      folio,
-      date: now.toLocaleDateString('es-MX'),
-      time: now.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }),
-      items: cart.map(item => {
-        const p = getProduct(item.productId);
-        return { name: p.name, qty: item.quantity, unitPrice: p.price, subtotal: p.price * item.quantity };
-      }),
-      subtotal: cartSubtotal,
-      discount,
-      total: cartTotal,
-      paymentMethod: paymentData.method,
-      cashReceived: paymentData.cashReceived,
-      change: paymentData.cashReceived !== undefined ? paymentData.cashReceived - cartTotal : undefined,
-      transferRef: paymentData.transferRef,
-    };
+  }): Promise<void> => {
+    try {
+      const sale = await createSale({
+        items: cart.map((item) => ({
+          productId: item.productId,
+          quantity: item.quantity,
+        })),
+        discount,
+        paymentMethod: paymentData.method,
+        cashReceived: paymentData.cashReceived,
+        transferRef: paymentData.transferRef,
+      });
 
-    // Deduct stock
-    setProducts(prev => prev.map(p => {
-      const ci = cart.find(i => i.productId === p.id);
-      return ci ? { ...p, stock: p.stock - ci.quantity } : p;
-    }));
+      /*
+       * Agrego la venta al historial que usan el Corte de caja
+       * y el modulo de Reportes.
+       */
+      setSales((currentSales) => [
+        ...currentSales,
+        sale,
+      ]);
 
-    /*
-     * Agrego la venta al historial que utiliza Corte de caja.
-     * Este historial es temporal hasta conectarlo con el backend.
-     */
-    setSales((currentSales) => [
-      ...currentSales,
-      sale,
-    ]);
+      setLastSale(sale);
+      setModal('success');
+      addToast('Venta realizada correctamente', 'success');
 
-    setFolioCounter(prev => prev + 1);
-    setLastSale(sale);
-    setModal('success');
-    addToast('Venta realizada correctamente', 'success');
+      /*
+       * Recargo los productos para que las tarjetas del punto de venta
+       * y el inventario muestren la existencia que desconto la venta.
+       */
+      setProducts(await getProducts());
+    } catch (error) {
+      /*
+       * Si el backend rechazó la venta (producto inexistente o sin
+       * existencias), muestro el error y dejo el carrito como estaba
+       * para que el usuario pueda corregir y volver a cobrar.
+       */
+      addToast(mensajeDeError(error), 'error');
+    }
   };
 
   const handleNewSale = () => {
@@ -452,7 +609,25 @@ export default function App() {
         onModuleChange={setActiveModule}
       />
 
-      <main className="min-w-0 flex-1 overflow-hidden">
+      <main className="relative min-w-0 flex-1 overflow-hidden">
+        {/*
+         * Mientras la aplicación carga la información desde la base de
+         * datos muestro este aviso para que no se vean listas vacías.
+         */}
+        {isLoading && (
+          <div
+            className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-4"
+            style={{ backgroundColor: "#F0F2F7" }}
+          >
+            <div
+              className="h-10 w-10 animate-spin rounded-full border-4 border-[#E5E7EB]"
+              style={{ borderTopColor: "#FF5C00" }}
+            />
+            <p className="text-sm font-medium text-[#6B7280]">
+              Cargando información de la base de datos...
+            </p>
+          </div>
+        )}
         {activeModule === "sale" && (
           <div
             className="flex h-full overflow-hidden"
@@ -598,6 +773,8 @@ export default function App() {
             products={products}
             onUpdateProduct={updateProduct}
             onAddProduct={addProduct}
+            onAdjustStock={adjustStock}
+            onToggleStatus={toggleStatus}
             addToast={addToast}
           />
         )}

@@ -29,26 +29,26 @@ VALUES
     (1, 'P-001', 'Agua 1 L',
      'Agua natural purificada de 1 litro.',
      'Bebidas', 25, 12, 48, 10, 'active', 'water_drop', '#DBEAFE'),
-    (2, 'P-002', 'Bebida energetica',
-     'Bebida energizante con cafeina y vitaminas.',
+    (2, 'P-002', 'Bebida energética',
+     'Bebida energizante con cafeína y vitaminas.',
      'Bebidas', 45, 25, 3, 5, 'active', 'bolt', '#FEF3C7'),
-    (3, 'P-003', 'Bebida isotonica',
-     'Bebida con electrolitos para hidratacion deportiva.',
+    (3, 'P-003', 'Bebida isotónica',
+     'Bebida con electrolitos para hidratación deportiva.',
      'Bebidas', 35, 19, 15, 6, 'active', 'local_drink', '#D1FAE5'),
-    (4, 'P-004', 'Proteina de suero',
-     'Suplemento de proteina de suero de leche, 1 kg.',
+    (4, 'P-004', 'Proteína de suero',
+     'Suplemento de proteína de suero de leche, 1 kg.',
      'Suplementos', 850, 620, 8, 3, 'active', 'fitness_center', '#EDE9FE'),
-    (5, 'P-005', 'Barra de proteina',
-     'Barra energetica con 20 g de proteina.',
+    (5, 'P-005', 'Barra de proteína',
+     'Barra energética con 20 g de proteína.',
      'Botanas', 40, 21, 2, 5, 'active', 'nutrition', '#FEE2E2'),
     (6, 'P-006', 'Vaso mezclador',
      'Vaso mezclador de 600 ml con tapa de rosca.',
      'Accesorios', 120, 65, 0, 3, 'active', 'water_bottle', '#F3F4F6'),
     (7, 'P-007', 'Toalla deportiva',
-     'Toalla de microfibra de secado rapido.',
+     'Toalla de microfibra de secado rápido.',
      'Accesorios', 150, 80, 6, 3, 'active', 'dry_cleaning', '#FDF4FF'),
     (8, 'P-008', 'Playera deportiva',
-     'Playera de entrenamiento con tecnologia dry-fit.',
+     'Playera de entrenamiento con tecnología dry-fit.',
      'Ropa', 350, 190, 1, 2, 'inactive', 'apparel', '#ECFDF5')
 -- Si el codigo ya existe, actualizo la fila en lugar de marcar error.
 ON CONFLICT (code) DO UPDATE SET
@@ -70,6 +70,55 @@ ON CONFLICT (code) DO UPDATE SET
 SELECT setval(
     pg_get_serial_sequence('webpontoventa.products', 'id'),
     (SELECT MAX(id) FROM webpontoventa.products)
+);
+
+-- =====================================================================
+-- Mermas iniciales
+-- =====================================================================
+--
+-- Cargo las cuatro mermas que estaban escritas en el frontend
+-- (INITIAL_WASTE_RECORDS de src/data.ts) para que la pantalla de Mermas
+-- muestre el mismo historial que ya tenia.
+--
+-- Las inserto directamente en la tabla y NO descuento existencias: los
+-- productos ya vienen con la existencia que tiene el sistema hoy, o sea
+-- que estas mermas ya estan consideradas en esos numeros. Si las
+-- descontara otra vez, el inventario quedaria mas bajo que el real.
+--
+-- El costo de cada merma es el del producto en el catalogo, porque ese
+-- costo es el que se usa para calcular la perdida en los reportes.
+
+INSERT INTO waste_records
+    (id, folio, product_id, quantity, reason, observations,
+     unit_cost, created_at, registered_by)
+VALUES
+    (1, 'M-000001', 2, 1, 'damaged',
+     'La lata presentó un golpe durante el acomodo.',
+     25, TIMESTAMPTZ '2026-09-23 09:35:00-06', 'Edgar Rodríguez'),
+    (2, 'M-000002', 5, 2, 'expired',
+     'El producto superó su fecha recomendada de consumo.',
+     21, TIMESTAMPTZ '2026-09-23 11:10:00-06', 'Edgar Rodríguez'),
+    (3, 'M-000003', 1, 3, 'internal-use',
+     'Productos utilizados durante un evento interno.',
+     12, TIMESTAMPTZ '2026-09-23 13:20:00-06', 'Edgar Rodríguez'),
+    (4, 'M-000004', 7, 1, 'lost',
+     'No se encontró el producto durante el conteo.',
+     80, TIMESTAMPTZ '2026-09-23 15:05:00-06', 'Edgar Rodríguez')
+-- Si el folio ya existe, actualizo la fila en lugar de marcarla como repetida.
+ON CONFLICT (folio) DO UPDATE SET
+    id = EXCLUDED.id,
+    product_id = EXCLUDED.product_id,
+    quantity = EXCLUDED.quantity,
+    reason = EXCLUDED.reason,
+    observations = EXCLUDED.observations,
+    unit_cost = EXCLUDED.unit_cost,
+    created_at = EXCLUDED.created_at,
+    registered_by = EXCLUDED.registered_by;
+
+-- Dejo la secuencia de las mermas lista para el siguiente folio (M-000005).
+SELECT setval(
+    pg_get_serial_sequence('webpontoventa.waste_records', 'id'),
+    (SELECT MAX(id) FROM webpontoventa.waste_records)
 );
 
 -- =====================================================================

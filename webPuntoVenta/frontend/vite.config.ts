@@ -33,6 +33,15 @@ export default defineConfig(({ mode }) => {
       host: process.env.FIGMA_DEV_SERVER_HOST || '0.0.0.0',
       port: parseInt(process.env.PORT || '8443'),
       strictPort: true,
+      // Un solo puerto en el navegador: estas rutas de API se reenvían desde
+      // este mismo puerto (8443) al backend unificado que escucha en el 3000.
+      // Solo se proxya lo que empieza con /api para no interferir con las
+      // rutas del frontend (/cobro y /administrativa siguen siendo pantallas).
+      proxy: {
+        '/pos/api': 'http://localhost:3000',
+        '/admin/api': 'http://localhost:3000',
+        '/cobro/api': 'http://localhost:3000',
+      },
       watch: {
         ignored: [
           '**/.figma/**',

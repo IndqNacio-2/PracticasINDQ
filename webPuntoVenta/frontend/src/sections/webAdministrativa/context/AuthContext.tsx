@@ -51,8 +51,37 @@ const USUARIOS: (Usuario & { password: string })[] = [
   },
 ];
 
+// Clave donde el navegador guarda la sesión administrativa.
+const CLAVE_SESION = 'administrativa_sesion';
+
+/**
+ * Restaura la sesión guardada al volver a cargar la aplicación.
+ *
+ * Al navegar entre módulos (por ejemplo desde el login de cobro) la
+ * aplicación se recarga y el estado en memoria se pierde; con esta función
+ * el usuario sigue quedando puesto en el dashboard sin volver a iniciar
+ * sesión. Si el usuario ya no existe o está inactivo, se limpia la sesión.
+ */
+function restaurarSesion(): Usuario | null {
+  try {
+    const crudo = localStorage.getItem(CLAVE_SESION);
+    if (!crudo) return null;
+    const guardado = JSON.parse(crudo) as Pick<Usuario, 'correo'>;
+    const actual = USUARIOS.find(u => u.correo === guardado.correo && u.estatus === 'activo');
+    if (!actual) {
+      localStorage.removeItem(CLAVE_SESION);
+      return null;
+    }
+    const { password: _password, ...usuario } = actual;
+    return usuario;
+  } catch {
+    localStorage.removeItem(CLAVE_SESION);
+    return null;
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<Usuario | null>(null);
+  const [user, setUser] = useState<Usuario | null>(restaurarSesion);
 
   const login = (correo: string, password: string) => {
     const found = USUARIOS.find(
@@ -61,10 +90,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!found) return false;
     const { password: _password, ...usuario } = found;
     setUser(usuario);
+    // Guarda la sesión en el navegador para que sobreviva a los cambios de módulo.
+    localStorage.setItem(CLAVE_SESION, JSON.stringify(usuario));
     return true;
   };
 
-  const logout = () => setUser(null);
+  const logout = () => {
+    setUser(null);
+    localStorage.removeItem(CLAVE_SESION);
+  };
 
   const hasRole = (roles: UserRole[]) => (user ? roles.includes(user.rol) : false);
 

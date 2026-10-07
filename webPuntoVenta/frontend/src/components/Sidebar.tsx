@@ -244,6 +244,27 @@ export default function Sidebar({
             </div>
           )}
         </div>
+
+        {/* Regreso al panel administrativo. Es un enlace normal (no un cambio
+            de estado interno) porque /administrativa es otra sección de esta
+            misma aplicación y el navegador debe volver a cargarla; si la sesión
+            administrativa quedó guardada, el dashboard deja el usuario puesto. */}
+        <a
+          href="/administrativa/dashboard"
+          title={isExpanded ? undefined : "Panel administrativo"}
+          className={`mt-2 flex h-11 w-full items-center rounded-xl text-sm font-semibold transition-all duration-150 ${
+            isExpanded ? "gap-3 px-3" : "justify-center px-0"
+          } text-[#7A4A31] hover:bg-[#FFE8D9] hover:text-[#E54E00]`}
+        >
+          <MaterialIcon
+            name="arrow_back"
+            className="flex-shrink-0 text-xl"
+          />
+
+          {isExpanded && (
+            <span className="truncate">Panel administrativo</span>
+          )}
+        </a>
       </div>
     </aside>
   );

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Mail, Lock, ArrowRight, AlertCircle } from 'lucide-react';
+import { Mail, Lock, ArrowRight, ArrowLeft, AlertCircle } from 'lucide-react';
 
 // Mock para probar el Login
 const MOCK_USERS = [
@@ -131,6 +131,19 @@ export default function Login() {
           >
             ¿Olvidaste tu contraseña?
           </button>
+
+          {/* Regreso al panel administrativo. Es un enlace normal (no navigate)
+              porque /administrativa es otra sección de esta misma aplicación y
+              el navegador debe volver a cargarla. Si la sesión administrativa
+              quedó guardada en el navegador, el dashboard la retoma y deja el
+              usuario puesto sin pedir inicio de sesión otra vez. */}
+          <a
+            href="/administrativa/dashboard"
+            className="w-full flex items-center justify-center px-4 py-2.5 rounded-lg border border-gray-300 text-gray-700 font-medium text-sm hover:bg-gray-50 hover:border-gray-400 transition-all"
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Volver al panel administrativo
+          </a>
         </form>
       </div>
     </div>

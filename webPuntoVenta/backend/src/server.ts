@@ -17,6 +17,15 @@ import { checkPostgresConnection } from "./config/postgres.js";
 // Importa las rutas del modulo de productos.
 import { productRouter } from "./products/product.routes.js";
 
+// Importa las rutas del modulo de mermas.
+import { wasteRouter } from "./waste/waste.routes.js";
+
+// Importa las rutas del modulo de ventas.
+import { saleRouter } from "./sales/sale.routes.js";
+
+// Importa las rutas del modulo de cortes de caja.
+import { cashClosingRouter } from "./cash-closings/cash-closing.routes.js";
+
 
 // Crea una instancia de la aplicación Express.
 const app = express();
@@ -44,6 +53,18 @@ app.use(express.json());
 // PUT /api/products/:id, PATCH /api/products/:id/status
 // y POST /api/products/:id/stock.
 app.use("/api/products", productRouter);
+
+// Rutas del historial de mermas:
+// GET /api/waste y POST /api/waste.
+app.use("/api/waste", wasteRouter);
+
+// Rutas del historial de ventas:
+// GET /api/sales y POST /api/sales.
+app.use("/api/sales", saleRouter);
+
+// Rutas de los cortes de caja:
+// GET /api/cash-closings y POST /api/cash-closings.
+app.use("/api/cash-closings", cashClosingRouter);
 
 // Ruta informativa para quien visite la dirección principal del backend.
 app.get("/", (_request, response) => {
@@ -118,7 +139,13 @@ app.use((_request, response) => {
   });
 });
 
-// Inicia el servidor y lo deja escuchando solicitudes en el puerto indicado.
-app.listen(port, () => {
-  console.log(`API disponible en http://localhost:${port}`);
-});
+// Exporta la app para que el gateway unificado pueda montarla bajo su prefijo
+// (/pos) en un solo puerto. Con GATEWAY_MODE el gateway es quien abre el
+// servidor; sin la variable, este archivo levanta su propio puerto (3003).
+export default app;
+
+if (!process.env.GATEWAY_MODE) {
+  app.listen(port, () => {
+    console.log(`API disponible en http://localhost:${port}`);
+  });
+}
