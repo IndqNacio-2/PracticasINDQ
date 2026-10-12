@@ -42,10 +42,14 @@ CREATE TABLE IF NOT EXISTS webcobro.reservas (
 ALTER TABLE webcobro.reservas
     ADD COLUMN IF NOT EXISTS tipo TEXT NOT NULL DEFAULT 'cliente';
 
--- Un mismo horario no puede tener dos reservaciones de la misma clase.
-CREATE UNIQUE INDEX IF NOT EXISTS reservas_clase_hora_idx
-    ON webcobro.reservas (clase, hora)
-    WHERE estado <> 'cancelado';
+-- Modelo de CUPO: varias personas pueden reservar la misma clase a la misma
+-- hora (el límite es la capacidad de la clase, validada en el backend). Por eso
+-- se elimina el índice único (clase, hora) de la versión anterior de slots.
+DROP INDEX IF EXISTS webcobro.reservas_clase_hora_idx;
+
+-- Índice normal para listar/buscar las reservas de una clase y hora.
+CREATE INDEX IF NOT EXISTS reservas_clase_hora_idx
+    ON webcobro.reservas (clase, hora);
 
 -- Pagos registrados desde el modal de cobro.
 -- Cada pago se liga a la reservación que se cobró (reserva_id). El cliente_id

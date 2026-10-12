@@ -95,10 +95,13 @@ export default function Dashboard() {
       .then(data => setClientes(data))
       .catch(() => console.warn('No se pudieron cargar los clientes.'));
 
-    fetch(`${API}/api/clases`)
+    // Las clases ahora se registran en el módulo administrativo (MongoDB) y se
+    // leen de /admin/api/clases (ruta pública del gateway). Ya no se usa el
+    // catálogo local de webcobro; solo se ofrecen las clases activas.
+    fetch('/admin/api/clases')
       .then(res => res.json())
-      .then(data => setClasses(data))
-      .catch(() => console.warn('No se pudieron cargar las clases.'));
+      .then(data => setClasses((Array.isArray(data) ? data : []).filter(c => c.estatus !== 'inactivo')))
+      .catch(() => console.warn('No se pudieron cargar las clases de administrativa.'));
     fetch(`${API}/api/kpis`)
       .then(res => res.json())
       .then(data => setKpis(data))
@@ -107,29 +110,17 @@ export default function Dashboard() {
 
   // ========== FUNCIONES DE VALIDACIÓN ==========
 
-  const getAvailableSlots = () => {
-    const slots = [];
-    for (let hour = 6; hour < 22; hour++) {
-      slots.push(`${String(hour).padStart(2, '0')}:00`);
-      slots.push(`${String(hour).padStart(2, '0')}:30`);
-    }
-    return slots;
-  };
+  /*
+   * Cuenta las reservaciones que ocupan lugar en una clase. Una reserva "ocupa"
+   * lugar mientras no esté cancelada (pendiente, pagado o asistido cuentan).
+   * Las clases y su capacidad viven en administrativa; las reservas, en webcobro.
+   */
+  const reservasActivasDe = (nombreClase) =>
+    reservations.filter(r => r.class === nombreClase && r.status !== 'cancelado').length;
 
-  const validateTime = (time) => {
-    if (!time) throw new Error('Selecciona un horario.');
-    const [hours, minutes] = time.split(':').map(Number);
-
-    if (hours < 6 || hours >= 22) {
-      throw new Error('El gym abre de 6:00 AM a 10:00 PM.');
-    }
-
-    if (minutes !== 0 && minutes !== 30) {
-      throw new Error('Las clases son en punto o a media hora.');
-    }
-
-    return true;
-  };
+  // Lugares que le quedan a una clase = capacidad − reservas activas.
+  const lugaresDisponibles = (clase) =>
+    Math.max(0, Number(clase.capacidad ?? 0) - reservasActivasDe(clase.nombre));
 
   // ========== FUNCIONES DE ACCIONES PRINCIPALES ==========
 
@@ -255,19 +246,17 @@ export default function Dashboard() {
     e.preventDefault();
     try {
       if (!newReservation.client || !newReservation.class || !newReservation.time) {
-        throw new Error('Completa cliente, clase y horario.');
+        throw new Error('Selecciona un cliente y una clase disponible.');
       }
       if (newReservation.client.trim().length < 3) {
         throw new Error('El nombre del cliente es demasiado corto.');
       }
 
-      validateTime(newReservation.time);
-
-      const exists = reservations.some(
-        r => r.class === newReservation.class && r.time === newReservation.time
-      );
-      if (exists) {
-        throw new Error('Ya existe una reservación en ese horario.');
+      // La clase trae su hora y precio desde administrativa. Se valida el cupo
+      // disponible antes de enviar (el backend cobro vuelve a validarlo).
+      const claseSel = classes.find(c => c.nombre === newReservation.class);
+      if (claseSel && lugaresDisponibles(claseSel) <= 0) {
+        throw new Error(`La clase "${claseSel.nombre}" ya no tiene cupo disponible.`);
       }
 
       if (tipoReserva === 'visitante' && Number(newReservation.price) <= 0) {
@@ -284,6 +273,8 @@ export default function Dashboard() {
           class: newReservation.class,
           time: newReservation.time,
           price: Number(newReservation.price),
+          // Capacidad de la clase: el backend cobro la usa para validar el cupo.
+          capacity: claseSel ? Number(claseSel.capacidad) : undefined,
         }),
       });
 
@@ -636,65 +627,69 @@ export default function Dashboard() {
                   </div>
                 )}
 
-                {/* ③ CLASE (dropdown conectado al backend) */}
+                {/* ③ CLASE (tarjetas de las clases registradas en administrativa).
+                    Ya no hay dropdown ni selector de horario: cada clase trae su
+                    propia hora, precio y cupo. Al elegir una se autocompletan. */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Clase</label>
-                  <select
-                    value={newReservation.class}
-                    onChange={(e) => {
-                      const selected = classes.find(c => c.nombre === e.target.value);
-                      const isPremium = selectedClient?.membresia === 'Premium';
-                      const price = isPremium ? 0 : (selected ? selected.precio : '');
-                      setNewReservation(p => ({ ...p, class: e.target.value, price }));
-                    }}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary text-gray-800"
-                  >
-                    <option value="">Selecciona una clase...</option>
-                    {classes.map(c => (
-                      <option key={c.id} value={c.nombre}>{c.nombre} — ${c.precio}</option>
-                    ))}
-                  </select>
-                </div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Clase disponible</label>
 
-                {/* HORARIO (grid de botones :00 y :30) */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Horario</label>
-
-                  {!newReservation.class ? (
-                    <p className="text-xs text-gray-400 italic">Primero selecciona una clase</p>
+                  {classes.length === 0 ? (
+                    <p className="text-xs text-gray-400 italic px-3 py-4 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+                      No hay clases registradas. Crea clases en el módulo administrativo
+                      (Clases) para poder reservar.
+                    </p>
                   ) : (
-                    <>
-                      <div className="grid grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-1">
-                        {getAvailableSlots().map(slot => {
-                          const isTaken = reservations.some(
-                            r => r.class === newReservation.class && r.time === slot && r.status !== 'cancelada'
-                          );
-                          return (
-                            <button
-                              key={slot}
-                              type="button"
-                              disabled={isTaken}
-                              onClick={() => setNewReservation(p => ({ ...p, time: slot }))}
-                              className={`px-3 py-2 text-sm rounded-lg border transition-colors ${
-                                isTaken
-                                  ? 'border-red-200 bg-red-50 text-red-400 cursor-not-allowed line-through'
-                                  : newReservation.time === slot
-                                    ? 'border-emerald-500 bg-emerald-50 text-emerald-700 font-semibold'
-                                    : 'border-gray-200 text-gray-500 hover:border-gray-400'
-                              }`}
-                            >
-                              {slot}
-                            </button>
-                          );
-                        })}
-                      </div>
-
-                      {newReservation.time && (
-                        <p className="mt-2 text-xs text-emerald-600 font-medium">
-                          Horario seleccionado: {newReservation.time}
-                        </p>
-                      )}
-                    </>
+                    <div className="grid grid-cols-2 gap-2 max-h-64 overflow-y-auto pr-1">
+                      {classes.map(c => {
+                        const disponibles = lugaresDisponibles(c);
+                        const sinCupo = disponibles <= 0;
+                        const seleccionada = newReservation.class === c.nombre;
+                        return (
+                          <button
+                            key={c.idClase ?? c.id}
+                            type="button"
+                            disabled={sinCupo}
+                            onClick={() => {
+                              const isPremium = selectedClient?.membresia === 'Premium';
+                              const price = isPremium ? 0 : (c.precio ?? 0);
+                              setNewReservation(p => ({
+                                ...p,
+                                class: c.nombre,
+                                time: c.hora || '',
+                                price,
+                              }));
+                            }}
+                            className={`text-left p-3 rounded-lg border-2 transition-colors ${
+                              sinCupo
+                                ? 'border-red-200 bg-red-50 opacity-60 cursor-not-allowed'
+                                : seleccionada
+                                  ? 'border-emerald-500 bg-emerald-50'
+                                  : 'border-gray-200 hover:border-gray-400'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span
+                                className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                                style={{ backgroundColor: c.color || '#10b981' }}
+                              />
+                              <span className="font-semibold text-gray-800 text-sm truncate">
+                                {c.nombre}
+                              </span>
+                            </div>
+                            <div className="mt-1 flex items-center gap-2 text-xs text-gray-500">
+                              <span className="flex items-center gap-1">
+                                <Clock className="h-3 w-3" /> {c.hora || '—'}
+                              </span>
+                              <span className="text-gray-300">·</span>
+                              <span className="font-medium text-emerald-600">${c.precio ?? 0}</span>
+                            </div>
+                            <p className={`mt-1 text-xs font-medium ${sinCupo ? 'text-red-500' : 'text-gray-400'}`}>
+                              {sinCupo ? 'Sin cupo' : `${disponibles} lugar${disponibles === 1 ? '' : 'es'} disponible${disponibles === 1 ? '' : 's'}`}
+                            </p>
+                          </button>
+                        );
+                      })}
+                    </div>
                   )}
                 </div>
 
