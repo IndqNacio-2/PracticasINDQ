@@ -1,7 +1,7 @@
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 
-// ✅ IMPORTANTE: El nombre debe ser EXACTAMENTE 'ProtectedRoute'
+// IMPORTANTE: El nombre debe ser EXACTAMENTE 'ProtectedRoute'
 export const ProtectedRoute = ({ children, allowedRoles = [] }) => {
   const { user } = useAuth();
 

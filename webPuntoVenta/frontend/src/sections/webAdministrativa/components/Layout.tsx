@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router';
 import { useAuth } from '../context/AuthContext';
 import type { UserRole } from '../types';
-import { Icon } from './Icon';
+import MaterialIcon from '../../../components/MaterialIcon';
 
 interface NavItem {
   path: string;
@@ -41,74 +41,133 @@ export function Layout() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50">
-      {/* Sidebar */}
+      {/* Sidebar con la estructura del Punto de Venta (Material Icons, chevron
+          en el encabezado y botones tipo menú), pero con la paleta original de
+          Administrativa: fondo oscuro y acentos esmeralda. La navegación
+          (NavLink), el filtro de roles y el cierre de sesión siguen igual. */}
       <aside
-        className="flex flex-col flex-shrink-0 transition-all duration-300 overflow-hidden"
-        style={{ width: collapsed ? 64 : 240, backgroundColor: '#0f172a' }}
+        className={`flex h-screen flex-shrink-0 flex-col overflow-hidden border-r border-slate-700/50 bg-[#0f172a] text-slate-300 shadow-sm transition-[width] duration-300 ease-in-out ${
+          collapsed ? 'w-20' : 'w-60'
+        }`}
       >
-        {/* Logo */}
-        <div className="flex items-center gap-3 px-4 py-5 border-b border-slate-700/50">
-          <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 bg-emerald-500">
-            <Icon name="bolt" size={20} filled className="text-white" />
-          </div>
-          {!collapsed && (
-            <div className="overflow-hidden">
-              <p className="text-white font-bold text-sm leading-none" style={{ fontFamily: 'DM Sans, sans-serif' }}>GymFit</p>
-              <p className="text-slate-400 text-xs mt-0.5">Sistema de Gestión</p>
-            </div>
+        {/* Encabezado e identidad visual (igual que en Punto de Venta). */}
+        <div
+          className={`flex h-[73px] flex-shrink-0 items-center border-b border-slate-700/50 ${
+            collapsed ? 'justify-center px-3' : 'gap-3 px-5'
+          }`}
+        >
+          {collapsed ? (
+            /* Contraído: solo el chevron para volver a abrir el menú. */
+            <button
+              type="button"
+              onClick={() => setCollapsed(false)}
+              title="Expandir menú"
+              className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-500 text-white shadow-sm transition-all duration-150 hover:bg-emerald-600 hover:shadow-md active:scale-95"
+            >
+              <MaterialIcon name="chevron_right" className="text-2xl" />
+            </button>
+          ) : (
+            <>
+              {/* Logotipo del módulo administrativo. */}
+              <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-emerald-500 text-white shadow-sm">
+                <MaterialIcon name="bolt" className="text-2xl" filled />
+              </div>
+
+              {/* Nombre y descripción del sistema. */}
+              <div className="min-w-0 flex-1">
+                <h1 className="truncate text-base font-bold text-white">GymFit</h1>
+                <p className="truncate text-xs text-slate-400">Sistema de Gestión</p>
+              </div>
+
+              {/* Botón para contraer el menú. */}
+              <button
+                type="button"
+                onClick={() => setCollapsed(true)}
+                title="Contraer menú"
+                className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-500 text-white shadow-sm transition-all duration-150 hover:bg-emerald-600 hover:shadow-md active:scale-95"
+              >
+                <MaterialIcon name="chevron_left" className="text-2xl" />
+              </button>
+            </>
           )}
         </div>
 
-        {/* Nav */}
-        <nav className="flex-1 overflow-y-auto py-4 px-2 space-y-0.5">
+        {/* Opciones principales: mismos estilos de botón que Punto de Venta. */}
+        <nav
+          className={`flex flex-1 min-h-0 flex-col gap-1 overflow-y-auto py-4 ${
+            collapsed ? 'px-2' : 'px-3'
+          }`}
+        >
+          {!collapsed && (
+            <p className="mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">
+              Módulos
+            </p>
+          )}
+
           {visibleItems.map(item => (
             <NavLink
               key={item.path}
               to={item.path}
-              className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
               title={collapsed ? item.label : undefined}
+              className={({ isActive }) =>
+                `flex h-11 w-full items-center rounded-xl text-sm font-semibold transition-all duration-150 ${
+                  collapsed ? 'justify-center px-0' : 'gap-3 px-3'
+                } ${
+                  isActive
+                    ? 'bg-emerald-500 text-white shadow-sm'
+                    : 'text-slate-400 hover:bg-slate-700/50 hover:text-slate-100'
+                }`
+              }
             >
-              <span className="flex-shrink-0 flex items-center">
-                <Icon name={item.icon} size={22} weight={500} />
-              </span>
-              {!collapsed && <span className="truncate">{item.label}</span>}
+              {({ isActive }) => (
+                <>
+                  <MaterialIcon
+                    name={item.icon}
+                    className="flex-shrink-0 text-xl"
+                    filled={isActive}
+                  />
+                  {!collapsed && <span className="truncate">{item.label}</span>}
+                </>
+              )}
             </NavLink>
           ))}
         </nav>
 
-        {/* User & collapse */}
-        <div className="border-t border-slate-700/50 p-3 space-y-2">
-          {!collapsed && user && (
-            <div className="flex items-center gap-2.5 px-2 py-2">
-              <div className="w-7 h-7 rounded-full bg-emerald-500 flex items-center justify-center flex-shrink-0 text-white text-xs font-bold">
-                {user.nombre[0]}{user.apellidos[0]}
-              </div>
-              <div className="overflow-hidden flex-1 min-w-0">
-                <p className="text-slate-200 text-xs font-medium truncate">{user.nombre} {user.apellidos}</p>
-                <p className="text-slate-500 text-xs truncate">{rolLabel[user.rol]}</p>
-              </div>
+        {/* Usuario y cierre de sesión con la tarjeta oscura original. */}
+        <div className="flex-shrink-0 border-t border-slate-700/50 p-3">
+          <div
+            className={`flex items-center rounded-xl bg-white/5 ${
+              collapsed ? 'justify-center p-2' : 'gap-3 px-3 py-2.5'
+            }`}
+          >
+            <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-emerald-500 text-xs font-bold text-white">
+              {user ? `${user.nombre[0]}${user.apellidos[0]}` : '?'}
             </div>
-          )}
-          <div className="flex gap-2">
-            <button
-              onClick={() => setCollapsed(c => !c)}
-              className="flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 transition-colors"
-              title={collapsed ? 'Expandir' : 'Colapsar'}
-            >
-              <Icon
-                name={collapsed ? 'keyboard_double_arrow_right' : 'keyboard_double_arrow_left'}
-                size={20}
-                weight={500}
-              />
-            </button>
-            <button
-              onClick={handleLogout}
-              className="flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-900/20 transition-colors"
-              title="Cerrar sesión"
-            >
-              <Icon name="logout" size={20} weight={500} />
-            </button>
+
+            {!collapsed && user && (
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-slate-200">
+                  {user.nombre} {user.apellidos}
+                </p>
+                <p className="truncate text-xs text-slate-500">
+                  {rolLabel[user.rol]}
+                </p>
+              </div>
+            )}
           </div>
+
+          {/* Cerrar sesión con la misma apariencia que una opción del menú. */}
+          <button
+            type="button"
+            onClick={handleLogout}
+            title={collapsed ? 'Cerrar sesión' : undefined}
+            className={`mt-2 flex h-11 w-full items-center rounded-xl text-sm font-semibold transition-all duration-150 ${
+              collapsed ? 'justify-center px-0' : 'gap-3 px-3'
+            } text-slate-400 hover:bg-slate-700/50 hover:text-red-400`}
+          >
+            <MaterialIcon name="logout" className="flex-shrink-0 text-xl" />
+            {!collapsed && <span className="truncate">Cerrar sesión</span>}
+          </button>
         </div>
       </aside>
 

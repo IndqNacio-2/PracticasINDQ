@@ -33,12 +33,27 @@ export default function Dashboard() {
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [selectedReservationForPayment, setSelectedReservationForPayment] = useState(null);
   const [paymentLoading, setPaymentLoading] = useState(false);
+  /**
+   * Tarjetas superiores del dashboard: las KPIs los calcula el backend
+   * ingresos reales del dia desde PostgreSQL, clientes esperados y
+   * total de reservas, no se calculan del listado en memoria
+   */
+  const [kpis, setKpis] = useState({ ingresosHoy: 0, clientesEsperados: 0, totalReservas: 0 });
   const [newReservation, setNewReservation] = useState({
     client: '',
     class: '',
     time: '',
     price: ''
   });
+  // pide los KPIs al backend unificado (vite los reenvia al gateway).
+  const cargarKpis = async () => {
+    try {
+      const res = await fetch(`${API}/api/kpis`);
+      if (res.ok) setKpis(await res.json());
+    } catch (err) {
+      console.warn(`No se pudieron cargar los KPIs:`, err);
+    }
+  };
 
   // ========== CARGA DE DATOS DESDE EL BACKEND ==========
   // Backend unificado: la sección de cobro se monta bajo /cobro en el mismo
@@ -60,6 +75,10 @@ export default function Dashboard() {
       .then(res => res.json())
       .then(data => setClasses(data))
       .catch(() => console.warn('No se pudieron cargar las clases.'));
+    fetch(`${API}/api/kpis`)
+      .then(res => res.json())
+      .then(data => setKpis(data))
+      .catch(() => console.warn('No se puedieron cargar los KPIs.'));
   }, []);
 
   // ========== FUNCIONES DE VALIDACIÓN ==========
@@ -147,6 +166,11 @@ export default function Dashboard() {
         ));
 
         showNotification(`Cobro de $${selectedReservationForPayment.price} registrado.`, 'success');
+        /**
+         * Recalcula los KPIs: el cobro avaba de guardarse en PostgreSQL
+         * y la tarjeta de ingresos del dai debe reflejarlo al instante.
+         */
+        await cargarKpis();
         setIsPaymentModalOpen(false);
         setSelectedReservationForPayment(null);
 
@@ -309,7 +333,7 @@ export default function Dashboard() {
             <div className="flex justify-between items-start">
               <div>
                 <p className="text-gray-500 text-sm font-medium">Clientes Esperados</p>
-                <h3 className="text-3xl font-bold text-gray-800 mt-1">{totalPending}</h3>
+                <h3 className="text-3xl font-bold text-gray-800 mt-1">{kpis.clientesEsperados}</h3>
               </div>
               <div className="bg-blue-100 p-3 rounded-full"><UserPlus className="h-6 w-6 text-blue-600" /></div>
             </div>
@@ -318,7 +342,7 @@ export default function Dashboard() {
             <div className="flex justify-between items-start">
               <div>
                 <p className="text-gray-500 text-sm font-medium">Ingresos del Día</p>
-                <h3 className="text-3xl font-bold text-gray-800 mt-1">${totalPaid} MXN</h3>
+                <h3 className="text-3xl font-bold text-gray-800 mt-1">${kpis.ingresosHoy} MXN</h3>
               </div>
               <div className="bg-green-100 p-3 rounded-full"><DollarSign className="h-6 w-6 text-green-600" /></div>
             </div>
@@ -327,7 +351,7 @@ export default function Dashboard() {
             <div className="flex justify-between items-start">
               <div>
                 <p className="text-gray-500 text-sm font-medium">Reservaciones Activas</p>
-                <h3 className="text-3xl font-bold text-gray-800 mt-1">{reservations.length}</h3>
+                <h3 className="text-3xl font-bold text-gray-800 mt-1">{kpis.totalReservas}</h3>
               </div>
               <div className="bg-yellow-100 p-3 rounded-full"><Clock className="h-6 w-6 text-yellow-600" /></div>
             </div>
