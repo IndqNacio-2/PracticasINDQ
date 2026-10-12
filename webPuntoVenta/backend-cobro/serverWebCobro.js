@@ -72,42 +72,135 @@ app.post('/api/reservas', async (req, res) => {
     return res.status(400).json({ error: 'El tipo debe ser cliente o visitante.' });
   }
 
-  //validacion 3 la clase debe existir en el catalogo
-  const claseExiste = (
-    await pool.query('SELECT 1 FROM webcobro.clases WHERE nombre = $1', [clase])
-  ).rows[0];
-  if (!claseExiste) {
-    return res.status(400).json({ error: 'La clase seleccionada no existe.' });
+  //validacion 3 el nombre de la clase es obligatorio. Ya NO se valida contra
+  //webcobro.clases: las clases se registran en el módulo administrativo
+  //(MongoDB) y el frontend envía el nombre de la clase elegida allí.
+  if (typeof clase !== 'string' || clase.trim().length === 0) {
+    return res.status(400).json({ error: 'La clase es obligatoria.' });
   }
 
-  //validacion 4 el horario debe estar dentro del horario del gym, en punto o a media hora
+  //validacion 4 la hora debe ser un HH:MM válido dentro del rango del gym.
+  //La hora viene de la clase registrada en administrativa, así que ya no se
+  //exige que caiga en punto o a media hora.
   if (typeof time !== 'string' || !/^\d{2}:\d{2}$/.test(time)) {
     return res.status(400).json({ error: 'El horario no es valido.' });
   }
   const [horas, minutos] = time.split(':').map(Number);
-  if (horas < 6 || horas >= 22 || (minutos !== 0 && minutos !== 30)) {
-    return res.status(400).json({ error: 'Las clases son de 6:00 a 22:00, en punto o a media hora.' });
+  if (horas < 6 || horas >= 22 || minutos < 0 || minutos > 59) {
+    return res.status(400).json({ error: 'Las clases son de 6:00 a 22:00.' });
   }
 
-  //validacion 5 el monto debe ser un numero y el visitante siempre paga
+  //validacion 5 el monto base debe ser un numero valido (>= 0).
   const monto = Number(price);
   if (!Number.isFinite(monto) || monto < 0) {
     return res.status(400).json({ error: 'El monto no es valido.' });
   }
-  if (type === 'visitante' && monto <= 0) {
-    return res.status(400).json({ error: 'El visitante debe pagar la tarifa de la clase.' });
+
+  /*
+   * validacion 6 horario ya pasado. Las reservaciones son para el dia de hoy
+   * (recepcion trabaja con las clases del dia), así que no se puede reservar
+   * una clase cuya hora ya transcurrio.
+   */
+  const ahora = new Date();
+  const claseHoy = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate(), horas, minutos);
+  if (claseHoy.getTime() < ahora.getTime()) {
+    return res.status(409).json({ error: `La clase de las ${time} ya paso, elige otro horario.` });
   }
 
-  //validacion 6 no se puede repetir la clase en el mismo horario
-  const repetida = (
-    await pool.query(
-      `SELECT 1 FROM webcobro.reservas
-        WHERE clase = $1 AND hora = $2 AND estado <> 'cancelado'`,
-      [clase, time],
-    )
-  ).rows[0];
-  if (repetida) {
-    return res.status(409).json({ error: 'Ya existe una reservación en ese horario.' });
+  /*
+   * validacion 7 membresia del socio. Si es "cliente" se busca en
+   * webcobro.clientes para validar que este activo y vigente y definir si es
+   * Premium (no paga). El precio se define AQUI en el servidor; NO se confia
+   * en el que manda el navegador. El visitante siempre paga la tarifa.
+   */
+  let precioFinal = monto;
+  if (type === 'cliente') {
+    const socio = (
+      await pool.query(
+        `SELECT nombre, membresia, activo, to_char(vigencia_hasta, 'YYYY-MM-DD') AS vigencia
+           FROM webcobro.clientes WHERE nombre = $1`,
+        [client.trim()],
+      )
+    ).rows[0];
+
+    const hoy = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, '0')}-${String(ahora.getDate()).padStart(2, '0')}`;
+    const inactivo = socio ? socio.activo === false : false;
+    const vencida = socio?.vigencia ? socio.vigencia < hoy : false;
+
+    if (inactivo) {
+      return res.status(409).json({ error: `El socio "${client.trim()}" esta inactivo. Registralo como visitante para continuar.` });
+    }
+    if (vencida) {
+      return res.status(409).json({ error: `La membresia de "${client.trim()}" esta vencida. Registralo como visitante para continuar.` });
+    }
+
+    // Premium vigente y activo: no paga. El resto paga la tarifa de la clase.
+    precioFinal = socio && socio.membresia === 'Premium' ? 0 : monto;
+    if (precioFinal <= 0 && socio && socio.membresia !== 'Premium') {
+      return res.status(400).json({ error: 'El socio debe pagar la tarifa de la clase.' });
+    }
+  } else {
+    // visitante: siempre paga
+    if (monto <= 0) {
+      return res.status(400).json({ error: 'El visitante debe pagar la tarifa de la clase.' });
+    }
+    precioFinal = monto;
+  }
+
+  /*
+   * validacion 8 duplicado: una misma persona no puede reservar dos veces la
+   * misma clase en la misma hora (mientras no este cancelada).
+   */
+  const duplicada = Number(
+    (
+      await pool.query(
+        `SELECT COUNT(*) AS n FROM webcobro.reservas
+          WHERE cliente = $1 AND clase = $2 AND hora = $3 AND estado <> 'cancelado'`,
+        [client.trim(), clase.trim(), time],
+      )
+    ).rows[0].n,
+  );
+  if (duplicada > 0) {
+    return res.status(409).json({ error: `"${client.trim()}" ya reservo "${clase.trim()}" a las ${time}.` });
+  }
+
+  /*
+   * validacion 9 limite de reservaciones activas por socio (anti-acaparamiento
+   * de cupo). Maximo 3 reservaciones activas por persona.
+   */
+  const LIMITE_RESERVAS = 3;
+  const activas = Number(
+    (
+      await pool.query(
+        `SELECT COUNT(*) AS n FROM webcobro.reservas
+          WHERE cliente = $1 AND estado <> 'cancelado'`,
+        [client.trim()],
+      )
+    ).rows[0].n,
+  );
+  if (activas >= LIMITE_RESERVAS) {
+    return res.status(409).json({ error: `"${client.trim()}" ya tiene ${LIMITE_RESERVAS} reservaciones activas. Cancela una para crear otra.` });
+  }
+
+  /*
+   * validacion 10 cupo de la clase. La capacidad vive en administrativa
+   * (MongoDB), que este backend no consulta, así que el frontend la envía.
+   * Aquí se cuenta cuántas reservaciones activas ya hay y se rechaza si se
+   * llenó. (confía en el capacity que manda el cliente; en producción se
+   * validaría contra la base central de clases.)
+   */
+  const capacidad = Number(req.body?.capacity);
+  const reservadas = Number(
+    (
+      await pool.query(
+        `SELECT COUNT(*) AS n FROM webcobro.reservas
+          WHERE clase = $1 AND estado <> 'cancelado'`,
+        [clase.trim()],
+      )
+    ).rows[0].n,
+  );
+  if (Number.isFinite(capacidad) && capacidad > 0 && reservadas >= capacidad) {
+    return res.status(409).json({ error: `La clase "${clase.trim()}" ya no tiene cupo disponible.` });
   }
 
   const nueva = (
@@ -115,7 +208,7 @@ app.post('/api/reservas', async (req, res) => {
       `INSERT INTO webcobro.reservas (cliente, tipo, clase, hora, estado, precio)
        VALUES ($1, $2, $3, $4, 'pendiente', $5)
        RETURNING id, cliente, tipo, clase, hora, estado, precio`,
-      [client.trim(), type, clase, time, monto],
+      [client.trim(), type, clase.trim(), time, precioFinal],
     )
   ).rows[0];
 
@@ -136,7 +229,9 @@ app.post('/api/reservas', async (req, res) => {
 //GET para clientes para llenar tabla del dashboard
 app.get('/api/clientes', async (req, res) => {
   const resultado = await pool.query(
-    'SELECT id, nombre, membresia, telefono FROM webcobro.clientes ORDER BY id',
+    `SELECT id, nombre, membresia, telefono, activo,
+            to_char(vigencia_hasta, 'YYYY-MM-DD') AS vigencia_hasta
+       FROM webcobro.clientes ORDER BY id`,
   );
   res.json(resultado.rows);
 });

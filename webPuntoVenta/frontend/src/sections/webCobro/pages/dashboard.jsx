@@ -122,6 +122,80 @@ export default function Dashboard() {
   const lugaresDisponibles = (clase) =>
     Math.max(0, Number(clase.capacidad ?? 0) - reservasActivasDe(clase.nombre));
 
+  // ========== HELPERS DE VALIDACIÓN DE MEMBRESÍA / DUPLICADOS / HORARIO ==========
+
+  const esPremium = (socio) => socio?.membresia === 'Premium';
+
+  // Fecha de hoy en YYYY-MM-DD (zona local), para comparar con la vigencia.
+  const hoyISO = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+
+  // El socio puede reservar como "cliente" solo si está activo y su membresía
+  // no está vencida (vigencia_hasta null = no expira).
+  const membresiaVigente = (socio) => {
+    if (!socio) return false;
+    if (socio.activo === false) return false;
+    if (socio.vigencia_hasta && socio.vigencia_hasta < hoyISO()) return false;
+    return true;
+  };
+
+  /*
+   * Precio de una clase según quién reserva. Regla única (evita el bug donde
+   * el socio quedaba en $0): solo un socio Premium y vigente paga 0; cualquier
+   * otro caso (visitante o socio no premium / por definir) paga la tarifa.
+   * Se pasa el socio explícito para poder calcularlo al momento de elegirlo.
+   */
+  const precioDeClase = (clase, socio = selectedClient) => {
+    if (!clase) return 0;
+    if (tipoReserva === 'cliente' && socio && esPremium(socio) && membresiaVigente(socio)) {
+      return 0;
+    }
+    return Number(clase.precio ?? 0);
+  };
+
+  // ¿La persona ya reservó esta clase en esta hora (y no la canceló)?
+  const yaReservada = (nombre, nombreClase, hora) =>
+    reservations.some(
+      r => r.client === nombre && r.class === nombreClase && r.time === hora && r.status !== 'cancelado',
+    );
+
+  // Cuántas reservas activas tiene una persona (límite anti-acaparamiento).
+  const reservasActivasDeCliente = (nombre) =>
+    reservations.filter(r => r.client === nombre && r.status !== 'cancelado').length;
+
+  // ¿La hora de la clase ya pasó hoy? (no se puede reservar en el pasado)
+  const horarioPasado = (hora) => {
+    if (!/^\d{2}:\d{2}$/.test(hora || '')) return false;
+    const [h, m] = hora.split(':').map(Number);
+    const ahora = new Date();
+    const claseHoy = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate(), h, m);
+    return claseHoy.getTime() < ahora.getTime();
+  };
+
+  // La clase de administrativa debe tener precio > 0 y capacidad > 0 para poderse reservar.
+  const claseReservable = (clase) =>
+    Number(clase.precio ?? 0) > 0 && Number(clase.capacidad ?? 0) > 0;
+
+  /*
+   * ¿El formulario del modal está listo para guardar? El botón se deshabilita
+   * hasta cumplir TODO: nombre válido, tipo seleccionado, clase elegida, socio
+   * vigente (si es "cliente"), que no sea duplicado y que haya cupo.
+   */
+  const claseSelModal = classes.find(c => c.nombre === newReservation.class);
+  const nombreValido = (newReservation.client || '').trim().length >= 3;
+  const socioOk = tipoReserva === 'visitante' || (selectedClient && membresiaVigente(selectedClient));
+  const puedeGuardar =
+    nombreValido &&
+    !!claseSelModal &&
+    claseReservable(claseSelModal) &&
+    lugaresDisponibles(claseSelModal) > 0 &&
+    !horarioPasado(claseSelModal.hora) &&
+    socioOk &&
+    !yaReservada(newReservation.client, newReservation.class, newReservation.time) &&
+    reservasActivasDeCliente(newReservation.client) < 3;
+
   // ========== FUNCIONES DE ACCIONES PRINCIPALES ==========
 
   const handleConfirmAttendance = (id) => {
@@ -245,18 +319,39 @@ export default function Dashboard() {
   const handleCreateReservation = async (e) => {
     e.preventDefault();
     try {
-      if (!newReservation.client || !newReservation.class || !newReservation.time) {
+      const nombreLimpio = (newReservation.client || '').trim();
+      if (!nombreLimpio || !newReservation.class || !newReservation.time) {
         throw new Error('Selecciona un cliente y una clase disponible.');
       }
-      if (newReservation.client.trim().length < 3) {
+      if (nombreLimpio.length < 3) {
         throw new Error('El nombre del cliente es demasiado corto.');
       }
 
-      // La clase trae su hora y precio desde administrativa. Se valida el cupo
-      // disponible antes de enviar (el backend cobro vuelve a validarlo).
       const claseSel = classes.find(c => c.nombre === newReservation.class);
-      if (claseSel && lugaresDisponibles(claseSel) <= 0) {
+      if (!claseSel) {
+        throw new Error('Selecciona una clase disponible.');
+      }
+      if (!claseReservable(claseSel)) {
+        throw new Error(`La clase "${claseSel.nombre}" no tiene un precio/capacidad válidos.`);
+      }
+
+      // Un socio solo reserva como "cliente" si está activo y vigente; si no,
+      // debe registrarse como visitante (el backend vuelve a validarlo).
+      if (tipoReserva === 'cliente' && selectedClient && !membresiaVigente(selectedClient)) {
+        throw new Error('La membresía del socio no está vigente. Regístralo como visitante.');
+      }
+
+      if (lugaresDisponibles(claseSel) <= 0) {
         throw new Error(`La clase "${claseSel.nombre}" ya no tiene cupo disponible.`);
+      }
+      if (horarioPasado(claseSel.hora)) {
+        throw new Error(`La clase de las ${claseSel.hora} ya pasó, elige otro horario.`);
+      }
+      if (yaReservada(nombreLimpio, claseSel.nombre, claseSel.hora)) {
+        throw new Error(`"${nombreLimpio}" ya reservó "${claseSel.nombre}" a las ${claseSel.hora}.`);
+      }
+      if (reservasActivasDeCliente(nombreLimpio) >= 3) {
+        throw new Error(`"${nombreLimpio}" ya tiene 3 reservaciones activas. Cancela una para crear otra.`);
       }
 
       if (tipoReserva === 'visitante' && Number(newReservation.price) <= 0) {
@@ -268,7 +363,7 @@ export default function Dashboard() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          client: newReservation.client,
+          client: nombreLimpio,
           type: tipoReserva,
           class: newReservation.class,
           time: newReservation.time,
@@ -558,7 +653,10 @@ export default function Dashboard() {
                         const match = clientes.find(c => String(c.id) === val || c.nombre === val);
                         if (match) {
                           setSelectedClient(match);
-                          setNewReservation(p => ({ ...p, client: match.nombre, price: 0 }));
+                          // El precio depende de la clase ya elegida y de si el
+                          // socio es Premium vigente; ya NO se fuerza a 0.
+                          const claseSel = classes.find(c => c.nombre === newReservation.class);
+                          setNewReservation(p => ({ ...p, client: match.nombre, price: precioDeClase(claseSel, match) }));
                           setShowClientList(false);
                         } else {
                           setSelectedClient(null);
@@ -585,7 +683,10 @@ export default function Dashboard() {
                               key={c.id}
                               onMouseDown={() => {
                                 setSelectedClient(c);
-                                setNewReservation(p => ({ ...p, client: c.nombre, price: 0 }));
+                                // Igual que arriba: recalcula el precio real de
+                                // la clase elegida según la membresía del socio.
+                                const claseSel = classes.find(cl => cl.nombre === newReservation.class);
+                                setNewReservation(p => ({ ...p, client: c.nombre, price: precioDeClase(claseSel, c) }));
                                 setShowClientList(false);
                               }}
                               className="px-4 py-2 hover:bg-emerald-50 cursor-pointer text-gray-800 text-sm flex justify-between items-center"
@@ -609,9 +710,20 @@ export default function Dashboard() {
                     )}
 
                     {selectedClient && (
-                      <p className="mt-1 text-xs text-emerald-600 font-medium">
-                        {selectedClient.nombre} — Membresía: {selectedClient.membresia}
-                      </p>
+                      <div className="mt-1">
+                        <p className="text-xs text-emerald-600 font-medium">
+                          {selectedClient.nombre} — Membresía: {selectedClient.membresia}
+                        </p>
+                        {/* Aviso cuando el socio no puede reservar como socio. */}
+                        {!membresiaVigente(selectedClient) && (
+                          <p className="text-xs text-red-600 font-medium">
+                            {selectedClient.activo === false
+                              ? 'Este socio está inactivo.'
+                              : 'La membresía de este socio está vencida.'}{' '}
+                            Regístralo como visitante para continuar.
+                          </p>
+                        )}
+                      </div>
                     )}
                   </div>
                 ) : (
@@ -642,25 +754,31 @@ export default function Dashboard() {
                     <div className="grid grid-cols-2 gap-2 max-h-64 overflow-y-auto pr-1">
                       {classes.map(c => {
                         const disponibles = lugaresDisponibles(c);
-                        const sinCupo = disponibles <= 0;
+                        const pasada = horarioPasado(c.hora);
+                        const duplicada =
+                          tipoReserva === 'cliente' &&
+                          newReservation.client &&
+                          yaReservada(newReservation.client, c.nombre, c.hora);
+                        const noReservable = !claseReservable(c);
+                        // Una clase se bloquea si no tiene cupo, ya pasó su hora,
+                        // el socio ya la reservó, o está mal definida (precio/capacidad).
+                        const bloqueada = disponibles <= 0 || pasada || duplicada || noReservable;
                         const seleccionada = newReservation.class === c.nombre;
                         return (
                           <button
                             key={c.idClase ?? c.id}
                             type="button"
-                            disabled={sinCupo}
+                            disabled={bloqueada}
                             onClick={() => {
-                              const isPremium = selectedClient?.membresia === 'Premium';
-                              const price = isPremium ? 0 : (c.precio ?? 0);
                               setNewReservation(p => ({
                                 ...p,
                                 class: c.nombre,
                                 time: c.hora || '',
-                                price,
+                                price: precioDeClase(c),
                               }));
                             }}
                             className={`text-left p-3 rounded-lg border-2 transition-colors ${
-                              sinCupo
+                              bloqueada
                                 ? 'border-red-200 bg-red-50 opacity-60 cursor-not-allowed'
                                 : seleccionada
                                   ? 'border-emerald-500 bg-emerald-50'
@@ -683,8 +801,16 @@ export default function Dashboard() {
                               <span className="text-gray-300">·</span>
                               <span className="font-medium text-emerald-600">${c.precio ?? 0}</span>
                             </div>
-                            <p className={`mt-1 text-xs font-medium ${sinCupo ? 'text-red-500' : 'text-gray-400'}`}>
-                              {sinCupo ? 'Sin cupo' : `${disponibles} lugar${disponibles === 1 ? '' : 'es'} disponible${disponibles === 1 ? '' : 's'}`}
+                            <p className={`mt-1 text-xs font-medium ${bloqueada ? 'text-red-500' : 'text-gray-400'}`}>
+                              {disponibles <= 0
+                                ? 'Sin cupo'
+                                : pasada
+                                  ? 'Horario ya pasó'
+                                  : duplicada
+                                    ? 'Ya la reservaste'
+                                    : noReservable
+                                      ? 'No disponible'
+                                      : `${disponibles} lugar${disponibles === 1 ? '' : 'es'} disponible${disponibles === 1 ? '' : 's'}`}
                             </p>
                           </button>
                         );
@@ -715,7 +841,12 @@ export default function Dashboard() {
                   </button>
                   <button
                     type="submit"
-                    className="flex-1 px-4 py-2 bg-primary hover:bg-primary-hover text-white rounded-lg font-medium transition-colors"
+                    disabled={!puedeGuardar}
+                    className={`flex-1 px-4 py-2 rounded-lg font-medium transition-colors ${
+                      puedeGuardar
+                        ? 'bg-primary hover:bg-primary-hover text-white'
+                        : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                    }`}
                   >
                     Guardar Reservación
                   </button>
