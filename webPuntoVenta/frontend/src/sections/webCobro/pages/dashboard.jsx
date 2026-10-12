@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
   LogOut, Calendar, Clock, DollarSign, UserPlus,
-  AlertCircle, CheckCircle, CreditCard, X
+  AlertCircle, CheckCircle, CreditCard, X,
+  Banknote, Landmark, ArrowLeft
 } from 'lucide-react';
 
 const MOCK_RESERVATIONS = [
@@ -15,6 +16,22 @@ const MOCK_RESERVATIONS = [
 ];
 
 let nextId = 6; // (ya no se usa: el identificador lo asigna la base de datos)
+
+/*
+ * Las mismas formas de pago que maneja el Punto de Venta: efectivo, tarjeta
+ * y transferencia. Los iconos son de lucide-react (equivalentes a los del POS).
+ */
+const PAY_METHODS = [
+  { key: 'efectivo', label: 'Efectivo', Icon: Banknote },
+  { key: 'tarjeta', label: 'Tarjeta', Icon: CreditCard },
+  { key: 'transferencia', label: 'Transferencia', Icon: Landmark },
+];
+
+const METHOD_LABELS = {
+  efectivo: 'Efectivo',
+  tarjeta: 'Tarjeta',
+  transferencia: 'Transferencia',
+};
 
 export default function Dashboard() {
   const { user, logout } = useAuth();
@@ -33,6 +50,13 @@ export default function Dashboard() {
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [selectedReservationForPayment, setSelectedReservationForPayment] = useState(null);
   const [paymentLoading, setPaymentLoading] = useState(false);
+  /*
+   * Forma de pago del cobro (las mismas opciones que el Punto de Venta):
+   * efectivo, tarjeta o transferencia, con sus datos extra según el método.
+   */
+  const [metodoPago, setMetodoPago] = useState(null);
+  const [efectivoInput, setEfectivoInput] = useState('');
+  const [referenciaInput, setReferenciaInput] = useState('');
   /**
    * Tarjetas superiores del dashboard: las KPIs los calcula el backend
    * ingresos reales del dia desde PostgreSQL, clientes esperados y
@@ -135,6 +159,10 @@ export default function Dashboard() {
         return;
       }
       setSelectedReservationForPayment(reservation);
+      // Se limpia la forma de pago para que cada cobro empiece de cero.
+      setMetodoPago(null);
+      setEfectivoInput('');
+      setReferenciaInput('');
       setIsPaymentModalOpen(true);
      };
 
@@ -144,12 +172,19 @@ export default function Dashboard() {
     setPaymentLoading(true);
     try {
       // El cobro se guarda en el backend: marca la reservación como pagada y
-      // registra el pago en PostgreSQL (esquema webcobro). El monto lo toma el
-      // servidor del precio real de la reservación, no del navegador.
+      // registra el pago en PostgreSQL (esquema webcobro) con su forma de pago.
+      // El monto lo toma el servidor del precio real de la reservación.
       const response = await fetch(`${API}/api/cobros`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reservaId: selectedReservationForPayment.id }),
+        body: JSON.stringify({
+          reservaId: selectedReservationForPayment.id,
+          metodoPago,
+          // El efectivo recibido solo aplica cuando se cobra en efectivo.
+          efectivoRecibido: metodoPago === 'efectivo' ? efectivoRecibido : undefined,
+          // La referencia solo aplica cuando se cobra por transferencia.
+          referencia: metodoPago === 'transferencia' ? referenciaInput.trim() : undefined,
+        }),
       });
 
       const data = await response.json();
@@ -163,15 +198,23 @@ export default function Dashboard() {
         res.id === data.reserva.id ? data.reserva : res
       ));
 
-      showNotification(`Cobro de $${data.pago.monto} registrado.`, 'success');
+      /*
+       * Aviso con el método cobrado y, si hubo cambio en efectivo, se muestra
+       * para que el recepcionista sepa cuánto devolver.
+       */
+      const cambioTexto =
+        metodoPago === 'efectivo' && data.pago.cambio > 0 ? ` Cambio: $${data.pago.cambio}.` : '';
+      showNotification(
+        `Cobro en ${METHOD_LABELS[metodoPago]} de $${data.pago.monto} registrado.${cambioTexto}`,
+        'success'
+      );
 
       /**
        * Recalcula los KPIs: el cobro acaba de guardarse en PostgreSQL
        * y la tarjeta de ingresos del día debe reflejarlo al instante.
        */
       await cargarKpis();
-      setIsPaymentModalOpen(false);
-      setSelectedReservationForPayment(null);
+      closePaymentModal();
     } catch (error) {
       showNotification(error.message, 'error');
     } finally {
@@ -275,6 +318,29 @@ export default function Dashboard() {
 
   const totalPending = reservations.filter(r => r.status === 'pendiente').length;
   const totalPaid = reservations.filter(r => r.status === 'pagado').reduce((sum, r) => sum + r.price, 0);
+
+  /*
+   * Valores derivados del modal de cobro: se calculan con el monto real de la
+   * reservación seleccionada y lo que el recepcionista captura en efectivo,
+   * para habilitar el botón y mostrar el cambio (misma lógica que el POS).
+   */
+  const payTotal = selectedReservationForPayment ? selectedReservationForPayment.price : 0;
+  const efectivoRecibido = parseFloat(efectivoInput) || 0;
+  const cambio = efectivoRecibido - payTotal;
+  const efectivoInsuficiente = efectivoInput !== '' && efectivoRecibido < payTotal;
+  const canConfirmPayment =
+    metodoPago === 'tarjeta' ||
+    metodoPago === 'transferencia' ||
+    (metodoPago === 'efectivo' && efectivoRecibido >= payTotal);
+
+  // Cierra el modal de cobro y limpia la forma de pago seleccionada.
+  const closePaymentModal = () => {
+    setIsPaymentModalOpen(false);
+    setSelectedReservationForPayment(null);
+    setMetodoPago(null);
+    setEfectivoInput('');
+    setReferenciaInput('');
+  };
 
   const filteredReservations = reservations.filter(res => {
     const term = searchTerm.toLowerCase();
@@ -671,7 +737,7 @@ export default function Dashboard() {
       <div className="bg-green-600 px-6 py-4 flex justify-between items-center">
         <h3 className="text-lg font-bold text-white">Confirmar Cobro</h3>
         <button
-          onClick={() => setIsPaymentModalOpen(false)}
+          onClick={closePaymentModal}
           className="text-gray-200 hover:text-white transition-colors"
         >
           <X className="h-6 w-6" />
@@ -699,11 +765,115 @@ export default function Dashboard() {
           </div>
         </div>
 
+        {/* --- MÉTODO DE PAGO (mismos que el POS) --- */}
+        {!metodoPago && (
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+              Método de pago
+            </p>
+            <div className="grid grid-cols-3 gap-2">
+              {PAY_METHODS.map(({ key, label, Icon }) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setMetodoPago(key)}
+                  className="flex flex-col items-center gap-1.5 py-3 border-2 border-gray-200 rounded-lg hover:border-green-500 hover:bg-green-50 transition-colors"
+                >
+                  <Icon className="h-6 w-6 text-gray-600" />
+                  <span className="text-xs font-medium text-gray-700">{label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* --- PANEL: EFECTIVO (captura entregado y calcula cambio) --- */}
+        {metodoPago === 'efectivo' && (
+          <div>
+            <button
+              type="button"
+              onClick={() => setMetodoPago(null)}
+              className="flex items-center gap-1 text-sm text-gray-500 hover:text-green-600 mb-3 transition-colors"
+            >
+              <ArrowLeft className="h-4 w-4" /> Cambiar método
+            </button>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Efectivo recibido
+            </label>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={efectivoInput}
+              onChange={(e) => setEfectivoInput(e.target.value)}
+              placeholder={`Monto entregado (mín. $${payTotal})`}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg text-gray-800 focus:ring-2 focus:ring-green-500 focus:outline-none"
+            />
+            {efectivoInsuficiente && (
+              <p className="text-xs text-red-600 font-semibold mt-1.5 flex items-center gap-1">
+                <AlertCircle className="h-4 w-4" /> Efectivo insuficiente
+              </p>
+            )}
+            {efectivoInput !== '' && efectivoRecibido >= payTotal && (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3 mt-3 flex justify-between items-center">
+                <span className="text-sm font-semibold text-green-700">Cambio a devolver</span>
+                <span className="text-xl font-bold text-green-700">${cambio}</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* --- PANEL: TARJETA (terminal física externa, sin datos) --- */}
+        {metodoPago === 'tarjeta' && (
+          <div>
+            <button
+              type="button"
+              onClick={() => setMetodoPago(null)}
+              className="flex items-center gap-1 text-sm text-gray-500 hover:text-green-600 mb-3 transition-colors"
+            >
+              <ArrowLeft className="h-4 w-4" /> Cambiar método
+            </button>
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-5 text-center">
+              <CreditCard className="h-10 w-10 text-gray-500 mx-auto mb-2" />
+              <p className="text-xs text-gray-500 uppercase tracking-wide">Total a cobrar</p>
+              <p className="text-2xl font-bold text-gray-800">${payTotal}</p>
+              <p className="text-xs text-gray-500 mt-2">Presentar en terminal física</p>
+            </div>
+          </div>
+        )}
+
+        {/* --- PANEL: TRANSFERENCIA (referencia opcional) --- */}
+        {metodoPago === 'transferencia' && (
+          <div>
+            <button
+              type="button"
+              onClick={() => setMetodoPago(null)}
+              className="flex items-center gap-1 text-sm text-gray-500 hover:text-green-600 mb-3 transition-colors"
+            >
+              <ArrowLeft className="h-4 w-4" /> Cambiar método
+            </button>
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-3 flex justify-between items-center">
+              <span className="text-sm text-gray-600">Total a cobrar</span>
+              <span className="text-xl font-bold text-gray-800">${payTotal}</span>
+            </div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Referencia de transferencia <span className="text-gray-400 font-normal">(opcional)</span>
+            </label>
+            <input
+              type="text"
+              value={referenciaInput}
+              onChange={(e) => setReferenciaInput(e.target.value)}
+              placeholder="Ej. TRF-20261012-001"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg text-gray-800 focus:ring-2 focus:ring-green-500 focus:outline-none"
+            />
+          </div>
+        )}
+
         {/* Botones */}
         <div className="flex gap-3 pt-2">
           <button
             type="button"
-            onClick={() => setIsPaymentModalOpen(false)}
+            onClick={closePaymentModal}
             disabled={paymentLoading}
             className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors font-medium disabled:opacity-50"
           >
@@ -712,7 +882,7 @@ export default function Dashboard() {
           <button
             type="button"
             onClick={handleConfirmPayment}
-            disabled={paymentLoading}
+            disabled={paymentLoading || !canConfirmPayment}
             className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-300 text-white rounded-lg font-medium transition-colors disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             {paymentLoading ? (
