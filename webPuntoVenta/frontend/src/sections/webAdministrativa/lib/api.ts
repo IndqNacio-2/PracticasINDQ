@@ -29,7 +29,9 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     let message = res.statusText;
     try {
       const body = await res.json();
-      message = body?.message ?? message;
+      // La administrativa responde con { message } en auth y con { error } en
+      // las demás rutas, así que reviso las dos llaves antes de caer al statusText.
+      message = body?.message ?? body?.error ?? message;
     } catch {
       // el cuerpo no era JSON, se conserva el statusText
     }

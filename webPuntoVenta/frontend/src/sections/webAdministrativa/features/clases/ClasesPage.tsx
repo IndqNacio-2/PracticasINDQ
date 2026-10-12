@@ -1,40 +1,110 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Badge } from '../../components/Badge';
 import { Modal } from '../../components/Modal';
 import { InputField, SelectField, TextareaField } from '../../components/FormField';
-import { mockClases as initial, mockUsuarios } from '../../data/mock';
-import type { Clase, Estatus } from '../../types';
+import { DataState } from '../../components/DataState';
+import { api } from '../../lib/api';
+import type { Clase, Usuario, Estatus } from '../../types';
 
 const COLORS = ['#10b981', '#6366f1', '#f59e0b', '#ec4899', '#0891b2', '#ef4444', '#8b5cf6', '#14b8a6'];
 
-const entrenadores = mockUsuarios.filter(u => u.rol === 'entrenador' && u.estatus === 'activo');
+const EMPTY_FORM = { nombre: '', descripcion: '', capacidad: '12', color: '#10b981', estatus: 'activo' as Estatus, entrenadorId: '' };
 
 export function ClasesPage() {
-  const [clases, setClases] = useState<Clase[]>(initial);
+  /*
+   * Las clases y los entrenadores viven en MongoDB (backend-administrativa).
+   * El formulario del entrenador se llena con los usuarios reales de rol
+   * "entrenador", no con datos de ejemplo.
+   */
+  const [clases, setClases] = useState<Clase[]>([]);
+  const [entrenadores, setEntrenadores] = useState<Usuario[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
   const [modal, setModal] = useState<{ open: boolean; editing?: Clase }>({ open: false });
-  const [form, setForm] = useState({ nombre: '', descripcion: '', capacidad: '12', color: '#10b981', estatus: 'activo' as Estatus, entrenadorId: '' });
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  // Trae las clases del catálogo y, en paralelo, los entrenadores activos.
+  const cargar = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [cs, ents] = await Promise.all([
+        api.get<Clase[]>('/clases'),
+        api.get<Usuario[]>('/usuarios'),
+      ]);
+      setClases(cs);
+      setEntrenadores(ents.filter(u => u.rol === 'entrenador' && u.estatus === 'activo'));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudieron cargar las clases.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { cargar(); }, [cargar]);
 
   const openNew = () => {
-    setForm({ nombre: '', descripcion: '', capacidad: '12', color: '#10b981', estatus: 'activo', entrenadorId: '' });
+    setForm(EMPTY_FORM);
+    setFormError(null);
     setModal({ open: true });
   };
   const openEdit = (c: Clase) => {
     setForm({ nombre: c.nombre, descripcion: c.descripcion, capacidad: String(c.capacidad), color: c.color, estatus: c.estatus, entrenadorId: c.entrenadorId ?? '' });
+    setFormError(null);
     setModal({ open: true, editing: c });
   };
 
-  const save = () => {
-    if (!form.nombre) return;
-    if (modal.editing) {
-      setClases(prev => prev.map(c => c.idClase === modal.editing!.idClase ? { ...c, ...form, capacidad: Number(form.capacidad) } : c));
-    } else {
-      setClases(prev => [...prev, { idClase: `cl${Date.now()}`, nombre: form.nombre, descripcion: form.descripcion, capacidad: Number(form.capacidad), color: form.color, estatus: form.estatus, entrenadorId: form.entrenadorId }]);
+  /*
+   * Guarda la clase en el backend: crea con POST o actualiza con PATCH.
+   * El backend responde con la clase ya guardada (con su idClase), que es la
+   * que se agrega/reemplaza en el listado para reflejar la base al instante.
+   */
+  const save = async () => {
+    const capacidad = Number(form.capacidad);
+    if (!form.nombre.trim()) { setFormError('El nombre de la clase es obligatorio.'); return; }
+    if (!Number.isFinite(capacidad) || capacidad < 1) { setFormError('La capacidad debe ser al menos 1.'); return; }
+
+    setSaving(true);
+    setFormError(null);
+    const payload = {
+      nombre: form.nombre.trim(),
+      descripcion: form.descripcion,
+      capacidad,
+      color: form.color,
+      estatus: form.estatus,
+      entrenadorId: form.entrenadorId,
+    };
+
+    try {
+      if (modal.editing) {
+        const actualizada = await api.patch<Clase>(`/clases/${modal.editing.idClase}`, payload);
+        setClases(prev => prev.map(c => c.idClase === actualizada.idClase ? actualizada : c));
+      } else {
+        const creada = await api.post<Clase>('/clases', payload);
+        setClases(prev => [...prev, creada]);
+      }
+      setModal({ open: false });
+    } catch (e) {
+      setFormError(e instanceof Error ? e.message : 'No se pudo guardar la clase.');
+    } finally {
+      setSaving(false);
     }
-    setModal({ open: false });
   };
 
-  const toggleEstatus = (id: string) => {
-    setClases(prev => prev.map(c => c.idClase === id ? { ...c, estatus: c.estatus === 'activo' ? 'inactivo' : 'activo' } : c));
+  // Cambia el estatus en el backend y actualiza la tarjeta con la respuesta.
+  const toggleEstatus = async (id: string) => {
+    const clase = clases.find(c => c.idClase === id);
+    if (!clase) return;
+    const nuevoEstatus: Estatus = clase.estatus === 'activo' ? 'inactivo' : 'activo';
+    try {
+      const actualizada = await api.patch<Clase>(`/clases/${id}`, { estatus: nuevoEstatus });
+      setClases(prev => prev.map(c => c.idClase === id ? actualizada : c));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo cambiar el estatus.');
+    }
   };
 
   return (
@@ -42,7 +112,7 @@ export function ClasesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>Clases</h1>
-          <p className="text-slate-500 text-sm mt-0.5">{clases.filter(c => c.estatus === 'activo').length} activas</p>
+          <p className="text-slate-500 text-sm mt-0.5">{clases.filter(c => c.estatus === 'activo').length} activas · {clases.length} totales</p>
         </div>
         <button onClick={openNew} className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors">
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
@@ -50,9 +120,16 @@ export function ClasesPage() {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {clases.map(clase => {
-          const entrenador = mockUsuarios.find(u => u.idUsuario === clase.entrenadorId);
+      <DataState
+        loading={loading}
+        error={error}
+        empty={!loading && !error && clases.length === 0}
+        emptyMessage="Aún no hay clases registradas. Crea la primera con el botón superior."
+        onRetry={cargar}
+      >
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {clases.map(clase => {
+            const entrenador = entrenadores.find(u => u.idUsuario === clase.entrenadorId);
           return (
             <div key={clase.idClase} className={`bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow ${clase.estatus === 'inactivo' ? 'opacity-60' : ''}`}>
               <div className="h-1.5" style={{ backgroundColor: clase.color }} />
@@ -97,7 +174,8 @@ export function ClasesPage() {
             </div>
           );
         })}
-      </div>
+        </div>
+      </DataState>
 
       <Modal open={modal.open} onClose={() => setModal({ open: false })} title={modal.editing ? 'Editar clase' : 'Nueva clase'}>
         <div className="space-y-4">
@@ -120,11 +198,13 @@ export function ClasesPage() {
               ))}
             </div>
           </div>
+          {formError && <p className="text-sm text-red-500">{formError}</p>}
         </div>
         <div className="flex gap-3 mt-6 pt-4 border-t border-slate-100">
-          <button onClick={() => setModal({ open: false })} className="flex-1 px-4 py-2.5 border border-slate-200 text-slate-700 rounded-xl text-sm font-medium hover:bg-slate-50">Cancelar</button>
-          <button onClick={save} className="flex-1 px-4 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-sm font-medium transition-colors">
-            {modal.editing ? 'Guardar cambios' : 'Crear clase'}
+          <button onClick={() => setModal({ open: false })} disabled={saving} className="flex-1 px-4 py-2.5 border border-slate-200 text-slate-700 rounded-xl text-sm font-medium hover:bg-slate-50 disabled:opacity-50">Cancelar</button>
+          <button onClick={save} disabled={saving} className="flex-1 px-4 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-sm font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+            {saving && <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" /></svg>}
+            {saving ? 'Guardando...' : modal.editing ? 'Guardar cambios' : 'Crear clase'}
           </button>
         </div>
       </Modal>
