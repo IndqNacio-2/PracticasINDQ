@@ -149,45 +149,98 @@ app.get('/api/clases', async (req, res) => {
   res.json(resultado.rows);
 });
 
-//Post para la api de cobros
+//POST para cobrar una reservación desde el modal de cobro del dashboard.
+//
+// Recibe el id de la RESERVA (no el del cliente). En una sola transacción:
+//   1) bloquea la reservación (FOR UPDATE) para que nadie la cobre dos veces,
+//   2) registra el pago en webcobro.pagos,
+//   3) marca la reservación como 'pagado'.
+// El monto se toma del precio real guardado en la reservación, no del navegador.
 app.post('/api/cobros', async (req, res) => {
-  const { clienteId, monto } = req.body;
+  const reservaId = Number(req.body?.reservaId);
 
-  //validacion 1 para saber si existe el cliente
-  const cliente = (
-    await pool.query('SELECT id, nombre FROM webcobro.clientes WHERE id = $1', [clienteId])
-  ).rows[0];
-  if (!cliente) return res.status(404).json({ error: 'Cliente no encontrado' });
+  //validacion 1 el id de la reservación es obligatorio
+  if (!Number.isInteger(reservaId) || reservaId <= 0) {
+    return res.status(400).json({ error: 'El id de la reservación es obligatorio.' });
+  }
 
-  //validacion 2 no cobrar el doble hoy
-  const yaCobrado = (
-    await pool.query(
-      `SELECT 1 FROM webcobro.pagos
-        WHERE cliente_id = $1 AND creado_en::date = CURRENT_DATE`,
-      [clienteId],
-    )
-  ).rows[0];
-  if (yaCobrado) return res.status(400).json({ error: `${cliente.nombre} ya fue cobrado hoy` });
+  const conexion = await pool.connect();
+  try {
+    await conexion.query('BEGIN');
 
-  const nuevoPago = (
-    await pool.query(
-      `INSERT INTO webcobro.pagos (cliente_id, cliente_nombre, monto)
-       VALUES ($1, $2, $3)
-       RETURNING id, cliente_id, cliente_nombre, monto::float8 AS monto, creado_en`,
-      [clienteId, cliente.nombre, monto],
-    )
-  ).rows[0];
+    //validacion 2 la reservación debe existir (bloqueada para el cobro)
+    const reserva = (
+      await conexion.query(
+        `SELECT id, cliente, tipo, estado, precio
+           FROM webcobro.reservas
+          WHERE id = $1
+          FOR UPDATE`,
+        [reservaId],
+      )
+    ).rows[0];
+    if (!reserva) {
+      await conexion.query('ROLLBACK');
+      return res.status(404).json({ error: 'Reservación no encontrada.' });
+    }
 
-  res.status(201).json({
-    mensaje: 'Pago registrado',
-    pago: {
-      id: Number(nuevoPago.id),
-      clienteId: nuevoPago.cliente_id,
-      clienteNombre: nuevoPago.cliente_nombre,
-      monto: nuevoPago.monto,
-      fecha: new Date(nuevoPago.creado_en).toDateString(),
-    },
-  });
+    //validacion 3 solo se puede cobrar una reservación pendiente
+    if (reserva.estado === 'pagado') {
+      await conexion.query('ROLLBACK');
+      return res.status(400).json({ error: 'Esta reservación ya fue cobrada.' });
+    }
+    if (reserva.estado === 'cancelado') {
+      await conexion.query('ROLLBACK');
+      return res.status(400).json({ error: 'No se puede cobrar una reservación cancelada.' });
+    }
+
+    // El socio puede tener ficha en webcobro.clientes; el visitante no.
+    const socio = (
+      await conexion.query('SELECT id FROM webcobro.clientes WHERE nombre = $1', [reserva.cliente])
+    ).rows[0];
+
+    const monto = Number(reserva.precio);
+
+    const nuevoPago = (
+      await conexion.query(
+        `INSERT INTO webcobro.pagos (reserva_id, cliente_id, cliente_nombre, monto)
+         VALUES ($1, $2, $3, $4)
+         RETURNING id, monto::float8 AS monto, creado_en`,
+        [reserva.id, socio ? socio.id : null, reserva.cliente, monto],
+      )
+    ).rows[0];
+
+    // Se marca la reservación como pagada y se devuelve con los mismos nombres
+    // de campo que GET /api/reservas para que el dashboard la reemplace tal cual.
+    const reservaPagada = (
+      await conexion.query(
+        `UPDATE webcobro.reservas
+            SET estado = 'pagado'
+          WHERE id = $1
+          RETURNING id, cliente AS client, tipo AS type, clase AS class,
+                    hora AS time, estado AS status, precio::float8 AS price`,
+        [reserva.id],
+      )
+    ).rows[0];
+
+    await conexion.query('COMMIT');
+
+    res.status(201).json({
+      mensaje: 'Cobro registrado',
+      reserva: reservaPagada,
+      pago: {
+        id: Number(nuevoPago.id),
+        reservaId: reserva.id,
+        monto: nuevoPago.monto,
+        fecha: new Date(nuevoPago.creado_en).toDateString(),
+      },
+    });
+  } catch (error) {
+    await conexion.query('ROLLBACK');
+    console.error('Error al registrar el cobro:', error);
+    res.status(500).json({ error: 'No se pudo registrar el cobro.' });
+  } finally {
+    conexion.release();
+  }
 });
 
 //GET para tarjetas superiores del dashboard

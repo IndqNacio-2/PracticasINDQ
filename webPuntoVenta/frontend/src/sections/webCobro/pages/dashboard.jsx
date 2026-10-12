@@ -138,48 +138,46 @@ export default function Dashboard() {
       setIsPaymentModalOpen(true);
      };
 
-      const handleConfirmPayment = async () => {
-       if (!selectedReservationForPayment) return;
+  const handleConfirmPayment = async () => {
+    if (!selectedReservationForPayment) return;
 
-        setPaymentLoading(true);
-        try {
-        const response = await fetch(`${API}/api/cobros`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-          clienteId: selectedReservationForPayment.id,
-          monto: selectedReservationForPayment.price
-          })
-        });
+    setPaymentLoading(true);
+    try {
+      // El cobro se guarda en el backend: marca la reservación como pagada y
+      // registra el pago en PostgreSQL (esquema webcobro). El monto lo toma el
+      // servidor del precio real de la reservación, no del navegador.
+      const response = await fetch(`${API}/api/cobros`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reservaId: selectedReservationForPayment.id }),
+      });
 
       const data = await response.json();
 
       if (!response.ok) {
-      throw new Error(data.error || 'Error al procesar el cobro');
+        throw new Error(data.error || 'Error al procesar el cobro');
       }
 
-      // Actualizar estado local
+      // Se reemplaza la fila con la reservación que devolvió el backend.
       setReservations(prev => prev.map(res =>
-      res.id === selectedReservationForPayment.id 
-        ? { ...res, status: 'pagado' } 
-        : res
-        ));
+        res.id === data.reserva.id ? data.reserva : res
+      ));
 
-        showNotification(`Cobro de $${selectedReservationForPayment.price} registrado.`, 'success');
-        /**
-         * Recalcula los KPIs: el cobro avaba de guardarse en PostgreSQL
-         * y la tarjeta de ingresos del dai debe reflejarlo al instante.
-         */
-        await cargarKpis();
-        setIsPaymentModalOpen(false);
-        setSelectedReservationForPayment(null);
+      showNotification(`Cobro de $${data.pago.monto} registrado.`, 'success');
 
-        } catch (error) { 
-        showNotification(error.message, 'error');
-        } finally {
-        setPaymentLoading(false);
-        }
-          };
+      /**
+       * Recalcula los KPIs: el cobro acaba de guardarse en PostgreSQL
+       * y la tarjeta de ingresos del día debe reflejarlo al instante.
+       */
+      await cargarKpis();
+      setIsPaymentModalOpen(false);
+      setSelectedReservationForPayment(null);
+    } catch (error) {
+      showNotification(error.message, 'error');
+    } finally {
+      setPaymentLoading(false);
+    }
+  };
 
   const handleCancel = (id) => {
     try {
