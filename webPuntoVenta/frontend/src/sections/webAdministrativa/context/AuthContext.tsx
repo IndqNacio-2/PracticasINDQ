@@ -1,79 +1,41 @@
 import { createContext, useContext, useState, type ReactNode } from 'react';
+import { api } from '../lib/api';
 import type { Usuario, UserRole } from '../types';
 
 interface AuthContextType {
   user: Usuario | null;
-  login: (correo: string, password: string) => boolean;
+  // Devuelve true si el login fue correcto; lanza el mensaje de error si no.
+  login: (correo: string, password: string) => Promise<boolean>;
   logout: () => void;
   hasRole: (roles: UserRole[]) => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-// Usuarios de demostración: uno por rol.
-// TODO: reemplazar por la autenticación real con tu API.
-const USUARIOS: (Usuario & { password: string })[] = [
-  {
-    idUsuario: 'u1',
-    nombre: 'Administrador',
-    apellidos: 'Demo',
-    correo: 'admin@gymfit.mx',
-    telefono: '',
-    codigoAcceso: 'ADM-001',
-    rol: 'administrador',
-    estatus: 'activo',
-    fechaCreacion: '2026-01-01',
-    password: 'admin123',
-  },
-  {
-    idUsuario: 'u2',
-    nombre: 'Entrenador',
-    apellidos: 'Demo',
-    correo: 'entrenador@gymfit.mx',
-    telefono: '',
-    codigoAcceso: 'ENT-001',
-    rol: 'entrenador',
-    estatus: 'activo',
-    fechaCreacion: '2026-01-01',
-    password: 'entrenador123',
-  },
-  {
-    idUsuario: 'u3',
-    nombre: 'Recepción',
-    apellidos: 'Demo',
-    correo: 'recepcion@gymfit.mx',
-    telefono: '',
-    codigoAcceso: 'REC-001',
-    rol: 'recepcion',
-    estatus: 'activo',
-    fechaCreacion: '2026-01-01',
-    password: 'recepcion123',
-  },
-];
-
 // Clave donde el navegador guarda la sesión administrativa.
 const CLAVE_SESION = 'administrativa_sesion';
+// Clave del token JWT que usa el cliente HTTP (lib/api.ts) para autorizar.
+const CLAVE_TOKEN = 'token';
 
 /**
  * Restaura la sesión guardada al volver a cargar la aplicación.
  *
- * Al navegar entre módulos (por ejemplo desde el login de cobro) la
- * aplicación se recarga y el estado en memoria se pierde; con esta función
- * el usuario sigue quedando puesto en el dashboard sin volver a iniciar
- * sesión. Si el usuario ya no existe o está inactivo, se limpia la sesión.
+ * Al navegar entre módulos la aplicación se recarga y el estado en memoria se
+ * pierde; con esto el usuario sigue puesto en el dashboard sin volver a iniciar
+ * sesión. El token se restaura en localStorage para que las llamadas al backend
+ * sigan autorizadas.
  */
 function restaurarSesion(): Usuario | null {
   try {
     const crudo = localStorage.getItem(CLAVE_SESION);
     if (!crudo) return null;
-    const guardado = JSON.parse(crudo) as Pick<Usuario, 'correo'>;
-    const actual = USUARIOS.find(u => u.correo === guardado.correo && u.estatus === 'activo');
-    if (!actual) {
+    const guardado = JSON.parse(crudo) as Pick<Usuario, 'idUsuario' | 'estatus'>;
+    // Si la sesión guardada es de un usuario inactivo, se descarta.
+    if (!guardado?.idUsuario || guardado.estatus !== 'activo') {
       localStorage.removeItem(CLAVE_SESION);
       return null;
     }
-    const { password: _password, ...usuario } = actual;
-    return usuario;
+    return guardado as Usuario;
   } catch {
     localStorage.removeItem(CLAVE_SESION);
     return null;
@@ -83,21 +45,20 @@ function restaurarSesion(): Usuario | null {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<Usuario | null>(restaurarSesion);
 
-  const login = (correo: string, password: string) => {
-    const found = USUARIOS.find(
-      u => u.correo === correo && u.password === password && u.estatus === 'activo'
-    );
-    if (!found) return false;
-    const { password: _password, ...usuario } = found;
-    setUser(usuario);
-    // Guarda la sesión en el navegador para que sobreviva a los cambios de módulo.
-    localStorage.setItem(CLAVE_SESION, JSON.stringify(usuario));
+  const login = async (correo: string, password: string) => {
+    // Autenticación real contra el backend (MongoDB + JWT).
+    const data = await api.post<{ token: string; user: Usuario }>('/auth/login', { correo, password });
+    // Guarda el token (lo lee lib/api.ts) y la sesión para sobrevivir a recargas.
+    localStorage.setItem(CLAVE_TOKEN, data.token);
+    localStorage.setItem(CLAVE_SESION, JSON.stringify(data.user));
+    setUser(data.user);
     return true;
   };
 
   const logout = () => {
     setUser(null);
     localStorage.removeItem(CLAVE_SESION);
+    localStorage.removeItem(CLAVE_TOKEN);
   };
 
   const hasRole = (roles: UserRole[]) => (user ? roles.includes(user.rol) : false);

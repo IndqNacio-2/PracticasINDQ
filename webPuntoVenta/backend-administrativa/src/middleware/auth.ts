@@ -1,11 +1,12 @@
 import type { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import type { UserRole } from '../data/usuarios';
+import type { UserRole } from '../models/Usuarios/usuarios';
 
 declare global {
   namespace Express {
     interface Request {
-      auth?: { id: number; rol: UserRole };
+      // id es el ObjectId (string) del usuario en MongoDB.
+      auth?: { id: string; rol: UserRole };
     }
   }
 }
@@ -17,7 +18,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
   }
   try {
     const payload = jwt.verify(header.slice(7), process.env.JWT_SECRET!) as jwt.JwtPayload;
-    req.auth = { id: Number(payload.sub), rol: payload.rol as UserRole };
+    req.auth = { id: String(payload.sub), rol: payload.rol as UserRole };
     next();
   } catch {
     return res.status(401).json({ message: 'Token inválido o expirado.' });
