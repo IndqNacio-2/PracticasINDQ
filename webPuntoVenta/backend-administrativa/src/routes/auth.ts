@@ -32,7 +32,9 @@ router.post('/login', async (req, res) => {
 
   const token = jwt.sign({ rol: usuario.rol }, process.env.JWT_SECRET!, {
     subject: String(usuario._id),
-    expiresIn: '8h',
+    // Duración configurable en .env (JWT_EXPIRES_IN, p. ej. "1d"); si no viene,
+    // se usan 8 horas por defecto.
+    expiresIn: (process.env.JWT_EXPIRES_IN || '8h') as jwt.SignOptions['expiresIn'],
   });
 
   // usuario.toJSON() ya quita password (select:false + transform).

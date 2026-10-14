@@ -35,6 +35,19 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     } catch {
       // el cuerpo no era JSON, se conserva el statusText
     }
+    // 401 = token vencido o inválido: se limpia la sesión local y se regresa al
+    // login para que, al volver a iniciar sesión, el backend emita un token
+    // nuevo. Sin esto el usuario quedaría pegado viendo "Token inválido o
+    // expirado" en todas las pantallas. (El 401 del propio /auth/login son
+    // credenciales incorrectas: se muestra en la pantalla de login y ahí NO se
+    // cierra la sesión.)
+    if (res.status === 401 && path !== '/auth/login') {
+      localStorage.removeItem('token');
+      localStorage.removeItem('administrativa_sesion');
+      if (!window.location.pathname.startsWith('/administrativa/login')) {
+        window.location.assign('/administrativa/login');
+      }
+    }
     throw new ApiError(message, res.status);
   }
 

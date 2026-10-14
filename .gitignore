@@ -23,3 +23,6 @@ database/mongo/data/
 **/mobile/.flutter-plugins-dependencies
 **/mobile/build/
 **/mobile/.packages
+
+# Documento de contexto interno del proyecto: nunca se sube al repo.
+webPuntoVenta/CONTEXTO-DEL-PROYECTO.md
