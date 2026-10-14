@@ -236,6 +236,60 @@ app.get('/api/clientes', async (req, res) => {
   res.json(resultado.rows);
 });
 
+/*
+ * PATCH para cambiar el estatus de una reservación (soft delete). NO se borra
+ * el registro: se marca 'cancelado' o 'asistido' para conservar el historial.
+ * El tablero de cobro oculta las canceladas y el módulo administrativo las
+ * lista en sus filtros ("Canceladas" / "Asistidas").
+ */
+app.patch('/api/reservas/:id', async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    return res.status(400).json({ error: 'El id de la reservación no es válido.' });
+  }
+
+  // Estatus que se permite cambiar desde fuera: cancelar o confirmar asistencia.
+  const { status } = req.body ?? {};
+  if (status !== 'cancelado' && status !== 'asistido') {
+    return res.status(400).json({ error: "El estatus debe ser 'cancelado' o 'asistido'." });
+  }
+
+  const existente = (
+    await pool.query(
+      `SELECT id, estado FROM webcobro.reservas WHERE id = $1`,
+      [id],
+    )
+  ).rows[0];
+
+  if (!existente) {
+    return res.status(404).json({ error: 'La reservación no existe.' });
+  }
+  if (existente.estado === status) {
+    return res.status(409).json({ error: status === 'asistido'
+      ? 'Este cliente ya tiene asistencia confirmada.'
+      : 'La reservación ya estaba cancelada.' });
+  }
+  // No tiene sentido confirmar asistencia de una reservación cancelada.
+  if (status === 'asistido' && existente.estado === 'cancelado') {
+    return res.status(409).json({ error: 'No se puede confirmar asistencia de una reservación cancelada.' });
+  }
+
+  const actualizada = (
+    await pool.query(
+      `UPDATE webcobro.reservas SET estado = $2
+        WHERE id = $1
+        RETURNING id, cliente AS client, tipo AS type, clase AS class,
+                  hora AS time, estado AS status, precio::float8 AS price`,
+      [id, status],
+    )
+  ).rows[0];
+
+  res.json({
+    mensaje: status === 'asistido' ? 'Asistencia confirmada' : 'Reservación cancelada',
+    reservacion: actualizada,
+  });
+});
+
 //GET para el dropdown del modal de reservas
 app.get('/api/clases', async (req, res) => {
   const resultado = await pool.query(
@@ -397,7 +451,7 @@ app.get('/api/kpis', async (req, res) => {
   const resumen = (
     await pool.query(
       `SELECT COUNT(*) FILTER (WHERE estado = 'pendiente')::int AS pendientes,
-              COUNT(*)::int AS total
+              COUNT(*) FILTER (WHERE estado <> 'cancelado')::int AS total
          FROM webcobro.reservas`,
     )
   ).rows[0];

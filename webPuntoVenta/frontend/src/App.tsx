@@ -617,11 +617,11 @@ export default function App() {
         {isLoading && (
           <div
             className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-4"
-            style={{ backgroundColor: "#F0F2F7" }}
+            style={{ backgroundColor: "#F3F4F6" }}
           >
             <div
               className="h-10 w-10 animate-spin rounded-full border-4 border-[#E5E7EB]"
-              style={{ borderTopColor: "#FF5C00" }}
+              style={{ borderTopColor: "#111827" }}
             />
             <p className="text-sm font-medium text-[#6B7280]">
               Cargando información de la base de datos...
@@ -631,17 +631,17 @@ export default function App() {
         {activeModule === "sale" && (
           <div
             className="flex h-full overflow-hidden"
-            style={{ backgroundColor: "#F0F2F7" }}
+            style={{ backgroundColor: "#F3F4F6" }}
           >
             {/* Left panel — Products */}
             <div className="flex flex-col min-w-0" style={{ width: '65%' }}>
               {/* Top bar */}
-              <div className="flex-shrink-0 px-6 pt-5 pb-4" style={{ backgroundColor: '#F0F2F7' }}>
+              <div className="flex-shrink-0 px-6 pt-5 pb-4" style={{ backgroundColor: '#F3F4F6' }}>
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-3">
                     <div
                       className="w-9 h-9 rounded-xl flex items-center justify-center text-white shadow-md"
-                      style={{ backgroundColor: "#FF5C00" }}
+                      style={{ backgroundColor: "#111827" }}
                     >
                       <MaterialIcon name="point_of_sale" className="text-2xl" filled />
                     </div>
@@ -660,7 +660,7 @@ export default function App() {
                     onChange={e => setSearch(e.target.value)}
                     placeholder="Buscar producto..."
                     className="w-full pl-10 pr-4 py-2.5 bg-white border border-[#E5E7EB] rounded-xl text-sm text-[#0D0F14] placeholder-[#9CA3AF] focus:outline-none focus:ring-2 transition-all"
-                    style={{ '--tw-ring-color': '#FF5C00' } as CSSProperties}
+                    style={{ '--tw-ring-color': '#111827' } as CSSProperties}
                   />
                   {search && (
                     <button
@@ -683,9 +683,9 @@ export default function App() {
                       className={`px-4 py-1.5 rounded-full text-sm font-semibold whitespace-nowrap transition-all duration-150 flex-shrink-0 ${
                         activeCategory === cat
                           ? 'text-white shadow-md'
-                          : 'bg-white text-[#6B7280] border border-[#E5E7EB] hover:border-[#FF5C00] hover:text-[#FF5C00]'
+                          : 'bg-white text-[#6B7280] border border-[#E5E7EB] hover:border-[#111827] hover:text-[#111827]'
                       }`}
-                      style={activeCategory === cat ? { backgroundColor: '#FF5C00' } : {}}
+                      style={activeCategory === cat ? { backgroundColor: '#6B7280' } : {}}
                     >
                       {cat}
                     </button>
@@ -700,7 +700,7 @@ export default function App() {
                     <MaterialIcon name="search_off" className="text-5xl text-[#CBD5E1]" />
                     <p className="text-sm text-[#9CA3AF] font-medium">No se encontraron productos</p>
                     {search && (
-                      <button onClick={() => setSearch('')} className="text-sm font-semibold hover:underline" style={{ color: '#FF5C00' }}>
+                      <button onClick={() => setSearch('')} className="text-sm font-semibold hover:underline" style={{ color: '#111827' }}>
                         Limpiar búsqueda
                       </button>
                     )}

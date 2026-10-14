@@ -28,7 +28,7 @@ export default function CartPanel({
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-bold text-[#0D0F14]">Venta actual</h2>
           {cart.length > 0 && (
-            <span className="text-xs bg-[#FF5C00] text-white font-bold px-2 py-0.5 rounded-full">
+            <span className="text-xs bg-[#111827] text-white font-bold px-2 py-0.5 rounded-full">
               {cart.reduce((s, i) => s + i.quantity, 0)} artículos
             </span>
           )}
@@ -76,7 +76,7 @@ export default function CartPanel({
                         type="button"
                         onClick={() => onUpdateQuantity(item.productId, -1)}
                         aria-label={`Disminuir cantidad de ${p.name}`}
-                        className="w-7 h-7 bg-white border border-[#E5E7EB] rounded-lg flex items-center justify-center text-[#374151] hover:border-[#FF5C00] hover:text-[#FF5C00] transition-colors text-base font-bold leading-none"
+                        className="w-7 h-7 bg-white border border-[#E5E7EB] rounded-lg flex items-center justify-center text-[#374151] hover:border-[#111827] hover:text-[#111827] transition-colors text-base font-bold leading-none"
                       >
                         <MaterialIcon name="remove" className="text-lg" />
                       </button>
@@ -88,7 +88,7 @@ export default function CartPanel({
                         onClick={() => onUpdateQuantity(item.productId, 1)}
                         disabled={item.quantity >= p.stock}
                         aria-label={`Aumentar cantidad de ${p.name}`}
-                        className="w-7 h-7 bg-white border border-[#E5E7EB] rounded-lg flex items-center justify-center text-[#374151] hover:border-[#FF5C00] hover:text-[#FF5C00] transition-colors text-base font-bold leading-none disabled:opacity-30 disabled:cursor-not-allowed"
+                        className="w-7 h-7 bg-white border border-[#E5E7EB] rounded-lg flex items-center justify-center text-[#374151] hover:border-[#111827] hover:text-[#111827] transition-colors text-base font-bold leading-none disabled:opacity-30 disabled:cursor-not-allowed"
                       >
                         <MaterialIcon name="add" className="text-lg" />
                       </button>
@@ -117,7 +117,7 @@ export default function CartPanel({
           </div>
           <div className="flex justify-between items-center pt-2.5 border-t border-[#E5E7EB]">
             <span className="text-base font-bold text-[#0D0F14]">Total</span>
-            <span className="text-2xl font-bold tabular-nums" style={{ fontFamily: 'Outfit, sans-serif', color: '#FF5C00' }}>
+            <span className="text-2xl font-bold tabular-nums" style={{ fontFamily: 'Outfit, sans-serif', color: '#111827' }}>
               {fmt(total)}
             </span>
           </div>
@@ -127,7 +127,7 @@ export default function CartPanel({
           onClick={onCobrar}
           disabled={cart.length === 0}
           className="w-full py-3.5 text-white font-bold text-base rounded-xl transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 active:scale-[0.98] mb-2"
-          style={{ fontFamily: 'Outfit, sans-serif', backgroundColor: '#FF5C00' }}
+          style={{ fontFamily: 'Outfit, sans-serif', backgroundColor: '#6B7280' }}
         >
           COBRAR
         </button>

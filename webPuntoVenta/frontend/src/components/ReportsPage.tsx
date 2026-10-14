@@ -159,9 +159,9 @@ const PAYMENT_METHOD_BAR_CLASSES: Record<
     SaleRecord["paymentMethod"],
     string
 > = {
-    efectivo: "bg-[#FF5C00]",
-    tarjeta: "bg-[#6D28D9]",
-    transferencia: "bg-[#1D4ED8]",
+    efectivo: "bg-[#111827]",
+    tarjeta: "bg-[#6B7280]",
+    transferencia: "bg-[#9CA3AF]",
 };
 
 /*
@@ -212,8 +212,8 @@ const WASTE_REASON_BAR_CLASSES: Record<WasteReason, string> = {
     damaged: "bg-[#F59E0B]",
     expired: "bg-[#DC2626]",
     broken: "bg-[#DC2626]",
-    "internal-use": "bg-[#1D4ED8]",
-    "inventory-error": "bg-[#6D28D9]",
+    "internal-use": "bg-[#9CA3AF]",
+    "inventory-error": "bg-[#6B7280]",
     lost: "bg-[#6B7280]",
     other: "bg-[#6B7280]",
 };
@@ -226,8 +226,8 @@ const WASTE_REASON_ICON_CLASSES: Record<WasteReason, string> = {
     damaged: "bg-[#FEF3C7] text-[#92400E]",
     expired: "bg-[#FEE2E2] text-[#991B1B]",
     broken: "bg-[#FEE2E2] text-[#991B1B]",
-    "internal-use": "bg-[#DBEAFE] text-[#1D4ED8]",
-    "inventory-error": "bg-[#EDE9FE] text-[#6D28D9]",
+    "internal-use": "bg-[#F3F4F6] text-[#4B5563]",
+    "inventory-error": "bg-[#F3F4F6] text-[#4B5563]",
     lost: "bg-[#F3F4F6] text-[#4B5563]",
     other: "bg-[#F3F4F6] text-[#4B5563]",
 };
@@ -797,11 +797,11 @@ export default function ReportsPage({
         summary.salesCount > 0 || filteredWasteRecords.length > 0;
 
   return (
-    <section className="flex h-full flex-col overflow-hidden bg-[#F0F2F7]">
+    <section className="flex h-full flex-col overflow-hidden bg-[#F3F4F6]">
       {/* Encabezado del módulo. */}
       <header className="flex flex-shrink-0 items-center justify-between border-b border-[#E5E7EB] bg-white px-7 py-5">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#FFF0E6] text-[#FF5C00]">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#F3F4F6] text-[#111827]">
             <MaterialIcon
               name="bar_chart"
               className="text-2xl"
@@ -833,14 +833,14 @@ export default function ReportsPage({
             title="Ventas registradas"
             value={formatUnits(summary.salesCount)}
             icon="receipt_long"
-            iconClassName="bg-[#EDE9FE] text-[#6D28D9]"
+            iconClassName="bg-[#F3F4F6] text-[#4B5563]"
           />
 
           <SummaryCard
             title="Importe vendido"
             value={formatCurrency(summary.totalSales)}
             icon="point_of_sale"
-            iconClassName="bg-[#FFF0E6] text-[#FF5C00]"
+            iconClassName="bg-[#F3F4F6] text-[#111827]"
           />
 
           <SummaryCard
@@ -854,7 +854,7 @@ export default function ReportsPage({
             title="Unidades vendidas"
             value={formatUnits(summary.totalUnits)}
             icon="shopping_bag"
-            iconClassName="bg-[#DBEAFE] text-[#1D4ED8]"
+            iconClassName="bg-[#F3F4F6] text-[#4B5563]"
           />
 
           <SummaryCard
@@ -869,7 +869,7 @@ export default function ReportsPage({
         <div className="mb-6 rounded-2xl border border-[#E5E7EB] bg-white p-5">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-[#EDE9FE] text-[#6D28D9]">
+              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-[#F3F4F6] text-[#111827]">
                 <MaterialIcon
                   name="filter_list"
                   className="text-xl"
@@ -892,7 +892,7 @@ export default function ReportsPage({
               <button
                 type="button"
                 onClick={clearFilters}
-                className="flex flex-shrink-0 items-center gap-2 rounded-xl border border-[#E5E7EB] px-3 py-2 text-xs font-semibold text-[#6B7280] hover:border-[#FF5C00] hover:text-[#FF5C00]"
+                className="flex flex-shrink-0 items-center gap-2 rounded-xl border border-[#E5E7EB] px-3 py-2 text-xs font-semibold text-[#6B7280] hover:border-[#111827] hover:text-[#111827]"
               >
                 <MaterialIcon
                   name="filter_list_off"
@@ -916,7 +916,7 @@ export default function ReportsPage({
                 max={toDate === "" ? undefined : toDate}
                 onChange={(event) => setFromDate(event.target.value)}
                 aria-label="Fecha inicial del reporte"
-                className="w-full rounded-xl border border-[#E5E7EB] px-3 py-2.5 text-sm text-[#0D0F14] outline-none focus:border-[#FF5C00]"
+                className="w-full rounded-xl border border-[#E5E7EB] px-3 py-2.5 text-sm text-[#0D0F14] outline-none focus:border-[#111827]"
               />
             </label>
 
@@ -931,7 +931,7 @@ export default function ReportsPage({
                 min={fromDate === "" ? undefined : fromDate}
                 onChange={(event) => setToDate(event.target.value)}
                 aria-label="Fecha final del reporte"
-                className="w-full rounded-xl border border-[#E5E7EB] px-3 py-2.5 text-sm text-[#0D0F14] outline-none focus:border-[#FF5C00]"
+                className="w-full rounded-xl border border-[#E5E7EB] px-3 py-2.5 text-sm text-[#0D0F14] outline-none focus:border-[#111827]"
               />
             </label>
 
@@ -950,7 +950,7 @@ export default function ReportsPage({
                   )
                 }
                 aria-label="Filtrar por forma de pago"
-                className="w-full rounded-xl border border-[#E5E7EB] bg-white px-3 py-2.5 text-sm text-[#374151] outline-none focus:border-[#FF5C00]"
+                className="w-full rounded-xl border border-[#E5E7EB] bg-white px-3 py-2.5 text-sm text-[#374151] outline-none focus:border-[#111827]"
               >
                 <option value="all">Todas las formas de pago</option>
 
@@ -994,7 +994,7 @@ export default function ReportsPage({
           /* Cuando ya existen datos muestro el detalle de lo considerado. */
           <div className="mb-5 overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white">
             <div className="flex items-center gap-3 border-b border-[#E5E7EB] px-5 py-4">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#FFF0E6] text-[#FF5C00]">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#F3F4F6] text-[#111827]">
                 <MaterialIcon
                   name="insights"
                   className="text-xl"
@@ -1049,7 +1049,7 @@ export default function ReportsPage({
         ) : !hasAnyData ? (
           /* Cuando todavía no hay datos explico de dónde saldrá la información. */
           <div className="flex flex-col items-center justify-center rounded-2xl border border-[#E5E7EB] bg-white py-20 text-center">
-            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-[#FFF5F0] text-[#FF5C00]">
+            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-[#F3F4F6] text-[#111827]">
               <MaterialIcon
                 name="bar_chart"
                 className="text-4xl"
@@ -1099,7 +1099,7 @@ export default function ReportsPage({
             <button
               type="button"
               onClick={clearFilters}
-              className="mt-4 rounded-xl bg-[#FF5C00] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#E64F00]"
+              className="mt-4 rounded-xl bg-[#6B7280] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#111827]"
             >
               Limpiar filtros
             </button>
@@ -1113,7 +1113,7 @@ export default function ReportsPage({
             title="Ventas del periodo"
             description="Operaciones consideradas después de aplicar los filtros."
             icon="receipt_long"
-            iconClassName="bg-[#EDE9FE] text-[#6D28D9]"
+            iconClassName="bg-[#F3F4F6] text-[#4B5563]"
           >
             {filteredSales.length === 0 ? (
               <EmptySection
@@ -1172,7 +1172,7 @@ export default function ReportsPage({
                           <span className="inline-flex items-center gap-2 font-semibold text-[#374151]">
                             <MaterialIcon
                               name={PAYMENT_METHOD_ICONS[sale.paymentMethod]}
-                              className="text-lg text-[#FF5C00]"
+                              className="text-lg text-[#111827]"
                             />
 
                             {PAYMENT_METHOD_LABELS[sale.paymentMethod]}
@@ -1226,7 +1226,7 @@ export default function ReportsPage({
             title="Productos más vendidos"
             description="Los artículos con más unidades vendidas en el periodo."
             icon="local_fire_department"
-            iconClassName="bg-[#FFF0E6] text-[#FF5C00]"
+            iconClassName="bg-[#F3F4F6] text-[#111827]"
           >
             {reports.topProducts.length === 0 ? (
               <EmptySection
@@ -1241,9 +1241,9 @@ export default function ReportsPage({
                   detail={`${formatCount(row.units, "unidad vendida", "unidades vendidas")} · ${formatCurrency(row.total)}`}
                   value={formatUnits(row.units)}
                   percent={toPercent(row.units, reports.topProductUnits)}
-                  barClassName="bg-[#FF5C00]"
+                  barClassName="bg-[#111827]"
                   icon={row.icon}
-                  iconClassName="bg-[#FFF0E6] text-[#FF5C00]"
+                  iconClassName="bg-[#F3F4F6] text-[#111827]"
                 />
               ))
             )}
@@ -1282,7 +1282,7 @@ export default function ReportsPage({
             title="Productos con más mermas"
             description="Los artículos que más pérdida generaron en el periodo."
             icon="report"
-            iconClassName="bg-[#FFEDD5] text-[#C2410C]"
+            iconClassName="bg-[#F3F4F6] text-[#4B5563]"
           >
             {reports.wasteByProduct.length === 0 ? (
               <EmptySection
@@ -1297,9 +1297,9 @@ export default function ReportsPage({
                   detail={`${formatCount(row.units, "unidad perdida", "unidades perdidas")} · ${toPercent(row.loss, reports.wasteLoss)}% de la pérdida total`}
                   value={formatCurrency(row.loss)}
                   percent={toPercent(row.loss, reports.wasteProductLoss)}
-                  barClassName="bg-[#F97316]"
+                  barClassName="bg-[#6B7280]"
                   icon="inventory_2"
-                  iconClassName="bg-[#FFEDD5] text-[#C2410C]"
+                  iconClassName="bg-[#F3F4F6] text-[#4B5563]"
                 />
               ))
             )}
@@ -1308,19 +1308,19 @@ export default function ReportsPage({
         )}
 
         {/* Aclaro qué funciones quedan pendientes para el reporte final. */}
-        <div className="mt-5 flex items-start gap-3 rounded-xl border border-[#FED7C3] bg-[#FFF7F2] p-4">
+        <div className="mt-5 flex items-start gap-3 rounded-xl border border-[#E5E7EB] bg-[#F3F4F6] p-4">
           <MaterialIcon
             name="info"
-            className="mt-0.5 text-xl text-[#FF5C00]"
+            className="mt-0.5 text-xl text-[#111827]"
             filled
           />
 
           <div>
-            <p className="text-sm font-bold text-[#5A3825]">
+            <p className="text-sm font-bold text-[#111827]">
               Alcance actual del reporte
             </p>
 
-            <p className="mt-0.5 text-xs leading-5 text-[#9A6B50]">
+            <p className="mt-0.5 text-xs leading-5 text-[#6B7280]">
               El reporte calcula los indicadores del periodo con las ventas y
               las mermas de la sesión, permite filtrar por rango de fechas y
               por forma de pago, y muestra el detalle de las ventas, el

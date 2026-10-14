@@ -1,30 +1,21 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import {
-  LogOut, Calendar, Clock, DollarSign, UserPlus,
-  AlertCircle, CheckCircle, CreditCard, X,
-  Banknote, Landmark, ArrowLeft
-} from 'lucide-react';
+import MaterialIcon from '../../../components/MaterialIcon';
 
-const MOCK_RESERVATIONS = [
-  { id: 1, client: "Ana García", class: "Yoga", time: "10:00", status: "pendiente", price: 150, type: 'cliente' },
-  { id: 2, client: "Carlos López", class: "CrossFit", time: "10:30", status: "pagado", price: 200, type: 'cliente' },
-  { id: 3, client: "Sofía Martínez", class: "Pilates", time: "11:00", status: "pendiente", price: 180, type: 'visitante' },
-  { id: 4, client: "Jorge Ruiz", class: "Spinning", time: "11:30", status: "asistido", price: 120, type: 'cliente' },
-  { id: 5, client: "Lucía Méndez", class: "Yoga", time: "12:00", status: "pendiente", price: 150, type: 'cliente' },
-];
-
-let nextId = 6; // (ya no se usa: el identificador lo asigna la base de datos)
+/*
+ * Las reservaciones se cargan desde el backend (esquema webcobro). Ya no hay
+ * datos de ejemplo: la tabla inicia vacía y se llena con la respuesta de la API.
+ */
 
 /*
  * Las mismas formas de pago que maneja el Punto de Venta: efectivo, tarjeta
- * y transferencia. Los iconos son de lucide-react (equivalentes a los del POS).
+ * y transferencia. Los iconos son Material Symbols, iguales a los del POS.
  */
 const PAY_METHODS = [
-  { key: 'efectivo', label: 'Efectivo', Icon: Banknote },
-  { key: 'tarjeta', label: 'Tarjeta', Icon: CreditCard },
-  { key: 'transferencia', label: 'Transferencia', Icon: Landmark },
+  { key: 'efectivo', label: 'Efectivo', icon: 'payments' },
+  { key: 'tarjeta', label: 'Tarjeta', icon: 'credit_card' },
+  { key: 'transferencia', label: 'Transferencia', icon: 'account_balance' },
 ];
 
 const METHOD_LABELS = {
@@ -38,7 +29,7 @@ export default function Dashboard() {
   const navigate = useNavigate();
 
   // ========== ESTADOS ==========
-  const [reservations, setReservations] = useState(MOCK_RESERVATIONS);
+  const [reservations, setReservations] = useState([]);
   const [notification, setNotification] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -87,7 +78,9 @@ export default function Dashboard() {
   useEffect(() => {
     fetch(`${API}/api/reservas`)
       .then(res => res.json())
-      .then(data => setReservations(data))
+      // Las canceladas no se muestran en el tablero: quedan como historial
+      // (el módulo administrativo sí las lista en su filtro "Canceladas").
+      .then(data => setReservations((Array.isArray(data) ? data : []).filter(r => r.status !== 'cancelado')))
       .catch(() => console.warn('Backend no disponible, usando datos locales.'));
 
     fetch(`${API}/api/clientes`)
@@ -198,15 +191,33 @@ export default function Dashboard() {
 
   // ========== FUNCIONES DE ACCIONES PRINCIPALES ==========
 
-  const handleConfirmAttendance = (id) => {
+  /*
+   * Confirmar asistencia marca la reservación como "asistido" en el backend
+   * (PostgreSQL, esquema webcobro) para que también se refleje en el módulo
+   * administrativo (filtro "Asistidas"). NO se borra el registro.
+   */
+  const handleConfirmAttendance = async (id) => {
     try {
       const reservation = reservations.find(r => r.id === id);
       if (!reservation) throw new Error('La reservación no existe.');
       if (reservation.status === 'asistido') throw new Error('Este cliente ya tiene asistencia confirmada.');
 
+      const response = await fetch(`${API}/api/reservas/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'asistido' }),
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        throw new Error(body?.error || 'No se pudo confirmar la asistencia.');
+      }
+
       setReservations(prev => prev.map(res =>
         res.id === id ? { ...res, status: 'asistido' } : res
       ));
+      // Si estaba pendiente ya no cuenta como cliente esperado en el KPI.
+      await cargarKpis();
       showNotification(`Asistencia confirmada para ${reservation.client}.`, 'success');
     } catch (error) {
       showNotification(error.message, 'error');
@@ -287,7 +298,12 @@ export default function Dashboard() {
     }
   };
 
-  const handleCancel = (id) => {
+  /*
+   * Cancelar una reservación la marca como "cancelado" en el backend
+   * (PostgreSQL, esquema webcobro). NO se borra el registro: se conserva como
+   * historial y el módulo administrativo la muestra en su filtro "Canceladas".
+   */
+  const handleCancel = async (id) => {
     try {
       const reservation = reservations.find(r => r.id === id);
       if (!reservation) throw new Error('La reservación ya no existe.');
@@ -297,7 +313,20 @@ export default function Dashboard() {
       );
       if (!confirmed) return;
 
+      const response = await fetch(`${API}/api/reservas/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'cancelado' }),
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        throw new Error(body?.error || 'No se pudo cancelar la reservación.');
+      }
+
+      // Se quita de la tabla y se refrescan los KPIs (ya no cuenta como pendiente).
       setReservations(prev => prev.filter(res => res.id !== id));
+      await cargarKpis();
       showNotification('Reservación cancelada.', 'success');
     } catch (error) {
       showNotification(error.message, 'error');
@@ -444,10 +473,10 @@ export default function Dashboard() {
     <div className="min-h-screen bg-dark-900 text-white font-sans">
 
       {/* --- HEADER --- */}
-      <nav className="bg-dark-800 border-b border-gray-700 px-6 py-4 flex justify-between items-center shadow-lg">
+      <nav className="bg-dark-800 border-b border-[#111827] px-6 py-4 flex justify-between items-center shadow-lg">
         <div className="flex items-center gap-3">
-          <div className="bg-primary p-2 rounded-lg">
-            <Calendar className="h-6 w-6 text-white" />
+          <div className="bg-[#6B7280] p-2 rounded-lg">
+            <MaterialIcon name="event" className="text-2xl text-white" filled />
           </div>
           <div>
             <h1 className="text-xl font-bold text-white">GymFit</h1>
@@ -459,8 +488,8 @@ export default function Dashboard() {
             <p className="text-sm text-gray-300">Hola, <span className="font-bold text-white">{user?.name}</span></p>
             <p className="text-xs text-gray-500">{new Date().toLocaleDateString()}</p>
           </div>
-          <button onClick={handleLogout} className="flex items-center px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg text-white text-sm transition-colors">
-            <LogOut className="h-4 w-4 mr-2" /> Salir
+          <button onClick={handleLogout} className="flex items-center px-4 py-2 bg-[#4B5563] hover:bg-[#111827] rounded-lg text-white text-sm transition-colors">
+            <MaterialIcon name="logout" className="text-lg mr-2" /> Salir
           </button>
         </div>
       </nav>
@@ -472,38 +501,38 @@ export default function Dashboard() {
           <div className={`fixed top-20 right-6 px-6 py-3 rounded-lg shadow-xl flex items-center z-50 text-white ${
             notification.type === 'error' ? 'bg-red-600' : 'bg-green-600'
           }`}>
-            {notification.type === 'error' ? <AlertCircle className="h-5 w-5 mr-2" /> : <CheckCircle className="h-5 w-5 mr-2" />}
+            {notification.type === 'error' ? <MaterialIcon name="cancel" className="text-xl mr-2" filled /> : <MaterialIcon name="check_circle" className="text-xl mr-2" filled />}
             {notification.message}
           </div>
         )}
 
         {/* --- TARJETAS KPI --- */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-white rounded-xl shadow-lg p-6 border-l-4 border-blue-500">
+          <div className="bg-white rounded-xl shadow-lg p-6 border-l-4 border-[#111827]">
             <div className="flex justify-between items-start">
               <div>
                 <p className="text-gray-500 text-sm font-medium">Clientes Esperados</p>
                 <h3 className="text-3xl font-bold text-gray-800 mt-1">{kpis.clientesEsperados}</h3>
               </div>
-              <div className="bg-blue-100 p-3 rounded-full"><UserPlus className="h-6 w-6 text-blue-600" /></div>
+              <div className="bg-[#F3F4F6] p-3 rounded-full"><MaterialIcon name="person_add" className="text-2xl text-[#4B5563]" /></div>
             </div>
           </div>
-          <div className="bg-white rounded-xl shadow-lg p-6 border-l-4 border-green-500">
+          <div className="bg-white rounded-xl shadow-lg p-6 border-l-4 border-[#111827]">
             <div className="flex justify-between items-start">
               <div>
                 <p className="text-gray-500 text-sm font-medium">Ingresos del Día</p>
                 <h3 className="text-3xl font-bold text-gray-800 mt-1">${kpis.ingresosHoy} MXN</h3>
               </div>
-              <div className="bg-green-100 p-3 rounded-full"><DollarSign className="h-6 w-6 text-green-600" /></div>
+              <div className="bg-[#F3F4F6] p-3 rounded-full"><MaterialIcon name="payments" className="text-2xl text-[#4B5563]" /></div>
             </div>
           </div>
-          <div className="bg-white rounded-xl shadow-lg p-6 border-l-4 border-yellow-500">
+          <div className="bg-white rounded-xl shadow-lg p-6 border-l-4 border-[#111827]">
             <div className="flex justify-between items-start">
               <div>
                 <p className="text-gray-500 text-sm font-medium">Reservaciones Activas</p>
                 <h3 className="text-3xl font-bold text-gray-800 mt-1">{kpis.totalReservas}</h3>
               </div>
-              <div className="bg-yellow-100 p-3 rounded-full"><Clock className="h-6 w-6 text-yellow-600" /></div>
+              <div className="bg-[#F3F4F6] p-3 rounded-full"><MaterialIcon name="schedule" className="text-2xl text-[#4B5563]" /></div>
             </div>
           </div>
         </div>
@@ -511,7 +540,7 @@ export default function Dashboard() {
         {/* --- BÚSQUEDA --- */}
         <div className="flex items-center mb-4 gap-3">
           <div className="relative flex-1">
-            <input type="text" placeholder="Buscar por ID, cliente, clase u hora..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-800 focus:ring-2 focus:ring-primary focus:outline-none" />
+            <input type="text" placeholder="Buscar por ID, cliente, clase u hora..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full px-4 py-2 border border-[#111827] rounded-lg bg-white text-gray-800 focus:ring-2 focus:ring-primary focus:outline-none" />
           </div>
           {searchTerm && (
             <button onClick={() => setSearchTerm('')} className="px-3 py-2 text-gray-400 hover:text-gray-600 transition-colors" title="Limpiar búsqueda">✕</button>
@@ -522,12 +551,12 @@ export default function Dashboard() {
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-2xl font-bold text-white">Atención de Clientes</h2>
           <button onClick={openModal} className="bg-primary hover:bg-primary-hover text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center">
-            <UserPlus className="h-4 w-4 mr-2" /> Nueva Reservación
+            <MaterialIcon name="person_add" className="text-lg mr-2" /> Nueva Reservación
           </button>
         </div>
 
         {/* --- TABLA --- */}
-        <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+        <div className="bg-white rounded-xl shadow-lg overflow-hidden border border-[#111827]">
           <table className="w-full text-left border-collapse">
             <thead className="bg-gray-100 text-gray-600 uppercase text-xs font-semibold">
               <tr>
@@ -550,7 +579,7 @@ export default function Dashboard() {
                 </tr>
               ) : (
                 filteredReservations.map((res) => (
-                  <tr key={res.id} className="hover:bg-gray-50 transition-colors">
+                  <tr key={res.id} className="hover:bg-[#E5E7EB] transition-colors">
                     <td className="px-6 py-4 text-gray-800 font-medium">{res.id}</td>
                     <td className="px-6 py-4 text-gray-600 text-xs">
                       {res.type === 'visitante' ? '🚪 Visitante' : '👤 Socio'}
@@ -561,9 +590,9 @@ export default function Dashboard() {
                     <td className="px-6 py-4 text-gray-800 font-bold">${res.price}</td>
                     <td className="px-6 py-4">
                       <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                        res.status === 'pagado' ? 'bg-green-100 text-green-700' :
-                        res.status === 'asistido' ? 'bg-blue-100 text-blue-700' :
-                        'bg-yellow-100 text-yellow-700'
+                        res.status === 'pagado' ? 'bg-[#111827] text-white' :
+                        res.status === 'asistido' ? 'bg-[#6B7280] text-white' :
+                        'bg-[#F3F4F6] text-[#4B5563]'
                       }`}>
                         {res.status === 'pagado' ? 'Pagado' : res.status === 'asistido' ? 'Asistió' : 'Pendiente'}
                       </span>
@@ -571,17 +600,17 @@ export default function Dashboard() {
                     <td className="px-6 py-4 text-right">
                       <div className="flex justify-end gap-2">
                         {res.status === 'pendiente' && (
-                          <button onClick={() => handleConfirmAttendance(res.id)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Confirmar Asistencia">
-                            <CheckCircle className="h-5 w-5" />
+                          <button onClick={() => handleConfirmAttendance(res.id)} className="p-2 text-[#4B5563] hover:bg-[#F3F4F6] rounded-lg transition-colors" title="Confirmar Asistencia">
+                            <MaterialIcon name="how_to_reg" className="text-xl" />
                           </button>
                         )}
                         {res.status !== 'pagado' && (
-                          <button onClick={() => handlePayment(res.id)} className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors" title="Cobrar">
-                            <CreditCard className="h-5 w-5" />
+                          <button onClick={() => handlePayment(res.id)} className="p-2 text-[#4B5563] hover:bg-[#F3F4F6] rounded-lg transition-colors" title="Cobrar">
+                            <MaterialIcon name="credit_card" className="text-xl" />
                           </button>
                         )}
                         <button onClick={() => handleCancel(res.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Cancelar">
-                          <AlertCircle className="h-5 w-5" />
+                          <MaterialIcon name="delete" className="text-xl" />
                         </button>
                       </div>
                     </td>
@@ -595,11 +624,11 @@ export default function Dashboard() {
         {/* ========== MODAL DE NUEVA RESERVACIÓN ========== */}
         {isModalOpen && (
           <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden max-h-[90vh] overflow-y-auto">
+            <div className="bg-white rounded-xl shadow-2xl border border-[#111827] w-full max-w-md overflow-hidden max-h-[90vh] overflow-y-auto">
               <div className="bg-dark-800 px-6 py-4 flex justify-between items-center sticky top-0">
                 <h3 className="text-lg font-bold text-white">Nueva Reservación</h3>
                 <button onClick={closeModal} className="text-gray-400 hover:text-white transition-colors">
-                  <X className="h-6 w-6" />
+                  <MaterialIcon name="close" className="text-2xl" />
                 </button>
               </div>
 
@@ -618,7 +647,7 @@ export default function Dashboard() {
                         setShowClientList(false);
                       }}
                       className={`px-4 py-2 rounded-lg border-2 text-sm font-semibold transition-colors ${
-                        tipoReserva === 'cliente' ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-gray-200 text-gray-500'
+                        tipoReserva === 'cliente' ? 'border-[#111827] bg-[#F3F4F6] text-[#111827]' : 'border-[#6B7280] text-gray-500'
                       }`}
                     >
                       👤 Socio registrado
@@ -632,7 +661,7 @@ export default function Dashboard() {
                         setShowClientList(false);
                       }}
                       className={`px-4 py-2 rounded-lg border-2 text-sm font-semibold transition-colors ${
-                        tipoReserva === 'visitante' ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-gray-200 text-gray-500'
+                        tipoReserva === 'visitante' ? 'border-[#111827] bg-[#F3F4F6] text-[#111827]' : 'border-[#6B7280] text-gray-500'
                       }`}
                     >
                       🚪 Visitante
@@ -665,14 +694,14 @@ export default function Dashboard() {
                       }}
                       onFocus={() => setShowClientList(true)}
                       onBlur={() => setTimeout(() => setShowClientList(false), 200)}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary text-gray-800"
+                      className="w-full px-4 py-2 border border-[#111827] rounded-lg focus:ring-2 focus:ring-primary text-gray-800"
                     />
 
                     {/* Dropdown personalizado: al enfocar el campo se muestran
                         TODOS los socios registrados (servidos por el backend).
                         Al escribir, la lista se filtra por nombre o ID. */}
                     {showClientList && !selectedClient && (
-                      <ul className="absolute z-20 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                      <ul className="absolute z-20 w-full mt-1 bg-white border border-[#111827] rounded-lg shadow-lg max-h-48 overflow-y-auto">
                         {clientes
                           .filter(c =>
                             c.nombre.toLowerCase().includes(newReservation.client.toLowerCase()) ||
@@ -689,11 +718,11 @@ export default function Dashboard() {
                                 setNewReservation(p => ({ ...p, client: c.nombre, price: precioDeClase(claseSel, c) }));
                                 setShowClientList(false);
                               }}
-                              className="px-4 py-2 hover:bg-emerald-50 cursor-pointer text-gray-800 text-sm flex justify-between items-center"
+                              className="px-4 py-2 hover:bg-[#E5E7EB] cursor-pointer text-gray-800 text-sm flex justify-between items-center"
                             >
                               <span>{c.nombre}</span>
                               <span className={`text-xs px-2 py-0.5 rounded-full ${
-                                c.membresia === 'Premium' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'
+                                c.membresia === 'Premium' ? 'bg-[#111827] text-white' : 'bg-gray-100 text-gray-600'
                               }`}>
                                 {c.membresia}
                               </span>
@@ -711,7 +740,7 @@ export default function Dashboard() {
 
                     {selectedClient && (
                       <div className="mt-1">
-                        <p className="text-xs text-emerald-600 font-medium">
+                        <p className="text-xs text-[#6B7280] font-medium">
                           {selectedClient.nombre} — Membresía: {selectedClient.membresia}
                         </p>
                         {/* Aviso cuando el socio no puede reservar como socio. */}
@@ -734,7 +763,7 @@ export default function Dashboard() {
                       placeholder="Nombre completo"
                       value={newReservation.client}
                       onChange={(e) => setNewReservation(p => ({ ...p, client: e.target.value }))}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary text-gray-800"
+                      className="w-full px-4 py-2 border border-[#111827] rounded-lg focus:ring-2 focus:ring-primary text-gray-800"
                     />
                   </div>
                 )}
@@ -746,7 +775,7 @@ export default function Dashboard() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">Clase disponible</label>
 
                   {classes.length === 0 ? (
-                    <p className="text-xs text-gray-400 italic px-3 py-4 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+                    <p className="text-xs text-gray-400 italic px-3 py-4 bg-[#F3F4F6] rounded-lg border border-dashed border-[#111827]">
                       No hay clases registradas. Crea clases en el módulo administrativo
                       (Clases) para poder reservar.
                     </p>
@@ -781,14 +810,14 @@ export default function Dashboard() {
                               bloqueada
                                 ? 'border-red-200 bg-red-50 opacity-60 cursor-not-allowed'
                                 : seleccionada
-                                  ? 'border-emerald-500 bg-emerald-50'
-                                  : 'border-gray-200 hover:border-gray-400'
+                                  ? 'border-[#111827] bg-[#F3F4F6]'
+                                  : 'border-[#6B7280] hover:border-[#111827]'
                             }`}
                           >
                             <div className="flex items-center gap-2">
                               <span
                                 className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                                style={{ backgroundColor: c.color || '#10b981' }}
+                                style={{ backgroundColor: c.color || '#6B7280' }}
                               />
                               <span className="font-semibold text-gray-800 text-sm truncate">
                                 {c.nombre}
@@ -796,10 +825,10 @@ export default function Dashboard() {
                             </div>
                             <div className="mt-1 flex items-center gap-2 text-xs text-gray-500">
                               <span className="flex items-center gap-1">
-                                <Clock className="h-3 w-3" /> {c.hora || '—'}
+                                <MaterialIcon name="schedule" className="text-sm" /> {c.hora || '—'}
                               </span>
                               <span className="text-gray-300">·</span>
-                              <span className="font-medium text-emerald-600">${c.precio ?? 0}</span>
+                              <span className="font-medium text-[#6B7280]">${c.precio ?? 0}</span>
                             </div>
                             <p className={`mt-1 text-xs font-medium ${bloqueada ? 'text-red-500' : 'text-gray-400'}`}>
                               {disponibles <= 0
@@ -826,7 +855,7 @@ export default function Dashboard() {
                     type="text"
                     value={newReservation.price ? `$${newReservation.price}` : '$0.00'}
                     disabled
-                    className="w-full px-4 py-2 bg-gray-100 border border-gray-300 rounded-lg text-gray-500 cursor-not-allowed font-semibold"
+                    className="w-full px-4 py-2 bg-gray-100 border border-[#111827] rounded-lg text-gray-500 cursor-not-allowed font-semibold"
                   />
                 </div>
 
@@ -835,7 +864,7 @@ export default function Dashboard() {
                   <button
                     type="button"
                     onClick={closeModal}
-                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors font-medium"
+                    className="flex-1 px-4 py-2 border border-[#111827] rounded-lg text-gray-700 hover:bg-[#E5E7EB] transition-colors font-medium"
                   >
                     Cancelar
                   </button>
@@ -859,20 +888,20 @@ export default function Dashboard() {
         {/* ========== MODAL DE COBRO ========== */}
 {isPaymentModalOpen && selectedReservationForPayment && (
   <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-    <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden">
-      <div className="bg-green-600 px-6 py-4 flex justify-between items-center">
+    <div className="bg-white rounded-xl shadow-2xl border border-[#111827] w-full max-w-md overflow-hidden">
+      <div className="bg-[#111827] px-6 py-4 flex justify-between items-center">
         <h3 className="text-lg font-bold text-white">Confirmar Cobro</h3>
         <button
           onClick={closePaymentModal}
           className="text-gray-200 hover:text-white transition-colors"
         >
-          <X className="h-6 w-6" />
+          <MaterialIcon name="close" className="text-2xl" />
         </button>
       </div>
 
       <div className="p-6 space-y-4">
         {/* Resumen */}
-        <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+        <div className="bg-[#F3F4F6] rounded-lg p-4 space-y-2">
           <div className="flex justify-between">
             <span className="text-gray-600 text-sm">Cliente:</span>
             <span className="font-semibold text-gray-800">{selectedReservationForPayment.client}</span>
@@ -885,9 +914,9 @@ export default function Dashboard() {
             <span className="text-gray-600 text-sm">Hora:</span>
             <span className="font-semibold text-gray-800">{selectedReservationForPayment.time}</span>
           </div>
-          <div className="border-t border-gray-200 pt-2 mt-2 flex justify-between">
+          <div className="border-t border-[#6B7280] pt-2 mt-2 flex justify-between">
             <span className="text-gray-600 font-medium">Monto a cobrar:</span>
-            <span className="text-2xl font-bold text-green-600">${selectedReservationForPayment.price}</span>
+            <span className="text-2xl font-bold text-[#111827]">${selectedReservationForPayment.price}</span>
           </div>
         </div>
 
@@ -898,14 +927,14 @@ export default function Dashboard() {
               Método de pago
             </p>
             <div className="grid grid-cols-3 gap-2">
-              {PAY_METHODS.map(({ key, label, Icon }) => (
+              {PAY_METHODS.map(({ key, label, icon }) => (
                 <button
                   key={key}
                   type="button"
                   onClick={() => setMetodoPago(key)}
-                  className="flex flex-col items-center gap-1.5 py-3 border-2 border-gray-200 rounded-lg hover:border-green-500 hover:bg-green-50 transition-colors"
+                  className="flex flex-col items-center gap-1.5 py-3 border-2 border-[#6B7280] rounded-lg hover:border-[#111827] hover:bg-[#F3F4F6] transition-colors"
                 >
-                  <Icon className="h-6 w-6 text-gray-600" />
+                  <MaterialIcon name={icon} className="text-2xl text-gray-600" />
                   <span className="text-xs font-medium text-gray-700">{label}</span>
                 </button>
               ))}
@@ -919,9 +948,9 @@ export default function Dashboard() {
             <button
               type="button"
               onClick={() => setMetodoPago(null)}
-              className="flex items-center gap-1 text-sm text-gray-500 hover:text-green-600 mb-3 transition-colors"
+              className="flex items-center gap-1 text-sm text-gray-500 hover:text-[#111827] mb-3 transition-colors"
             >
-              <ArrowLeft className="h-4 w-4" /> Cambiar método
+              <MaterialIcon name="arrow_back" className="text-lg" /> Cambiar método
             </button>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Efectivo recibido
@@ -933,17 +962,17 @@ export default function Dashboard() {
               value={efectivoInput}
               onChange={(e) => setEfectivoInput(e.target.value)}
               placeholder={`Monto entregado (mín. $${payTotal})`}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg text-gray-800 focus:ring-2 focus:ring-green-500 focus:outline-none"
+              className="w-full px-4 py-2 border border-[#111827] rounded-lg text-gray-800 focus:ring-2 focus:ring-[#6B7280] focus:outline-none"
             />
             {efectivoInsuficiente && (
               <p className="text-xs text-red-600 font-semibold mt-1.5 flex items-center gap-1">
-                <AlertCircle className="h-4 w-4" /> Efectivo insuficiente
+                <MaterialIcon name="warning" className="text-base" filled /> Efectivo insuficiente
               </p>
             )}
             {efectivoInput !== '' && efectivoRecibido >= payTotal && (
-              <div className="bg-green-50 border border-green-200 rounded-lg p-3 mt-3 flex justify-between items-center">
-                <span className="text-sm font-semibold text-green-700">Cambio a devolver</span>
-                <span className="text-xl font-bold text-green-700">${cambio}</span>
+              <div className="bg-[#F3F4F6] border border-[#6B7280] rounded-lg p-3 mt-3 flex justify-between items-center">
+                <span className="text-sm font-semibold text-[#111827]">Cambio a devolver</span>
+                <span className="text-xl font-bold text-[#111827]">${cambio}</span>
               </div>
             )}
           </div>
@@ -955,12 +984,12 @@ export default function Dashboard() {
             <button
               type="button"
               onClick={() => setMetodoPago(null)}
-              className="flex items-center gap-1 text-sm text-gray-500 hover:text-green-600 mb-3 transition-colors"
+              className="flex items-center gap-1 text-sm text-gray-500 hover:text-[#111827] mb-3 transition-colors"
             >
-              <ArrowLeft className="h-4 w-4" /> Cambiar método
+              <MaterialIcon name="arrow_back" className="text-lg" /> Cambiar método
             </button>
-            <div className="bg-gray-50 border border-gray-200 rounded-lg p-5 text-center">
-              <CreditCard className="h-10 w-10 text-gray-500 mx-auto mb-2" />
+            <div className="bg-[#F3F4F6] border border-[#6B7280] rounded-lg p-5 text-center">
+              <MaterialIcon name="credit_card" className="text-5xl text-gray-500 mx-auto mb-2" />
               <p className="text-xs text-gray-500 uppercase tracking-wide">Total a cobrar</p>
               <p className="text-2xl font-bold text-gray-800">${payTotal}</p>
               <p className="text-xs text-gray-500 mt-2">Presentar en terminal física</p>
@@ -974,11 +1003,11 @@ export default function Dashboard() {
             <button
               type="button"
               onClick={() => setMetodoPago(null)}
-              className="flex items-center gap-1 text-sm text-gray-500 hover:text-green-600 mb-3 transition-colors"
+              className="flex items-center gap-1 text-sm text-gray-500 hover:text-[#111827] mb-3 transition-colors"
             >
-              <ArrowLeft className="h-4 w-4" /> Cambiar método
+              <MaterialIcon name="arrow_back" className="text-lg" /> Cambiar método
             </button>
-            <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-3 flex justify-between items-center">
+            <div className="bg-[#F3F4F6] border border-[#6B7280] rounded-lg p-3 mb-3 flex justify-between items-center">
               <span className="text-sm text-gray-600">Total a cobrar</span>
               <span className="text-xl font-bold text-gray-800">${payTotal}</span>
             </div>
@@ -990,7 +1019,7 @@ export default function Dashboard() {
               value={referenciaInput}
               onChange={(e) => setReferenciaInput(e.target.value)}
               placeholder="Ej. TRF-20261012-001"
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg text-gray-800 focus:ring-2 focus:ring-green-500 focus:outline-none"
+              className="w-full px-4 py-2 border border-[#111827] rounded-lg text-gray-800 focus:ring-2 focus:ring-[#6B7280] focus:outline-none"
             />
           </div>
         )}
@@ -1001,7 +1030,7 @@ export default function Dashboard() {
             type="button"
             onClick={closePaymentModal}
             disabled={paymentLoading}
-            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors font-medium disabled:opacity-50"
+            className="flex-1 px-4 py-2 border border-[#111827] rounded-lg text-gray-700 hover:bg-[#E5E7EB] transition-colors font-medium disabled:opacity-50"
           >
             Cancelar
           </button>
@@ -1009,7 +1038,7 @@ export default function Dashboard() {
             type="button"
             onClick={handleConfirmPayment}
             disabled={paymentLoading || !canConfirmPayment}
-            className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-300 text-white rounded-lg font-medium transition-colors disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            className="flex-1 px-4 py-2 bg-[#111827] hover:bg-[#6B7280] disabled:bg-gray-300 text-white rounded-lg font-medium transition-colors disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             {paymentLoading ? (
               <>
@@ -1018,7 +1047,7 @@ export default function Dashboard() {
               </>
             ) : (
               <>
-                <CreditCard className="h-4 w-4" />
+                <MaterialIcon name="credit_card" className="text-lg" />
                 Confirmar Cobro
               </>
             )}

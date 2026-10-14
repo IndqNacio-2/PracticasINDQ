@@ -13,7 +13,7 @@ const fmt = (n: number) => `$${n.toFixed(2)}`;
 
 function BackBtn({ onClick }: { onClick: () => void }) {
   return (
-    <button type="button" onClick={onClick} className="flex items-center gap-1 text-sm text-[#9CA3AF] hover:text-[#FF5C00] mb-5 transition-colors">
+    <button type="button" onClick={onClick} className="flex items-center gap-1 text-sm text-[#9CA3AF] hover:text-[#111827] mb-5 transition-colors">
       <MaterialIcon name="arrow_back" className="text-lg" />
       Cambiar método
     </button>
@@ -86,7 +86,7 @@ export default function PaymentModal({ total, onConfirm, onClose }: PaymentModal
                     type="button"
                     key={opt.key}
                     onClick={() => setMethod(opt.key)}
-                    className="flex flex-col items-center gap-2.5 p-4 rounded-xl border-2 border-[#E5E7EB] hover:border-[#FF5C00] hover:bg-[#FFF5F0] transition-all duration-150 active:scale-95"
+                    className="flex flex-col items-center gap-2.5 p-4 rounded-xl border-2 border-[#E5E7EB] hover:border-[#111827] hover:bg-[#F3F4F6] transition-all duration-150 active:scale-95"
                   >
                     <MaterialIcon name={opt.icon} className="text-3xl" />
                     <span className="text-sm font-semibold text-[#0D0F14]">{opt.label}</span>
@@ -113,7 +113,7 @@ export default function PaymentModal({ total, onConfirm, onClose }: PaymentModal
                     className={`w-full pl-8 pr-4 py-3.5 border-2 rounded-xl text-xl font-bold focus:outline-none transition-colors tabular-nums ${
                       cashInsufficient
                         ? 'border-[#EF4444] text-[#EF4444] focus:border-[#EF4444]'
-                        : 'border-[#E5E7EB] text-[#0D0F14] focus:border-[#FF5C00]'
+                        : 'border-[#E5E7EB] text-[#0D0F14] focus:border-[#111827]'
                     }`}
                   />
                 </div>
@@ -172,7 +172,7 @@ export default function PaymentModal({ total, onConfirm, onClose }: PaymentModal
                   value={transferRef}
                   onChange={e => setTransferRef(e.target.value)}
                   placeholder="Ej. TRF-20260915-001"
-                  className="w-full px-4 py-2.5 border-2 border-[#E5E7EB] rounded-xl text-sm focus:outline-none focus:border-[#FF5C00] text-[#0D0F14] transition-colors"
+                  className="w-full px-4 py-2.5 border-2 border-[#E5E7EB] rounded-xl text-sm focus:outline-none focus:border-[#111827] text-[#0D0F14] transition-colors"
                 />
               </div>
             </div>
@@ -183,7 +183,7 @@ export default function PaymentModal({ total, onConfirm, onClose }: PaymentModal
               onClick={handleConfirm}
               disabled={!canConfirm}
               className="w-full py-3.5 text-white font-bold text-base rounded-xl transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 active:scale-[0.98]"
-              style={{ fontFamily: 'Outfit, sans-serif', backgroundColor: '#FF5C00' }}
+              style={{ fontFamily: 'Outfit, sans-serif', backgroundColor: '#6B7280' }}
             >
               Confirmar pago
             </button>

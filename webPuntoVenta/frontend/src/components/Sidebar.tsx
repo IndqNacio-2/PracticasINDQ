@@ -77,7 +77,7 @@ export default function Sidebar({
 
   return (
     <aside
-      className={`flex h-screen flex-shrink-0 flex-col overflow-hidden border-r border-[#FED7C3] bg-[#FFF7F2] text-[#5A3825] shadow-sm transition-[width] duration-300 ease-in-out ${
+      className={`flex h-screen flex-shrink-0 flex-col overflow-hidden border-r border-gray-700/50 bg-[#111827] text-gray-300 shadow-sm transition-[width] duration-300 ease-in-out ${
         isExpanded ? "w-60" : "w-20"
       }`}
     >
@@ -89,7 +89,7 @@ export default function Sidebar({
        */}
         {/* Encabezado e identidad visual de la aplicación. */}
         <div
-        className={`flex h-[73px] flex-shrink-0 items-center border-b border-[#FED7C3] ${
+        className={`flex h-[73px] flex-shrink-0 items-center border-b border-gray-700/50 ${
             isExpanded
             ? "gap-3 px-5"
             : "justify-center px-3"
@@ -98,7 +98,7 @@ export default function Sidebar({
         {isExpanded ? (
             <>
             {/* Logotipo del sistema. */}
-            <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-[#FF5C00] text-white shadow-sm">
+            <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-[#4B5563] text-white shadow-sm">
                 <MaterialIcon
                 name="fitness_center"
                 className="text-2xl"
@@ -108,11 +108,11 @@ export default function Sidebar({
 
             {/* Nombre y descripción del sistema. */}
             <div className="min-w-0 flex-1">
-                <h1 className="truncate text-base font-bold text-[#3A2418]">
+                <h1 className="truncate text-base font-bold text-white">
                 Sistema Gym
                 </h1>
 
-                <p className="truncate text-xs text-[#9A6B50]">
+                <p className="truncate text-xs text-gray-400">
                 Gestión de ventas
                 </p>
             </div>
@@ -125,7 +125,7 @@ export default function Sidebar({
                 }
                 aria-label="Contraer menú lateral"
                 title="Contraer menú"
-                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl border border-[#FED7C3] bg-white text-[#FF5C00] shadow-sm transition-all duration-150 hover:border-[#FFB58C] hover:bg-[#FFE8D9] active:scale-95"
+                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl border border-gray-700/50 bg-[#4B5563] text-white shadow-sm transition-all duration-150 hover:border-gray-600 hover:bg-[#6B7280] active:scale-95"
             >
                 <MaterialIcon
                 name="chevron_left"
@@ -142,7 +142,7 @@ export default function Sidebar({
             }
             aria-label="Expandir menú lateral"
             title="Expandir menú"
-            className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#FF5C00] text-white shadow-sm transition-all duration-150 hover:bg-[#E54E00] hover:shadow-md active:scale-95"
+            className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#4B5563] text-white shadow-sm transition-all duration-150 hover:bg-[#6B7280] hover:shadow-md active:scale-95"
             >
             <MaterialIcon
                 name="chevron_right"
@@ -162,7 +162,7 @@ export default function Sidebar({
          * suficiente espacio para mostrar texto.
          */}
         {isExpanded && (
-          <p className="mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.18em] text-[#B98A6D]">
+          <p className="mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.18em] text-gray-500">
             Módulos
           </p>
         )}
@@ -191,8 +191,8 @@ export default function Sidebar({
                   : "justify-center px-0"
               } ${
                 isActive
-                  ? "bg-[#FF5C00] text-white shadow-sm"
-                  : "text-[#7A4A31] hover:bg-[#FFE8D9] hover:text-[#E54E00]"
+                  ? "bg-[#4B5563] text-white shadow-sm"
+                  : "text-gray-400 hover:bg-gray-700/50 hover:text-gray-100"
               }`}
             >
               <MaterialIcon
@@ -216,9 +216,9 @@ export default function Sidebar({
       </nav>
 
       {/* Información temporal del usuario. */}
-      <div className="flex-shrink-0 border-t border-[#FED7C3] p-3">
+      <div className="flex-shrink-0 border-t border-gray-700/50 p-3">
         <div
-          className={`flex items-center rounded-xl bg-white/70 ${
+          className={`flex items-center rounded-xl bg-white/5 ${
             isExpanded
               ? "gap-3 px-3 py-2.5"
               : "justify-center p-2"
@@ -228,17 +228,17 @@ export default function Sidebar({
            * Uso las iniciales como avatar mientras se
            * implementa la autenticación real.
            */}
-          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-[#FFE8D9] text-xs font-bold text-[#FF5C00]">
+          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-[#4B5563] text-xs font-bold text-white">
             ER
           </div>
 
           {isExpanded && (
             <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-[#3A2418]">
+              <p className="truncate text-sm font-semibold text-gray-200">
                 Edgar Rodríguez
               </p>
 
-              <p className="truncate text-xs text-[#9A6B50]">
+              <p className="truncate text-xs text-gray-500">
                 Recepcionista
               </p>
             </div>
@@ -254,7 +254,7 @@ export default function Sidebar({
           title={isExpanded ? undefined : "Panel administrativo"}
           className={`mt-2 flex h-11 w-full items-center rounded-xl text-sm font-semibold transition-all duration-150 ${
             isExpanded ? "gap-3 px-3" : "justify-center px-0"
-          } text-[#7A4A31] hover:bg-[#FFE8D9] hover:text-[#E54E00]`}
+          } text-gray-400 hover:bg-gray-700/50 hover:text-gray-100`}
         >
           <MaterialIcon
             name="arrow_back"

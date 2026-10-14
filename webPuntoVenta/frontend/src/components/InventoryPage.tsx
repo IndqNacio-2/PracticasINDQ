@@ -162,13 +162,13 @@ export default function InventoryPage({ products, onUpdateProduct, onAddProduct,
   ];
 
   return (
-    <section className="flex h-full flex-col overflow-hidden bg-[#F0F2F7]">
+    <section className="flex h-full flex-col overflow-hidden bg-[#F3F4F6]">
       <header className="flex flex-shrink-0 items-center justify-between border-b border-[#E5E7EB] bg-white px-7 py-5">
         <div>
           <h1 className="text-2xl font-bold text-[#0D0F14]">Inventario</h1>
           <p className="mt-0.5 text-sm text-[#6B7280]">Gestiona los productos y existencias del punto de venta.</p>
         </div>
-        <button type="button" onClick={() => openModal("add")} className="flex items-center gap-2 rounded-xl bg-[#FF5C00] px-4 py-2.5 text-sm font-bold text-white hover:opacity-90 active:scale-[0.98]">
+        <button type="button" onClick={() => openModal("add")} className="flex items-center gap-2 rounded-xl bg-[#6B7280] px-4 py-2.5 text-sm font-bold text-white hover:opacity-90 active:scale-[0.98]">
           <MaterialIcon name="add" className="text-xl" />Agregar producto
         </button>
       </header>
@@ -179,10 +179,10 @@ export default function InventoryPage({ products, onUpdateProduct, onAddProduct,
           {quickCards.map((card) => {
             const isSelected = quickFilter === card.key;
             return (
-              <button key={card.key} type="button" onClick={() => setQuickFilter(isSelected ? "all" : card.key)} className={`rounded-2xl border bg-white p-4 text-left transition-all hover:shadow-md ${isSelected ? "border-[#FF5C00] shadow-md" : "border-[#E5E7EB]"}`}>
+              <button key={card.key} type="button" onClick={() => setQuickFilter(isSelected ? "all" : card.key)} className={`rounded-2xl border bg-white p-4 text-left transition-all hover:shadow-md ${isSelected ? "border-[#111827] shadow-md" : "border-[#E5E7EB]"}`}>
                 <div className="mb-3 flex items-center justify-between">
                   <MaterialIcon name={card.icon} className="text-2xl" filled />
-                  {isSelected && <span className="rounded-full bg-[#FF5C00] px-2 py-0.5 text-[10px] font-bold text-white">Activo</span>}
+                  {isSelected && <span className="rounded-full bg-[#111827] px-2 py-0.5 text-[10px] font-bold text-white">Activo</span>}
                 </div>
                 <p className="text-3xl font-bold text-[#0D0F14]" style={{ color: card.color }}>{card.value}</p>
                 <p className="mt-0.5 text-xs text-[#6B7280]">{card.label}</p>
@@ -195,20 +195,20 @@ export default function InventoryPage({ products, onUpdateProduct, onAddProduct,
           <div className="flex flex-wrap gap-3">
             <div className="relative min-w-[220px] flex-1">
               <MaterialIcon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 text-lg text-[#9CA3AF]" />
-              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar por nombre o código..." className="w-full rounded-xl border border-[#E5E7EB] py-2 pl-9 pr-9 text-sm text-[#0D0F14] outline-none placeholder:text-[#9CA3AF] focus:border-[#FF5C00]" />
+              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar por nombre o código..." className="w-full rounded-xl border border-[#E5E7EB] py-2 pl-9 pr-9 text-sm text-[#0D0F14] outline-none placeholder:text-[#9CA3AF] focus:border-[#111827]" />
               {search && <button type="button" onClick={() => setSearch("")} aria-label="Limpiar búsqueda" className="absolute right-3 top-1/2 -translate-y-1/2 text-[#9CA3AF] hover:text-[#374151]"><MaterialIcon name="close" className="text-base" /></button>}
             </div>
 
-            <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} aria-label="Filtrar por categoría" className="rounded-xl border border-[#E5E7EB] bg-white px-3 py-2 text-sm text-[#374151] outline-none focus:border-[#FF5C00]">
+            <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} aria-label="Filtrar por categoría" className="rounded-xl border border-[#E5E7EB] bg-white px-3 py-2 text-sm text-[#374151] outline-none focus:border-[#111827]">
               <option value="Todas">Todas</option>
               {CATEGORIES.filter((category) => category !== "Todos").map((category) => <option key={category} value={category}>{category}</option>)}
             </select>
 
-            <select value={stateFilter} onChange={(event) => setStateFilter(event.target.value as ProductStateFilter)} aria-label="Filtrar por estado" className="rounded-xl border border-[#E5E7EB] bg-white px-3 py-2 text-sm text-[#374151] outline-none focus:border-[#FF5C00]">
+            <select value={stateFilter} onChange={(event) => setStateFilter(event.target.value as ProductStateFilter)} aria-label="Filtrar por estado" className="rounded-xl border border-[#E5E7EB] bg-white px-3 py-2 text-sm text-[#374151] outline-none focus:border-[#111827]">
               <option value="all">Todos</option><option value="available">Disponible</option><option value="low">Stock bajo</option><option value="out">Agotado</option><option value="inactive">Inactivo</option>
             </select>
 
-            <select value={sortBy} onChange={(event) => setSortBy(event.target.value as SortOption)} aria-label="Ordenar productos" className="rounded-xl border border-[#E5E7EB] bg-white px-3 py-2 text-sm text-[#374151] outline-none focus:border-[#FF5C00]">
+            <select value={sortBy} onChange={(event) => setSortBy(event.target.value as SortOption)} aria-label="Ordenar productos" className="rounded-xl border border-[#E5E7EB] bg-white px-3 py-2 text-sm text-[#374151] outline-none focus:border-[#111827]">
               <option value="name">Nombre A–Z</option><option value="price-asc">Precio: menor a mayor</option><option value="price-desc">Precio: mayor a menor</option><option value="stock-asc">Menor existencia</option><option value="stock-desc">Mayor existencia</option>
             </select>
 
@@ -221,7 +221,7 @@ export default function InventoryPage({ products, onUpdateProduct, onAddProduct,
             <div className="flex flex-col items-center justify-center py-20 text-center">
               <MaterialIcon name="inventory_2" className="mb-3 text-5xl text-[#D1D5DB]" />
               <p className="text-sm font-semibold text-[#6B7280]">Sin resultados para esta búsqueda</p>
-              <button type="button" onClick={() => { setSearch(""); setCategoryFilter("Todas"); setStateFilter("all"); setQuickFilter("all"); }} className="mt-2 text-sm font-semibold text-[#FF5C00] hover:underline">Limpiar filtros</button>
+              <button type="button" onClick={() => { setSearch(""); setCategoryFilter("Todas"); setStateFilter("all"); setQuickFilter("all"); }} className="mt-2 text-sm font-semibold text-[#111827] hover:underline">Limpiar filtros</button>
             </div>
           ) : (
             <div className="overflow-x-auto">

@@ -128,8 +128,8 @@ const getDifferenceStatus = (difference: number) => {
       label: "Sobrante",
       message: "Se contó más efectivo del que se esperaba en la caja.",
       icon: "trending_up",
-      containerClassName: "bg-[#DBEAFE] text-[#1D4ED8]",
-      amountClassName: "text-[#1D4ED8]",
+      containerClassName: "bg-[#F3F4F6] text-[#4B5563]",
+      amountClassName: "text-[#4B5563]",
     };
   }
 
@@ -277,11 +277,11 @@ export default function CashClosingPage({
   };
 
   return (
-    <section className="flex h-full flex-col overflow-hidden bg-[#F0F2F7]">
+    <section className="flex h-full flex-col overflow-hidden bg-[#F3F4F6]">
       {/* Muestro el título y el estado temporal del turno. */}
       <header className="flex flex-shrink-0 items-center justify-between border-b border-[#E5E7EB] bg-white px-7 py-5">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#FFF0E6] text-[#FF5C00]">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#F3F4F6] text-[#111827]">
             <MaterialIcon
               name="payments"
               className="text-2xl"
@@ -322,14 +322,14 @@ export default function CashClosingPage({
             title="Ventas realizadas"
             value={sales.length.toString()}
             icon="receipt_long"
-            iconClassName="bg-[#EDE9FE] text-[#6D28D9]"
+            iconClassName="bg-[#F3F4F6] text-[#4B5563]"
           />
 
           <SummaryCard
             title="Venta total"
             value={formatCurrency(summary.totalSales)}
             icon="point_of_sale"
-            iconClassName="bg-[#FFF0E6] text-[#FF5C00]"
+            iconClassName="bg-[#F3F4F6] text-[#111827]"
           />
 
           <SummaryCard
@@ -343,7 +343,7 @@ export default function CashClosingPage({
             title="Tarjeta"
             value={formatCurrency(summary.cardSales)}
             icon="credit_card"
-            iconClassName="bg-[#DBEAFE] text-[#1D4ED8]"
+            iconClassName="bg-[#F3F4F6] text-[#4B5563]"
           />
 
           <SummaryCard
@@ -357,7 +357,7 @@ export default function CashClosingPage({
         {/* Capturo el fondo inicial y el efectivo contado del turno. */}
         <div className="mb-6 overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white">
           <div className="flex items-center gap-3 border-b border-[#E5E7EB] px-5 py-4">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#FFF0E6] text-[#FF5C00]">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#F3F4F6] text-[#111827]">
               <MaterialIcon
                 name="calculate"
                 className="text-xl"
@@ -399,7 +399,7 @@ export default function CashClosingPage({
                       handleInitialFundChange(event.target.value)
                     }
                     placeholder="0.00"
-                    className="w-full rounded-xl border-2 border-[#E5E7EB] py-3 pl-9 pr-4 text-lg font-bold text-[#0D0F14] outline-none focus:border-[#FF5C00]"
+                    className="w-full rounded-xl border-2 border-[#E5E7EB] py-3 pl-9 pr-4 text-lg font-bold text-[#0D0F14] outline-none focus:border-[#111827]"
                   />
                 </div>
 
@@ -428,7 +428,7 @@ export default function CashClosingPage({
                       handleCountedCashChange(event.target.value)
                     }
                     placeholder="0.00"
-                    className="w-full rounded-xl border-2 border-[#E5E7EB] py-3 pl-9 pr-4 text-lg font-bold text-[#0D0F14] outline-none focus:border-[#FF5C00]"
+                    className="w-full rounded-xl border-2 border-[#E5E7EB] py-3 pl-9 pr-4 text-lg font-bold text-[#0D0F14] outline-none focus:border-[#111827]"
                   />
                 </div>
 
@@ -488,7 +488,7 @@ export default function CashClosingPage({
                 type="button"
                 onClick={() => setIsConfirmOpen(true)}
                 disabled={!canCloseShift}
-                className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-[#FF5C00] px-5 py-3.5 font-bold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-[#6B7280] px-5 py-3.5 font-bold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <MaterialIcon
                   name="lock_clock"
@@ -595,7 +595,7 @@ export default function CashClosingPage({
                         <span className="inline-flex items-center gap-2 font-semibold text-[#374151]">
                           <MaterialIcon
                             name={PAYMENT_METHOD_ICONS[sale.paymentMethod]}
-                            className="text-lg text-[#FF5C00]"
+                            className="text-lg text-[#111827]"
                           />
 
                           {PAYMENT_METHOD_LABELS[sale.paymentMethod]}
@@ -756,19 +756,19 @@ export default function CashClosingPage({
         </div>
 
         {/* Aclaro qué funciones quedan pendientes para el cierre real. */}
-        <div className="mt-5 flex items-start gap-3 rounded-xl border border-[#FED7C3] bg-[#FFF7F2] p-4">
+        <div className="mt-5 flex items-start gap-3 rounded-xl border border-[#E5E7EB] bg-[#F3F4F6] p-4">
           <MaterialIcon
             name="info"
-            className="mt-0.5 text-xl text-[#FF5C00]"
+            className="mt-0.5 text-xl text-[#111827]"
             filled
           />
 
           <div>
-            <p className="text-sm font-bold text-[#5A3825]">
+            <p className="text-sm font-bold text-[#111827]">
               Alcance actual del corte
             </p>
 
-            <p className="mt-0.5 text-xs leading-5 text-[#9A6B50]">
+            <p className="mt-0.5 text-xs leading-5 text-[#6B7280]">
               El corte ya calcula el fondo inicial, el efectivo esperado,
               el efectivo contado y la diferencia. Queda pendiente imprimir
               el comprobante y guardar los cortes en la base de datos.
@@ -873,10 +873,10 @@ function ConfirmCashClosingModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="modal-enter w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
         <div className="mb-5 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-[#FFF5F0]">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-[#F3F4F6]">
             <MaterialIcon
               name="lock_clock"
-              className="text-3xl text-[#FF5C00]"
+              className="text-3xl text-[#111827]"
               filled
             />
           </div>
@@ -938,7 +938,7 @@ function ConfirmCashClosingModal({
           <button
             type="button"
             onClick={onConfirm}
-            className="w-full rounded-xl bg-[#FF5C00] py-3 font-bold text-white hover:opacity-90"
+            className="w-full rounded-xl bg-[#6B7280] py-3 font-bold text-white hover:opacity-90"
           >
             Confirmar corte
           </button>

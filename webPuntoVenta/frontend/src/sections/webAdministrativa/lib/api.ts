@@ -4,6 +4,10 @@
 // Backend unificado: la sección administrativa se monta bajo /admin/api en
 // el mismo puerto que el frontend (Vite lo reenvía al gateway en el 3000).
 const API_BASE_URL = '/admin/api';
+// Base del módulo de Cobro (front desk). La administrativa consulta desde aquí
+// las reservaciones: se guardan en la tabla webcobro.reservas (PostgreSQL) que
+// alimenta el módulo de cobro, y su backend ya las expone con GET /reservas.
+const COBRO_BASE_URL = '/cobro/api';
 
 export class ApiError extends Error {
   status: number;
@@ -13,10 +17,10 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+async function request<T>(path: string, options: RequestInit = {}, baseUrl: string = API_BASE_URL): Promise<T> {
   const token = localStorage.getItem('token');
 
-  const res = await fetch(`${API_BASE_URL}${path}`, {
+  const res = await fetch(`${baseUrl}${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
@@ -61,6 +65,13 @@ export const api = {
   patch: <T>(path: string, body?: unknown) => request<T>(path, { method: 'PATCH', body: body !== undefined ? JSON.stringify(body) : undefined }),
   put: <T>(path: string, body?: unknown) => request<T>(path, { method: 'PUT', body: body !== undefined ? JSON.stringify(body) : undefined }),
   delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
+};
+
+// Cliente de SOLO LECTURA para consultar datos del módulo de Cobro (front desk).
+// Se usa por ejemplo en ReservacionesPage para mostrar las reservaciones que se
+// registran en recepción.
+export const apiCobro = {
+  get: <T>(path: string) => request<T>(path, {}, COBRO_BASE_URL),
 };
 
 // Construye un query string a partir de un objeto, omitiendo valores vacíos.

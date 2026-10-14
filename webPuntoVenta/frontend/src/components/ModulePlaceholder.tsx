@@ -19,9 +19,9 @@ export default function ModulePlaceholder({
     icon,
 }: ModulePlaceholderProps) {
     return (
-        <section className="flex h-full flex-1 items-center justify-center bg-[#F0F2F7] p-8">
+        <section className="flex h-full flex-1 items-center justify-center bg-[#F3F4F6] p-8">
             <div className="w-full max-w-lg rounded-2xl border border-[#E5E7EB] bg-white p-10 text-center shadow-sm">
-                <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-[#FFF5F0] text-[#FF5C00]">
+                <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-[#F3F4F6] text-[#111827]">
                     <MaterialIcon name={icon} className="text-4xl" filled />
                 </div>
 

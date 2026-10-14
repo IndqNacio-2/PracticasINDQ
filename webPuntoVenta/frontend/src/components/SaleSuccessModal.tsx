@@ -42,7 +42,7 @@ export default function SaleSuccessModal({ sale, onNewSale, onShowTicket }: Sale
             {sale.transferRef && <Row label="Referencia" value={sale.transferRef} />}
             <div className="flex justify-between items-center pt-2.5 border-t border-[#E5E7EB]">
               <span className="font-bold text-[#0D0F14]">Total pagado</span>
-              <span className="text-xl font-bold tabular-nums" style={{ color: '#FF5C00', fontFamily: 'Outfit, sans-serif' }}>
+              <span className="text-xl font-bold tabular-nums" style={{ color: '#111827', fontFamily: 'Outfit, sans-serif' }}>
                 {fmt(sale.total)}
               </span>
             </div>
@@ -52,8 +52,8 @@ export default function SaleSuccessModal({ sale, onNewSale, onShowTicket }: Sale
             <button
               type="button"
               onClick={onShowTicket}
-              className="flex w-full items-center justify-center gap-2 py-2.5 border-2 font-semibold rounded-xl transition-colors text-sm hover:bg-[#FFF5F0]"
-              style={{ borderColor: '#FF5C00', color: '#FF5C00' }}
+              className="flex w-full items-center justify-center gap-2 py-2.5 border-2 font-semibold rounded-xl transition-colors text-sm hover:bg-[#F3F4F6]"
+              style={{ borderColor: '#111827', color: '#111827' }}
             >
               <MaterialIcon name="receipt_long" className="text-lg" />
               Imprimir ticket
@@ -62,7 +62,7 @@ export default function SaleSuccessModal({ sale, onNewSale, onShowTicket }: Sale
               type="button"
               onClick={onNewSale}
               className="flex w-full items-center justify-center gap-2 py-3 text-white font-bold rounded-xl transition-all hover:opacity-90 active:scale-[0.98]"
-              style={{ fontFamily: 'Outfit, sans-serif', backgroundColor: '#FF5C00' }}
+              style={{ fontFamily: 'Outfit, sans-serif', backgroundColor: '#6B7280' }}
             >
               <MaterialIcon name="add_shopping_cart" className="text-lg" />
               Nueva venta

@@ -54,12 +54,12 @@ const WASTE_REASONS: Record<
   "internal-use": {
     label: "Consumo interno",
     icon: "groups",
-    className: "bg-[#DBEAFE] text-[#1D4ED8]",
+    className: "bg-[#F3F4F6] text-[#4B5563]",
   },
   "inventory-error": {
     label: "Error de inventario",
     icon: "sync_problem",
-    className: "bg-[#EDE9FE] text-[#6D28D9]",
+    className: "bg-[#F3F4F6] text-[#4B5563]",
   },
   lost: {
     label: "Producto perdido",
@@ -175,7 +175,7 @@ export default function WastePage({
   ).length;
 
   return (
-    <section className="flex h-full flex-col overflow-hidden bg-[#F0F2F7]">
+    <section className="flex h-full flex-col overflow-hidden bg-[#F3F4F6]">
       {/* Encabezado del módulo. */}
       <header className="flex flex-shrink-0 items-center justify-between border-b border-[#E5E7EB] bg-white px-7 py-5">
         <div>
@@ -192,7 +192,7 @@ export default function WastePage({
         <button
           type="button"
           onClick={() => setIsFormOpen(true)}
-          className="flex items-center gap-2 rounded-xl bg-[#FF5C00] px-4 py-2.5 text-sm font-bold text-white transition-opacity hover:opacity-90 active:scale-[0.98]"
+          className="flex items-center gap-2 rounded-xl bg-[#6B7280] px-4 py-2.5 text-sm font-bold text-white transition-opacity hover:opacity-90 active:scale-[0.98]"
         >
           <MaterialIcon
             name="add"
@@ -210,7 +210,7 @@ export default function WastePage({
             title="Registros"
             value={wasteRecords.length.toString()}
             icon="receipt_long"
-            iconClassName="bg-[#DBEAFE] text-[#1D4ED8]"
+            iconClassName="bg-[#F3F4F6] text-[#4B5563]"
           />
 
           <SummaryCard
@@ -243,7 +243,7 @@ export default function WastePage({
                   setSearch(event.target.value)
                 }
                 placeholder="Buscar por producto, código o folio..."
-                className="w-full rounded-xl border border-[#E5E7EB] py-2.5 pl-9 pr-9 text-sm text-[#0D0F14] outline-none placeholder:text-[#9CA3AF] focus:border-[#FF5C00]"
+                className="w-full rounded-xl border border-[#E5E7EB] py-2.5 pl-9 pr-9 text-sm text-[#0D0F14] outline-none placeholder:text-[#9CA3AF] focus:border-[#111827]"
               />
 
               {search && (
@@ -271,7 +271,7 @@ export default function WastePage({
                 )
               }
               aria-label="Filtrar por motivo"
-              className="min-w-[200px] rounded-xl border border-[#E5E7EB] bg-white px-3 py-2.5 text-sm text-[#374151] outline-none focus:border-[#FF5C00]"
+              className="min-w-[200px] rounded-xl border border-[#E5E7EB] bg-white px-3 py-2.5 text-sm text-[#374151] outline-none focus:border-[#111827]"
             >
               <option value="all">
                 Todos los motivos
@@ -315,7 +315,7 @@ export default function WastePage({
                   setSearch("");
                   setReasonFilter("all");
                 }}
-                className="mt-2 text-sm font-semibold text-[#FF5C00] hover:underline"
+                className="mt-2 text-sm font-semibold text-[#111827] hover:underline"
               >
                 Limpiar filtros
               </button>

@@ -37,14 +37,14 @@ export default function ProductCard({ product, cartQty, onAdd }: ProductCardProp
     <div className={`bg-white rounded-2xl overflow-hidden border transition-all duration-150 ${
       isOut
         ? 'border-[#E5E7EB] opacity-60'
-        : 'border-[#E5E7EB] hover:border-[#FF5C00]/40 hover:shadow-md cursor-pointer'
+        : 'border-[#E5E7EB] hover:border-[#111827]/40 hover:shadow-md cursor-pointer'
     }`}>
       <div className="relative h-28 flex items-center justify-center" style={{ backgroundColor: product.bgColor }}>
         <MaterialIcon name={product.icon} className="select-none text-5xl text-[#374151]" filled />
 
         {cartQty > 0 && (
           <span className="absolute top-2 left-2 w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center text-white"
-            style={{ backgroundColor: '#FF5C00' }}>
+            style={{ backgroundColor: '#111827' }}>
             {cartQty}
           </span>
         )}
@@ -66,7 +66,7 @@ export default function ProductCard({ product, cartQty, onAdd }: ProductCardProp
         <p className="text-sm font-bold text-[#0D0F14] leading-tight mb-2 line-clamp-2">{product.name}</p>
 
         <div className="flex items-center justify-between mb-2.5">
-          <span className="text-base font-bold" style={{ color: '#FF5C00' }}>{fmt(product.price)}</span>
+          <span className="text-base font-bold" style={{ color: '#111827' }}>{fmt(product.price)}</span>
           <span className={`text-[10px] font-semibold ${
             isOut ? 'text-[#EF4444]' : isLow ? 'text-[#F59E0B]' : 'text-[#10B981]'
           }`}>
@@ -82,7 +82,7 @@ export default function ProductCard({ product, cartQty, onAdd }: ProductCardProp
               ? 'bg-[#F3F4F6] text-[#9CA3AF] cursor-not-allowed'
               : 'text-white hover:opacity-90 active:scale-95'
           }`}
-          style={!(isOut || atMax) ? { backgroundColor: '#FF5C00' } : {}}
+          style={!(isOut || atMax) ? { backgroundColor: '#6B7280' } : {}}
         >
           {isOut ? 'Agotado' : atMax ? 'Máx. alcanzado' : 'Agregar'}
         </button>
