@@ -1,10 +1,7 @@
-// Backend de la aplicación web de cobro (front desk).
-//
-// Antes guardaba todo en arreglos en memoria; ahora usa el PostgreSQL
-// compartido de la carpeta de punto de venta, dentro del esquema webcobro.
-// Los campos de las respuestas se mantienen igual que antes (client, class,
-// time, status, price) para que las pantallas sigan funcionando sin cambios.
+
+const { imprimirTicket } = require('./ticketService.js');
 require('dotenv/config');
+
 
 const express = require('express');
 const cors = require('cors');
@@ -300,42 +297,30 @@ app.get('/api/clases', async (req, res) => {
 
 //POST para cobrar una reservación desde el modal de cobro del dashboard.
 //
-// Recibe el id de la RESERVA (no el del cliente) y la forma de pago, con las
-// mismas tres opciones que el Punto de Venta: efectivo, tarjeta o transferencia.
-// En una sola transacción:
-//   1) bloquea la reservación (FOR UPDATE) para que nadie la cobre dos veces,
-//   2) registra el pago en webcobro.pagos junto con su forma de pago,
-//   3) marca la reservación como 'pagado'.
-// El monto se toma del precio real guardado en la reservación, no del navegador.
 app.post('/api/cobros', async (req, res) => {
   const reservaId = Number(req.body?.reservaId);
   const metodoPago = String(req.body?.metodoPago ?? 'efectivo');
+  const usuario = req.body?.usuario ? String(req.body.usuario).trim() : null;
 
-  // Las mismas formas de pago que acepta el Punto de Venta.
   const METODOS_PAGO = ['efectivo', 'tarjeta', 'transferencia'];
 
-  //validacion 1 el id de la reservación es obligatorio
   if (!Number.isInteger(reservaId) || reservaId <= 0) {
     return res.status(400).json({ error: 'El id de la reservación es obligatorio.' });
   }
-
-  //validacion 2 la forma de pago debe ser una de las tres que maneja el sistema
   if (!METODOS_PAGO.includes(metodoPago)) {
     return res.status(400).json({ error: 'La forma de pago no es válida.' });
   }
 
-  //validacion 3 el efectivo recibido solo aplica cuando se paga en efectivo
   const efectivoRecibido =
     req.body?.efectivoRecibido === undefined || req.body?.efectivoRecibido === null
       ? undefined
       : Number(req.body.efectivoRecibido);
   if (metodoPago === 'efectivo') {
     if (efectivoRecibido === undefined || !Number.isFinite(efectivoRecibido) || efectivoRecibido < 0) {
-      return res.status(400).json({ error: 'El efectivo recibido no es válido.' });
+      return res.status(400).json({ error: 'El efectivo recibido no válido.' });
     }
   }
 
-  // La referencia de la transferencia es opcional y solo aplica a transferencia.
   const referencia =
     metodoPago === 'transferencia' && req.body?.referencia !== undefined && req.body?.referencia !== null
       ? String(req.body.referencia).trim()
@@ -345,7 +330,6 @@ app.post('/api/cobros', async (req, res) => {
   try {
     await conexion.query('BEGIN');
 
-    //validacion 4 la reservación debe existir (bloqueada para el cobro)
     const reserva = (
       await conexion.query(
         `SELECT id, cliente, tipo, estado, precio
@@ -359,8 +343,6 @@ app.post('/api/cobros', async (req, res) => {
       await conexion.query('ROLLBACK');
       return res.status(404).json({ error: 'Reservación no encontrada.' });
     }
-
-    //validacion 5 solo se puede cobrar una reservación pendiente
     if (reserva.estado === 'pagado') {
       await conexion.query('ROLLBACK');
       return res.status(400).json({ error: 'Esta reservación ya fue cobrada.' });
@@ -372,16 +354,18 @@ app.post('/api/cobros', async (req, res) => {
 
     const monto = Number(reserva.precio);
 
-    //validacion 6 en efectivo, el cliente debe alcanzar el monto a cobrar
     if (metodoPago === 'efectivo' && efectivoRecibido < monto) {
       await conexion.query('ROLLBACK');
       return res.status(400).json({ error: 'El efectivo recibido no alcanza para cubrir el monto.' });
     }
 
-    // El cambio solo existe cuando se paga en efectivo de más (igual que el POS).
     const cambio = metodoPago === 'efectivo' ? Math.max(efectivoRecibido - monto, 0) : null;
 
-    // El socio puede tener ficha en webcobro.clientes; el visitante no.
+    // Folio correlativo diario, seguro contra concurrencia
+    const seq = await conexion.query("SELECT nextval('webcobro.seq_folio_diario') AS n");
+    const fechaCompacta = new Date().toISOString().slice(0, 10).replaceAll('-', '');
+    const folio = `NCC-${fechaCompacta}-${String(seq.rows[0].n).padStart(4, '0')}`;
+    
     const socio = (
       await conexion.query('SELECT id FROM webcobro.clientes WHERE nombre = $1', [reserva.cliente])
     ).rows[0];
@@ -390,9 +374,9 @@ app.post('/api/cobros', async (req, res) => {
       await conexion.query(
         `INSERT INTO webcobro.pagos
            (reserva_id, cliente_id, cliente_nombre, monto, metodo_pago,
-            efectivo_recibido, cambio, referencia)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-         RETURNING id, monto::float8 AS monto, metodo_pago,
+            efectivo_recibido, cambio, referencia, folio, usuario)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         RETURNING id, folio, monto::float8 AS monto, metodo_pago,
                    efectivo_recibido::float8 AS efectivo_recibido,
                    cambio::float8 AS cambio, referencia, creado_en`,
         [
@@ -404,12 +388,12 @@ app.post('/api/cobros', async (req, res) => {
           metodoPago === 'efectivo' ? efectivoRecibido : null,
           cambio,
           referencia,
+          folio,
+          usuario,
         ],
       )
     ).rows[0];
 
-    // Se marca la reservación como pagada y se devuelve con los mismos nombres
-    // de campo que GET /api/reservas para que el dashboard la reemplace tal cual.
     const reservaPagada = (
       await conexion.query(
         `UPDATE webcobro.reservas
@@ -423,11 +407,42 @@ app.post('/api/cobros', async (req, res) => {
 
     await conexion.query('COMMIT');
 
+    // ---- Ticket: payload//
+    const ticketPayload = {
+      folio: nuevoPago.folio,
+      contexto: 'recepcion',
+      cliente_nombre: reserva.cliente,
+      total: monto,
+      cambio: cambio ?? 0,
+      metodo_pago: metodoPago,
+      pagos: [{
+        metodo: metodoPago,
+        monto: metodoPago === 'efectivo' ? efectivoRecibido : monto,
+      }],
+      usuario: usuario ?? '-',
+      codigo_reserva: reserva.codigo || null,
+      fecha: nuevoPago.creado_en,
+      items: [{
+        descripcion: reserva.clase || reserva.tipo || 'Clase de gimnasio',
+        cantidad: 1,
+        precioUnitario: monto,
+      }],
+    };
+
+    let impreso = false;
+    try {
+      impreso = await imprimirTicket(ticketPayload);
+    } catch (e) {
+      console.error('Impresión falló:', e.message);
+    }
+
     res.status(201).json({
       mensaje: 'Cobro registrado',
+      impreso,
       reserva: reservaPagada,
       pago: {
         id: Number(nuevoPago.id),
+        folio: nuevoPago.folio,
         reservaId: reserva.id,
         monto: nuevoPago.monto,
         metodoPago: nuevoPago.metodo_pago,
@@ -445,7 +460,6 @@ app.post('/api/cobros', async (req, res) => {
     conexion.release();
   }
 });
-
 //GET para tarjetas superiores del dashboard
 app.get('/api/kpis', async (req, res) => {
   const resumen = (

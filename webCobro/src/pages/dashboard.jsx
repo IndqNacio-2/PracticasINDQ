@@ -33,7 +33,11 @@ export default function Dashboard() {
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [selectedReservationForPayment, setSelectedReservationForPayment] = useState(null);
   const [paymentLoading, setPaymentLoading] = useState(false);
+  const [metodoPago, setMetodoPago] = useState('efectivo');
+  const [efectivoRecibido, setEfectivoRecibido] = useState('');
+  const [referenciaTransferencia, setReferenciaTransferencia] = useState('');
   const [kpis, setKpis] = useState({ ingresosHoy: 0, clientesEsperados: 0, totalReservas: 0 });
+  
   const [newReservation, setNewReservation] = useState({
     client: '',
     class: '',
@@ -48,6 +52,7 @@ export default function Dashboard() {
   
   // ========== CARGA DE DATOS DESDE EL BACKEND ==========
    const API = 'http://localhost:3001';
+   const METODOS_PAGO = ['efectivo', 'tarjeta', 'transferencia'];
 
   // ========== FUNCIONES AUXILIARES ==========
   const cargarKpis = async () => {
@@ -141,25 +146,13 @@ export default function Dashboard() {
     }
   };
 
-     const handlePayment = (id) =>{
-      const reservation = reservations.find(r => r.id === id);
-      if(!reservation){
-        showNotification('No se encontró la reservación.', 'error');
-        return;
-      }
-      if (reservation.status === 'pagado'){
-        showNotification('Esta clase ya fue cobrada.', 'error');
-        return;
-      }
-      setSelectedReservationForPayment(reservation);
-      setIsPaymentModalOpen(true);
-     };
-
-      const handleConfirmPayment = async () => {
+    const handleConfirmPayment = async () => {
   if (!selectedReservationForPayment) return;
 
-  if (!selectedReservationForPayment.clientId) {
-    showNotification('No se puede cobrar a visitantes con este método.', 'error');
+  const total = Number(selectedReservationForPayment.price);
+
+  if (metodoPago === 'efectivo' && Number(efectivoRecibido) < total) {
+    showNotification('El efectivo recibido no alcanza para cubrir el monto.', 'error');
     return;
   }
 
@@ -169,32 +162,38 @@ export default function Dashboard() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        clienteId: selectedReservationForPayment.clientId,
-        monto: selectedReservationForPayment.price
-      })
+        reservaId: selectedReservationForPayment.id,
+        usuario: user?.name || 'Recepcionista',
+        metodoPago,
+        efectivoRecibido: metodoPago === 'efectivo' ? Number(efectivoRecibido) : undefined,
+        referencia: metodoPago === 'transferencia'
+          ? referenciaTransferencia.trim() || undefined
+          : undefined,
+      }),
     });
 
     const data = await response.json();
-
     if (!response.ok) {
-      throw new Error(data.error || 'Error al procesar el cobro');
+      throw new Error(data.error || 'Error al procesar el cobro.');
     }
 
-    // Actualizar estado local
-    setReservations(prev => prev.map(res =>
-      res.id === selectedReservationForPayment.id
-        ? { ...res, status: 'pagado' }
-        : res
+    setReservations(prev => prev.map(r =>
+      r.id === selectedReservationForPayment.id ? { ...r, status: 'pagado' } : r
     ));
 
-    showNotification(`✅ Cobro de $${selectedReservationForPayment.price} registrado.`, 'success');
-    
-    // ← AQUÍ: Recargar KPIs después del cobro exitoso
+    showNotification(
+      data.impreso
+        ? `Cobro registrado. Folio ${data.pago.folio}. Ticket impreso.`
+        : `Cobro registrado. Folio ${data.pago.folio}. El ticket no se pudo imprimir.`,
+      'success'
+    );
+
     await cargarKpis();
-    
     setIsPaymentModalOpen(false);
     setSelectedReservationForPayment(null);
-
+    setMetodoPago('efectivo');
+    setEfectivoRecibido('');
+    setReferenciaTransferencia('');
   } catch (error) {
     console.error('Error en cobro:', error);
     showNotification(error.message, 'error');
@@ -202,6 +201,27 @@ export default function Dashboard() {
     setPaymentLoading(false);
   }
 };
+
+  const handlePayment = (id) => {
+    const reservation = reservations.find(r => r.id === id);
+    if (!reservation) {
+      showNotification('No se encontró la reservación.', 'error');
+      return;
+    }
+    if (reservation.status === 'pagado') {
+      showNotification('Esta clase ya fue cobrada.', 'error');
+      return;
+    }
+
+    setSelectedReservationForPayment(reservation);
+
+    // Reiniciar campos del modal
+    setMetodoPago('efectivo');
+    setEfectivoRecibido('');
+    setReferenciaTransferencia('');
+
+    setIsPaymentModalOpen(true);
+  };
 
   const handleCancel = (id) => {
     try {
@@ -303,6 +323,15 @@ export default function Dashboard() {
       String(res.id).includes(term)
     );
   });
+
+  const closePaymentModal = () => {
+  if (paymentLoading) return;
+  setIsPaymentModalOpen(false);
+  setSelectedReservationForPayment(null);
+  setMetodoPago('efectivo');
+  setEfectivoRecibido('');
+  setReferenciaTransferencia('');
+};
 
   // ========== RETORNO DEL JSX ==========
 
@@ -686,16 +715,12 @@ export default function Dashboard() {
     <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden">
       <div className="bg-green-600 px-6 py-4 flex justify-between items-center">
         <h3 className="text-lg font-bold text-white">Confirmar Cobro</h3>
-        <button
-          onClick={() => setIsPaymentModalOpen(false)}
-          className="text-gray-200 hover:text-white transition-colors"
-        >
+        <button onClick={closePaymentModal} className="text-gray-200 hover:text-white transition-colors">
           <X className="h-6 w-6" />
         </button>
       </div>
 
       <div className="p-6 space-y-4">
-        {/* Resumen */}
         <div className="bg-gray-50 rounded-lg p-4 space-y-2">
           <div className="flex justify-between">
             <span className="text-gray-600 text-sm">Cliente:</span>
@@ -705,21 +730,69 @@ export default function Dashboard() {
             <span className="text-gray-600 text-sm">Clase:</span>
             <span className="font-semibold text-gray-800">{selectedReservationForPayment.class}</span>
           </div>
-          <div className="flex justify-between">
-            <span className="text-gray-600 text-sm">Hora:</span>
-            <span className="font-semibold text-gray-800">{selectedReservationForPayment.time}</span>
-          </div>
           <div className="border-t border-gray-200 pt-2 mt-2 flex justify-between">
             <span className="text-gray-600 font-medium">Monto a cobrar:</span>
             <span className="text-2xl font-bold text-green-600">${selectedReservationForPayment.price}</span>
           </div>
         </div>
 
-        {/* Botones */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Método de pago</label>
+          <div className="grid grid-cols-3 gap-2">
+            {METODOS_PAGO.map(m => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setMetodoPago(m)}
+                className={`px-3 py-2 rounded-lg border-2 text-sm font-semibold capitalize transition-colors ${
+                  metodoPago === m
+                    ? 'border-green-500 bg-green-50 text-green-700'
+                    : 'border-gray-200 text-gray-500 hover:border-gray-400'
+                }`}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {metodoPago === 'efectivo' && (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Efectivo recibido</label>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="$0.00"
+              value={efectivoRecibido}
+              onChange={(e) => setEfectivoRecibido(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 text-gray-800"
+            />
+            {Number(efectivoRecibido) >= Number(selectedReservationForPayment.price) && (
+              <p className="mt-1 text-xs text-green-600 font-medium">
+                Cambio: ${(Number(efectivoRecibido) - Number(selectedReservationForPayment.price)).toFixed(2)}
+              </p>
+            )}
+          </div>
+        )}
+
+        {metodoPago === 'transferencia' && (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Referencia (opcional)</label>
+            <input
+              type="text"
+              placeholder="No. de operación"
+              value={referenciaTransferencia}
+              onChange={(e) => setReferenciaTransferencia(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 text-gray-800"
+            />
+          </div>
+        )}
+
         <div className="flex gap-3 pt-2">
           <button
             type="button"
-            onClick={() => setIsPaymentModalOpen(false)}
+            onClick={closePaymentModal}
             disabled={paymentLoading}
             className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors font-medium disabled:opacity-50"
           >
@@ -729,19 +802,9 @@ export default function Dashboard() {
             type="button"
             onClick={handleConfirmPayment}
             disabled={paymentLoading}
-            className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-300 text-white rounded-lg font-medium transition-colors disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-300 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
           >
-            {paymentLoading ? (
-              <>
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                Procesando...
-              </>
-            ) : (
-              <>
-                <CreditCard className="h-4 w-4" />
-                Confirmar Cobro
-              </>
-            )}
+            {paymentLoading ? 'Procesando...' : (<><CreditCard className="h-4 w-4" />Confirmar Cobro</>)}
           </button>
         </div>
       </div>

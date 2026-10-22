@@ -274,7 +274,7 @@ const Attendance = () => {
               </p>
             </div>
           )}
-
+a
           {/* Historial del usuario */}
           {usuarioActual && historialUsuario.length > 0 && (
             <div className="border-t border-slate-200 pt-4">
