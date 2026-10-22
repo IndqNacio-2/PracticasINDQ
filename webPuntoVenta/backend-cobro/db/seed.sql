@@ -27,8 +27,10 @@ ON CONFLICT (id) DO UPDATE SET
     tipo    = EXCLUDED.tipo,
     clase   = EXCLUDED.clase,
     hora    = EXCLUDED.hora,
-    estado  = EXCLUDED.estado,
     precio  = EXCLUDED.precio;
+
+-- No se sobrescribe el estado al re-ejecutar el seed: una reservación que ya
+-- fue cobrada no debe regresar a "pendiente" mientras su pago sigue guardado.
 
 INSERT INTO webcobro.empleados (codigo, nombre, rol) VALUES
     ('EMP-101', 'Ana Torres', 'entrenador'),
