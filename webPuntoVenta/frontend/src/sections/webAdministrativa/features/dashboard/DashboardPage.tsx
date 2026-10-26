@@ -1,223 +1,666 @@
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
-import { StatCard } from '../../components/StatCard';
-import { Badge } from '../../components/Badge';
-import { Icon } from '../../components/Icon';
-import { useAuth } from '../../context/AuthContext';
-import { mockClientes, mockReservaciones, mockVentas, mockHorarios, ventasPorDia } from '../../data/mock';
+﻿import { useCallback, useEffect, useMemo, useState } from "react"
+
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+} from "recharts"
+
+import { Icon } from "../../components/Icon"
+
+import { useAuth } from "../../context/AuthContext"
+
+import { api, apiCobro } from "../../lib/api"
+
+import type { HorarioClase, Venta } from "../../types"
+
+interface ReservaCobro {
+  id: number
+
+  client: string
+
+  type: "cliente" | "visitante"
+
+  class: string
+
+  time: string
+
+  status: "pendiente" | "pagado" | "asistido" | "cancelado"
+
+  price: number
+
+  fecha?: string
+}
+
+interface SocioCobro {
+  id: number
+
+  nombre: string
+
+  membresia: string
+
+  telefono: string
+
+  correo: string | null
+
+  activo: boolean
+
+  vigencia_hasta: string | null
+}
+
+interface KpisCobro {
+  clientesEsperados: number
+
+  ingresosHoy: number
+
+  totalReservas: number
+}
+
+function fechaISO(fecha = new Date()): string {
+  const mes = String(fecha.getMonth() + 1).padStart(2, "0")
+
+  const dia = String(fecha.getDate()).padStart(2, "0")
+
+  return `${fecha.getFullYear()}-${mes}-${dia}`
+}
+
+function etiquetaDia(fecha: string): string {
+  const [, mes, dia] = fecha.split("-").map(Number)
+
+  return `${dia}/${mes}`
+}
+
+function socioVigente(socio: SocioCobro, hoy: string): boolean {
+  return (
+    socio.activo !== false &&
+    (!socio.vigencia_hasta || socio.vigencia_hasta >= hoy)
+  )
+}
 
 export function DashboardPage() {
-  // Regla de acceso: al Punto de Venta solo pueden entrar el administrador
-  // y el personal de recepción. El entrenador no tiene acceso.
-  const { hasRole } = useAuth();
-  const puedeEntrarAlPuntoDeVenta = hasRole(['administrador', 'recepcion']);
+  const { hasRole } = useAuth()
 
-  const activeClients = mockClientes.filter(c => c.estatus === 'activo').length;
-  const todayReservations = mockReservaciones.filter(r => r.fechaReservacion === '2024-09-16').length;
-  const monthRevenue = mockVentas.reduce((s, v) => s + v.total, 0);
-  const todayClasses = mockHorarios.filter(h => h.fecha === '2024-09-16').length;
+  const puedeEntrarAlPuntoDeVenta = hasRole(["administrador", "recepcion"])
 
-  const pendingReservations = mockReservaciones.filter(r => r.estatus === 'pendiente').slice(0, 5);
-  const recentVentas = mockVentas.slice(-4).reverse();
+  const [kpis, setKpis] = useState<KpisCobro | null>(null)
+
+  const [reservas, setReservas] = useState<ReservaCobro[]>([])
+
+  const [clientes, setClientes] = useState<SocioCobro[]>([])
+
+  const [horariosHoy, setHorariosHoy] = useState<HorarioClase[]>([])
+
+  const [ventasMes, setVentasMes] = useState<Venta[]>([])
+
+  const [cargando, setCargando] = useState(true)
+
+  const [error, setError] = useState<string | null>(null)
+
+  const hoy = fechaISO()
+
+  const inicioMes = `${hoy.slice(0, 7)}-01`
+
+  // El dashboard se alimenta únicamente de datos reales. Si una fuente no
+
+  // tiene registros, su sección queda en cero o muestra un estado vacío.
+
+  const cargar = useCallback(async () => {
+    setCargando(true)
+
+    setError(null)
+
+    const resultados = await Promise.allSettled([
+      apiCobro.get<KpisCobro>("/kpis"),
+
+      apiCobro.get<ReservaCobro[]>("/reservas"),
+
+      apiCobro.get<SocioCobro[]>("/clientes"),
+
+      api.get<HorarioClase[]>(`/horarios?fecha=${hoy}&estatus=activo`),
+
+      api.get<Venta[]>(`/ventas?desde=${inicioMes}&hasta=${hoy}`),
+    ])
+
+    const [
+      resultadoKpis,
+
+      resultadoReservas,
+
+      resultadoClientes,
+
+      resultadoHorarios,
+
+      resultadoVentas,
+    ] = resultados
+
+    setKpis(resultadoKpis.status === "fulfilled" ? resultadoKpis.value : null)
+
+    setReservas(
+      resultadoReservas.status === "fulfilled" &&
+        Array.isArray(resultadoReservas.value)
+        ? resultadoReservas.value
+        : [],
+    )
+
+    setClientes(
+      resultadoClientes.status === "fulfilled" &&
+        Array.isArray(resultadoClientes.value)
+        ? resultadoClientes.value
+        : [],
+    )
+
+    setHorariosHoy(
+      resultadoHorarios.status === "fulfilled" &&
+        Array.isArray(resultadoHorarios.value)
+        ? resultadoHorarios.value
+        : [],
+    )
+
+    setVentasMes(
+      resultadoVentas.status === "fulfilled" &&
+        Array.isArray(resultadoVentas.value)
+        ? resultadoVentas.value
+        : [],
+    )
+
+    if (resultados.some((resultado) => resultado.status === "rejected")) {
+      setError(
+        "Algunos datos no se pudieron cargar. Las secciones afectadas se muestran vacías.",
+      )
+    }
+
+    setCargando(false)
+  }, [hoy, inicioMes])
+
+  useEffect(() => {
+    void cargar()
+  }, [cargar])
+
+  const clientesActivos = clientes.filter((cliente) =>
+    socioVigente(cliente, hoy),
+  ).length
+
+  const ingresosMes = ventasMes.reduce(
+    (total, venta) => total + Number(venta.total || 0),
+
+    0,
+  )
+
+  const reservacionesPendientes = reservas
+
+    .filter((reserva) => reserva.status === "pendiente")
+
+    .sort((a, b) =>
+      `${a.fecha ?? ""} ${a.time}`.localeCompare(`${b.fecha ?? ""} ${b.time}`),
+    )
+
+    .slice(0, 5)
+
+  const ventasRecientes = [...ventasMes]
+
+    .sort((a, b) => b.fecha.localeCompare(a.fecha))
+
+    .slice(0, 4)
+
+  const ventasPorDia = useMemo(() => {
+    const totales = new Map<string, number>()
+
+    ventasMes.forEach((venta) =>
+      totales.set(
+        venta.fecha,
+
+        (totales.get(venta.fecha) ?? 0) + Number(venta.total || 0),
+      ),
+    )
+
+    return [...totales.entries()]
+
+      .sort(([fechaA], [fechaB]) => fechaA.localeCompare(fechaB))
+
+      .map(([fecha, ventas]) => ({ fecha, dia: etiquetaDia(fecha), ventas }))
+  }, [ventasMes])
+
+  const asistenciasUltimosSieteDias = useMemo(() => {
+    const dias = Array.from({ length: 7 }, (_, indice) => {
+      const fecha = new Date()
+
+      fecha.setDate(fecha.getDate() - (6 - indice))
+
+      const iso = fechaISO(fecha)
+
+      return { fecha: iso, dia: etiquetaDia(iso), asistencias: 0 }
+    })
+
+    const porFecha = new Map(dias.map((dia) => [dia.fecha, dia]))
+
+    reservas.forEach((reserva) => {
+      if (
+        reserva.status === "asistido" &&
+        reserva.fecha &&
+        porFecha.has(reserva.fecha)
+      ) {
+        porFecha.get(reserva.fecha)!.asistencias += 1
+      }
+    })
+
+    return dias
+  }, [reservas])
+
+  const fechaHoy = new Date().toLocaleDateString("es-MX", {
+    weekday: "long",
+
+    day: "numeric",
+
+    month: "long",
+
+    year: "numeric",
+  })
+
+  const nombreMes = new Date().toLocaleDateString("es-MX", { month: "long" })
+
+  const anioActual = new Date().getFullYear()
 
   return (
-    <div className="space-y-6 max-w-7xl">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>Panel de Control</h1>
-        <p className="text-slate-500 text-sm mt-0.5">Lunes 16 de septiembre, 2024</p>
-      </div>
+    <section className="rx-admin-dashboard" aria-busy={cargando}>
+      <header className="rx-page-header rx-admin-dashboard-header">
+        <div className="rx-page-heading">
+          <span className="rx-section-eyebrow">Resumen operativo</span>
+          <h1 className="rx-page-title">Dashboard</h1>
+          <p className="rx-page-subtitle">
+            {fechaHoy.charAt(0).toUpperCase() + fechaHoy.slice(1)}
+          </p>
+        </div>
+        {puedeEntrarAlPuntoDeVenta && (
+          <a href="/" className="rx-btn rx-btn--primary">
+            <Icon name="point_of_sale" size={19} />
+            Ir al Punto de Venta
+          </a>
+        )}
+      </header>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          label="Clientes Activos"
-          value={activeClients}
-          trend={{ value: '12%', positive: true }}
-          icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>}
-        />
-        <StatCard
-          label="Reservaciones Hoy"
-          value={todayReservations}
-          trend={{ value: '8%', positive: true }}
-          accent="#6366f1"
-          icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>}
-        />
-        <StatCard
-          label="Ingresos del Mes"
-          value={`$${monthRevenue.toLocaleString()}`}
-          trend={{ value: '23%', positive: true }}
-          accent="#f59e0b"
-          icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
-        />
-        <StatCard
-          label="Clases Hoy"
-          value={todayClasses}
-          trend={{ value: '5%', positive: false }}
-          accent="#ec4899"
-          icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>}
-        />
-      </div>
-
-      {/* Accesos rápidos a los demás módulos del sistema.
-          Solo se muestran los módulos a los que el usuario tiene permiso. */}
-      {puedeEntrarAlPuntoDeVenta && (
-        <div className="space-y-3">
-          <h3 className="font-semibold text-slate-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>Accesos rápidos</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {/* Punto de Venta: navega a la sección del punto de venta (/) de
-                esta misma aplicación. Disponible solo para administrador y
-                recepción. */}
-            <a
-              href="/"
-              className="group bg-white rounded-2xl p-5 border border-slate-100 shadow-sm hover:border-emerald-200 hover:shadow-md transition-all flex items-start gap-4"
+      <div className="rx-page-content">
+        {error && (
+          <div className="rx-admin-alert" role="alert">
+            <Icon name="warning" size={20} />
+            <span>{error}</span>
+            <button
+              type="button"
+              onClick={() => void cargar()}
+              className="rx-admin-alert-action"
             >
-              <div className="w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center flex-shrink-0">
-                <Icon name="point_of_sale" size={26} weight={600} className="text-emerald-600" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-slate-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>Punto de Venta</p>
-                <p className="text-xs text-slate-500 mt-0.5">Venta de productos, inventario, mermas y corte de caja</p>
-                <span className="inline-flex items-center gap-1 text-xs text-emerald-600 font-semibold mt-2">
-                  Abrir módulo
-                  <Icon name="arrow_forward" size={16} weight={600} />
-                </span>
-              </div>
-            </a>
-
-            {/* Cobro: navega a la sección de cobro (/cobro) de esta misma
-                aplicación, igual por enlace interno. */}
-            <a
-              href="/cobro"
-              className="group bg-white rounded-2xl p-5 border border-slate-100 shadow-sm hover:border-indigo-200 hover:shadow-md transition-all flex items-start gap-4"
-            >
-              <div className="w-12 h-12 rounded-xl bg-indigo-500/10 flex items-center justify-center flex-shrink-0">
-                <Icon name="payments" size={26} weight={600} className="text-indigo-600" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-slate-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>Cobro (Front Desk)</p>
-                <p className="text-xs text-slate-500 mt-0.5">Cobro de clases, reservas, asistencia y kpis</p>
-                <span className="inline-flex items-center gap-1 text-xs text-indigo-600 font-semibold mt-2">
-                  Abrir módulo
-                  <Icon name="arrow_forward" size={16} weight={600} />
-                </span>
-              </div>
-            </a>
+              Reintentar
+            </button>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Charts row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-2 bg-white rounded-2xl p-5 border border-slate-100 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-slate-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>Ventas e Ingresos — Septiembre</h3>
-            <span className="text-xs text-slate-400 bg-slate-50 px-2.5 py-1 rounded-lg">2024</span>
-          </div>
-          <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={ventasPorDia} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-              <defs>
-                <linearGradient id="venGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#10b981" stopOpacity={0.2} />
-                  <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-              <XAxis dataKey="dia" tick={{ fontSize: 10, fill: '#94a3b8' }} tickLine={false} axisLine={false} />
-              <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} tickLine={false} axisLine={false} tickFormatter={v => `$${v}`} />
-              <Tooltip formatter={(v) => [`$${v}`, 'Ventas']} contentStyle={{ borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 12 }} />
-              <Area type="monotone" dataKey="ventas" stroke="#10b981" strokeWidth={2} fill="url(#venGrad)" dot={false} />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-
-        <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm">
-          <h3 className="font-semibold text-slate-900 mb-4" style={{ fontFamily: 'DM Sans, sans-serif' }}>Visitas Diarias</h3>
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={ventasPorDia.slice(-7)} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-              <XAxis dataKey="dia" tick={{ fontSize: 10, fill: '#94a3b8' }} tickLine={false} axisLine={false} />
-              <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} tickLine={false} axisLine={false} />
-              <Tooltip contentStyle={{ borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 12 }} />
-              <Bar dataKey="visitas" fill="#6366f1" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      {/* Tables row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Clases de hoy */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm">
-          <h3 className="font-semibold text-slate-900 mb-4" style={{ fontFamily: 'DM Sans, sans-serif' }}>Clases de Hoy</h3>
-          <div className="space-y-2">
-            {mockHorarios.filter(h => h.fecha === '2024-09-16').map(h => {
-              const pct = Math.round(((h.capacidadTotal - h.capacidadDisponible) / h.capacidadTotal) * 100);
-              return (
-                <div key={h.idHorario} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl">
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-emerald-500/10 flex-shrink-0">
-                    <span className="text-xs font-bold text-emerald-700">{h.horaInicio.split(':')[0]}h</span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-slate-800 truncate">{h.nombreClase}</p>
-                    <p className="text-xs text-slate-400">{h.nombreEntrenador} · {h.salon}</p>
-                  </div>
-                  <div className="text-right flex-shrink-0">
-                    <p className="text-xs font-medium text-slate-700">{h.capacidadTotal - h.capacidadDisponible}/{h.capacidadTotal}</p>
-                    <div className="w-16 h-1.5 bg-slate-200 rounded-full mt-1">
-                      <div className="h-1.5 rounded-full bg-emerald-500 transition-all" style={{ width: `${pct}%` }} />
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+        <div className="rx-grid-kpi rx-admin-kpi-grid" aria-live="polite">
+          <DashboardStat
+            label="Clientes activos"
+            value={cargando ? "—" : clientesActivos}
+            icon="groups"
+            tone="accent"
+          />
+          <DashboardStat
+            label="Reservaciones hoy"
+            value={cargando ? "—" : (kpis?.totalReservas ?? 0)}
+            icon="event_available"
+            tone="info"
+          />
+          <DashboardStat
+            label="Ingresos hoy"
+            value={
+              cargando
+                ? "—"
+                : `$${Number(kpis?.ingresosHoy ?? 0).toLocaleString("es-MX")}`
+            }
+            icon="payments"
+            tone="success"
+          />
+          <DashboardStat
+            label={`Ingresos en ${nombreMes}`}
+            value={cargando ? "—" : `$${ingresosMes.toLocaleString("es-MX")}`}
+            icon="trending_up"
+            tone="special"
+          />
         </div>
 
-        {/* Reservaciones pendientes */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm">
-          <h3 className="font-semibold text-slate-900 mb-4" style={{ fontFamily: 'DM Sans, sans-serif' }}>Reservaciones Pendientes</h3>
-          <div className="space-y-2">
-            {pendingReservations.map(r => (
-              <div key={r.idReservacion} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
-                <div>
-                  <p className="text-sm font-medium text-slate-800">{r.nombreCliente}</p>
-                  <p className="text-xs text-slate-400">{r.clase} · {r.horaClase}</p>
-                </div>
-                <Badge variant={r.estatus} />
+        <div className="rx-admin-chart-grid">
+          <article className="rx-admin-card rx-admin-chart-card">
+            <div className="rx-admin-card-header">
+              <div>
+                <span className="rx-section-eyebrow">Rendimiento</span>
+                <h2 className="rx-admin-card-title">Ingresos del mes</h2>
               </div>
-            ))}
-            {pendingReservations.length === 0 && (
-              <p className="text-sm text-slate-400 text-center py-8">Sin reservaciones pendientes</p>
+              <span className="rx-admin-period">
+                {nombreMes} {anioActual}
+              </span>
+            </div>
+            {cargando ? (
+              <EmptyChart text="Cargando ingresos..." />
+            ) : ventasPorDia.length === 0 ? (
+              <EmptyChart text="Sin ventas registradas este mes" />
+            ) : (
+              <div
+                className="rx-admin-chart"
+                aria-label="Gráfica de ingresos del mes"
+              >
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart
+                    data={ventasPorDia}
+                    margin={{ top: 12, right: 8, left: -20, bottom: 0 }}
+                  >
+                    <defs>
+                      <linearGradient
+                        id="incomeGradient"
+                        x1="0"
+                        y1="0"
+                        x2="0"
+                        y2="1"
+                      >
+                        <stop
+                          offset="0%"
+                          stopColor="var(--rx-accent)"
+                          stopOpacity={0.5}
+                        />
+                        <stop
+                          offset="100%"
+                          stopColor="var(--rx-accent)"
+                          stopOpacity={0.04}
+                        />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      stroke="var(--rx-line)"
+                      vertical={false}
+                    />
+                    <XAxis
+                      dataKey="dia"
+                      tick={{ fontSize: 11, fill: "var(--rx-ink-muted)" }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <YAxis
+                      tick={{ fontSize: 11, fill: "var(--rx-ink-muted)" }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        borderRadius: 12,
+
+                        border: "1px solid var(--rx-line)",
+
+                        fontSize: 12,
+                      }}
+                      formatter={(value) => [
+                        `$${Number(value).toLocaleString("es-MX")}`,
+
+                        "Ingresos",
+                      ]}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="ventas"
+                      stroke="var(--rx-dark)"
+                      strokeWidth={2.5}
+                      fill="url(#incomeGradient)"
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
             )}
-          </div>
-        </div>
-      </div>
+          </article>
 
-      {/* Recent sales */}
-      <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm">
-        <h3 className="font-semibold text-slate-900 mb-4" style={{ fontFamily: 'DM Sans, sans-serif' }}>Ventas Recientes</h3>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-100">
-                <th className="pb-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wide">Cliente</th>
-                <th className="pb-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wide">Productos</th>
-                <th className="pb-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wide">Fecha</th>
-                <th className="pb-3 text-right text-xs font-semibold text-slate-400 uppercase tracking-wide">Total</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {recentVentas.map(v => (
-                <tr key={v.idVenta}>
-                  <td className="py-3 font-medium text-slate-800">{v.nombreCliente}</td>
-                  <td className="py-3 text-slate-500 truncate max-w-xs">{v.productos.map(p => p.nombre).join(', ')}</td>
-                  <td className="py-3 text-slate-500">{v.fecha}</td>
-                  <td className="py-3 text-right font-semibold text-slate-800">${v.total.toLocaleString()}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <article className="rx-admin-card rx-admin-chart-card">
+            <div className="rx-admin-card-header">
+              <div>
+                <span className="rx-section-eyebrow">Actividad</span>
+                <h2 className="rx-admin-card-title">
+                  Asistencias · últimos 7 días
+                </h2>
+              </div>
+            </div>
+            {cargando ? (
+              <EmptyChart text="Cargando asistencias..." />
+            ) : (
+              <div
+                className="rx-admin-chart"
+                aria-label="Gráfica de asistencias de los últimos siete días"
+              >
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={asistenciasUltimosSieteDias}
+                    margin={{ top: 12, right: 8, left: -28, bottom: 0 }}
+                  >
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      stroke="var(--rx-line)"
+                      vertical={false}
+                    />
+                    <XAxis
+                      dataKey="dia"
+                      tick={{ fontSize: 11, fill: "var(--rx-ink-muted)" }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <YAxis
+                      allowDecimals={false}
+                      tick={{ fontSize: 11, fill: "var(--rx-ink-muted)" }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <Tooltip
+                      cursor={{ fill: "var(--rx-surface-soft)" }}
+                      contentStyle={{
+                        borderRadius: 12,
+
+                        border: "1px solid var(--rx-line)",
+
+                        fontSize: 12,
+                      }}
+                    />
+                    <Bar
+                      dataKey="asistencias"
+                      fill="var(--rx-dark-secondary)"
+                      radius={[7, 7, 0, 0]}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </article>
         </div>
+
+        <div className="rx-admin-list-grid">
+          <article className="rx-admin-card">
+            <div className="rx-admin-card-header">
+              <div>
+                <span className="rx-section-eyebrow">Agenda</span>
+                <h2 className="rx-admin-card-title">Clases de hoy</h2>
+              </div>
+              <span className="rx-admin-count">{horariosHoy.length}</span>
+            </div>
+            <div className="rx-admin-list">
+              {cargando && <EmptyList text="Cargando clases..." />}
+              {!cargando &&
+                horariosHoy.map((horario) => {
+                  const ocupados = Math.max(
+                    0,
+
+                    horario.capacidadTotal - horario.capacidadDisponible,
+                  )
+
+                  const porcentaje =
+                    horario.capacidadTotal > 0
+                      ? Math.round((ocupados / horario.capacidadTotal) * 100)
+                      : 0
+
+                  return (
+                    <div key={horario.idHorario} className="rx-admin-list-item">
+                      <div className="rx-admin-time">{horario.horaInicio}</div>
+                      <div className="rx-admin-list-copy">
+                        <strong>{horario.nombreClase}</strong>
+                        <span>
+                          {horario.nombreEntrenador} · {horario.salon}
+                        </span>
+                      </div>
+                      <div className="rx-admin-capacity">
+                        <span>
+                          {ocupados}/{horario.capacidadTotal}
+                        </span>
+                        <div className="rx-admin-progress">
+                          <span style={{ width: `${porcentaje}%` }} />
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              {!cargando && horariosHoy.length === 0 && (
+                <EmptyList text="Sin clases programadas para hoy" />
+              )}
+            </div>
+          </article>
+
+          <article className="rx-admin-card">
+            <div className="rx-admin-card-header">
+              <div>
+                <span className="rx-section-eyebrow">Seguimiento</span>
+                <h2 className="rx-admin-card-title">
+                  Reservaciones pendientes
+                </h2>
+              </div>
+              <span className="rx-admin-count rx-admin-count--warning">
+                {reservacionesPendientes.length}
+              </span>
+            </div>
+            <div className="rx-admin-list">
+              {cargando && <EmptyList text="Cargando reservaciones..." />}
+              {!cargando &&
+                reservacionesPendientes.map((reserva) => (
+                  <div key={reserva.id} className="rx-admin-list-item">
+                    <div className="rx-admin-list-icon">
+                      <Icon name="person" size={20} />
+                    </div>
+                    <div className="rx-admin-list-copy">
+                      <strong>{reserva.client}</strong>
+                      <span>
+                        {reserva.class} ·{" "}
+                        {reserva.fecha ? `${reserva.fecha} ` : ""}
+                        {reserva.time}
+                      </span>
+                    </div>
+                    <span className="rx-badge rx-badge--warning">
+                      Pendiente
+                    </span>
+                  </div>
+                ))}
+              {!cargando && reservacionesPendientes.length === 0 && (
+                <EmptyList text="Sin reservaciones pendientes" />
+              )}
+            </div>
+          </article>
+        </div>
+
+        <article className="rx-admin-card rx-admin-table-card">
+          <div className="rx-admin-card-header">
+            <div>
+              <span className="rx-section-eyebrow">Últimos movimientos</span>
+              <h2 className="rx-admin-card-title">Ventas recientes</h2>
+            </div>
+          </div>
+          {cargando ? (
+            <EmptyList text="Cargando ventas..." />
+          ) : ventasRecientes.length === 0 ? (
+            <EmptyList text="Sin ventas registradas este mes" />
+          ) : (
+            <div className="rx-table-wrap">
+              <table className="rx-table rx-admin-sales-table">
+                <thead>
+                  <tr>
+                    <th>Cliente</th>
+                    <th>Productos</th>
+                    <th>Fecha</th>
+                    <th className="rx-table-number">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ventasRecientes.map((venta) => (
+                    <tr key={venta.idVenta}>
+                      <td className="rx-cell-strong">{venta.nombreCliente}</td>
+                      <td className="rx-cell-muted">
+                        {venta.productos
+
+                          .map((producto) => producto.nombre)
+
+                          .join(", ") || "Sin detalle"}
+                      </td>
+                      <td className="rx-cell-muted">{venta.fecha}</td>
+                      <td className="rx-cell-strong rx-table-number">
+                        ${Number(venta.total).toLocaleString("es-MX")}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </article>
       </div>
+    </section>
+  )
+}
+
+function DashboardStat({
+  label,
+
+  value,
+
+  icon,
+
+  tone,
+}: {
+  label: string
+
+  value: string | number
+
+  icon: string
+
+  tone: "accent" | "info" | "success" | "special"
+}) {
+  return (
+    <article className="rx-kpi-card rx-admin-stat">
+      <div>
+        <p className="rx-kpi-label">{label}</p>
+        <p className="rx-kpi-value">{value}</p>
+      </div>
+      <div className={`rx-admin-stat-icon rx-admin-stat-icon--${tone}`}>
+        <Icon name={icon} size={22} filled />
+      </div>
+    </article>
+  )
+}
+
+function EmptyChart({ text }: { text: string }) {
+  return (
+    <div className="rx-admin-empty rx-admin-empty--chart">
+      <Icon name="monitoring" size={28} />
+      <p>{text}</p>
     </div>
-  );
+  )
+}
+
+function EmptyList({ text }: { text: string }) {
+  return (
+    <div className="rx-admin-empty">
+      <Icon name="inbox" size={24} />
+      <p>{text}</p>
+    </div>
+  )
 }
