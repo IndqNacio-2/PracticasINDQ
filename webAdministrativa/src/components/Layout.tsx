@@ -1,7 +1,8 @@
-import { useState } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router';
+import { useEffect, useState } from 'react';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { useAuth } from '../context/AuthContext';
-import type { UserRole } from '../types';
+import { api } from '../lib/api';
+import type { UserRole, Usuario } from '../types';
 import { Icon } from './Icon';
 
 interface NavItem {
@@ -22,88 +23,131 @@ const navItems: NavItem[] = [
   { path: '/reportes', label: 'Reportes', icon: 'bar_chart', roles: ['administrador'] },
 ];
 
+const rolLabel: Record<string, string> = {
+  administrador: 'Administrador', entrenador: 'Entrenador',
+  recepcion: 'Recepción', cliente: 'Cliente',
+};
+
+// Foto del usuario (si la tiene) o sus iniciales
+function Avatar({ user, className }: { user: Pick<Usuario, 'nombre' | 'apellidos' | 'foto'>; className: string }) {
+  if (user.foto) {
+    return <img src={user.foto} alt="" className={`${className} rounded-full object-cover flex-shrink-0`} />;
+  }
+  return (
+    <div className={`${className} rounded-full flex items-center justify-center flex-shrink-0 font-bold`}>
+      {user.nombre?.[0]}{user.apellidos?.[0]}
+    </div>
+  );
+}
+
 export function Layout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
+  const [pendientes, setPendientes] = useState(0);
 
   const visibleItems = navItems.filter(item => user && item.roles.includes(user.rol));
+
+  // Contador de reservaciones pendientes junto al menú (se actualiza al cambiar de pantalla)
+  useEffect(() => {
+    let cancelado = false;
+    api
+      .get<unknown[]>('/reservaciones?estatus=pendiente')
+      .then(r => { if (!cancelado) setPendientes(r.length); })
+      .catch(() => { /* sin contador si falla */ });
+    return () => { cancelado = true; };
+  }, [location.pathname]);
 
   const handleLogout = () => {
     logout();
     navigate('/login');
   };
 
-  const rolLabel: Record<string, string> = {
-    administrador: 'Administrador', entrenador: 'Entrenador',
-    recepcion: 'Recepción', cliente: 'Cliente',
-  };
-
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50">
-      {/* Sidebar */}
+    <div className="flex h-screen overflow-hidden bg-[color:var(--bg)]">
+      {/* Barra lateral */}
       <aside
-        className="flex flex-col flex-shrink-0 transition-all duration-300 overflow-hidden"
-        style={{ width: collapsed ? 64 : 240, backgroundColor: '#0f172a' }}
+        className="flex flex-col flex-shrink-0 transition-all duration-300 overflow-hidden bg-[color:var(--dark)] text-white px-3 py-5"
+        style={{ width: collapsed ? 72 : 232 }}
       >
-        {/* Logo */}
-        <div className="flex items-center gap-3 px-4 py-5 border-b border-slate-700/50">
-          <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 bg-emerald-500">
-            <Icon name="bolt" size={20} filled className="text-white" />
+        {/* Marca */}
+        <div className={`flex items-center gap-2.5 pb-6 ${collapsed ? 'justify-center' : 'px-2'}`}>
+          <div className="w-[34px] h-[34px] rounded-[10px] flex items-center justify-center flex-shrink-0 bg-[color:var(--accent)]">
+            <Icon name="bolt" size={22} filled className="text-[color:var(--ink)]" />
           </div>
           {!collapsed && (
             <div className="overflow-hidden">
-              <p className="text-white font-bold text-sm leading-none" style={{ fontFamily: 'DM Sans, sans-serif' }}>GymFit</p>
-              <p className="text-slate-400 text-xs mt-0.5">Sistema de Gestión</p>
+              <p className="text-white font-extrabold text-base leading-tight">GymFit</p>
+              <p className="text-[11px] text-[#A8ADB7] leading-tight">Sistema de Gestión</p>
             </div>
           )}
         </div>
 
-        {/* Nav */}
-        <nav className="flex-1 overflow-y-auto py-4 px-2 space-y-0.5">
-          {visibleItems.map(item => (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
-              title={collapsed ? item.label : undefined}
-            >
-              <span className="flex-shrink-0 flex items-center">
-                <Icon name={item.icon} size={22} weight={500} />
-              </span>
-              {!collapsed && <span className="truncate">{item.label}</span>}
-            </NavLink>
-          ))}
+        {/* Menú */}
+        <nav className="flex-1 overflow-y-auto space-y-1">
+          {visibleItems.map(item => {
+            const contador = item.path === '/reservaciones' ? pendientes : 0;
+            return (
+              <NavLink
+                key={item.path}
+                to={item.path}
+                title={collapsed ? item.label : undefined}
+                className={({ isActive }) =>
+                  `relative flex items-center gap-2.5 rounded-xl py-[11px] text-sm font-semibold transition-colors ${
+                    collapsed ? 'justify-center px-0' : 'px-3'
+                  } ${isActive ? 'bg-[color:var(--dark2)] text-white' : 'text-[#C9CDD4] hover:bg-white/5 hover:text-white'}`
+                }
+              >
+                {({ isActive }) => (
+                  <>
+                    <Icon
+                      name={item.icon}
+                      size={22}
+                      weight={500}
+                      filled={isActive}
+                      className={`flex-shrink-0 ${isActive ? 'text-[color:var(--accent)]' : ''}`}
+                    />
+                    {!collapsed && <span className="truncate">{item.label}</span>}
+                    {!collapsed && contador > 0 && (
+                      <span className="ml-auto text-[11px] font-bold rounded-full px-2 py-px bg-[color:var(--accent)] text-[color:var(--ink)]">
+                        {contador}
+                      </span>
+                    )}
+                    {collapsed && contador > 0 && (
+                      <span className="absolute top-2 right-3 w-2 h-2 rounded-full bg-[color:var(--accent)]" />
+                    )}
+                  </>
+                )}
+              </NavLink>
+            );
+          })}
         </nav>
 
-        {/* User & collapse */}
-        <div className="border-t border-slate-700/50 p-3 space-y-2">
-          {!collapsed && user && (
-            <div className="flex items-center gap-2.5 px-2 py-2">
-              <div className="w-7 h-7 rounded-full bg-emerald-500 flex items-center justify-center flex-shrink-0 text-white text-xs font-bold">
-                {user.nombre[0]}{user.apellidos[0]}
-              </div>
-              <div className="overflow-hidden flex-1 min-w-0">
-                <p className="text-slate-200 text-xs font-medium truncate">{user.nombre} {user.apellidos}</p>
-                <p className="text-slate-500 text-xs truncate">{rolLabel[user.rol]}</p>
-              </div>
+        {/* Usuario y controles */}
+        <div className="space-y-2 pt-3">
+          {user && (
+            <div className={`flex items-center gap-2.5 rounded-[14px] bg-[color:var(--dark2)] ${collapsed ? 'justify-center p-2' : 'p-3'}`}>
+              <Avatar user={user} className="w-[34px] h-[34px] bg-[#3A3E47] text-white text-xs" />
+              {!collapsed && (
+                <div className="overflow-hidden flex-1 min-w-0">
+                  <p className="text-[13px] font-bold text-white truncate">{user.nombre} {user.apellidos}</p>
+                  <p className="text-xs text-[#A8ADB7] truncate">{rolLabel[user.rol]}</p>
+                </div>
+              )}
             </div>
           )}
-          <div className="flex gap-2">
+          <div className={`flex gap-2 ${collapsed ? 'flex-col items-center' : 'px-1'}`}>
             <button
               onClick={() => setCollapsed(c => !c)}
-              className="flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 transition-colors"
+              className="flex items-center justify-center w-8 h-8 rounded-lg text-[#A8ADB7] hover:text-white hover:bg-white/10 transition-colors"
               title={collapsed ? 'Expandir' : 'Colapsar'}
             >
-              <Icon
-                name={collapsed ? 'keyboard_double_arrow_right' : 'keyboard_double_arrow_left'}
-                size={20}
-                weight={500}
-              />
+              <Icon name={collapsed ? 'keyboard_double_arrow_right' : 'keyboard_double_arrow_left'} size={20} weight={500} />
             </button>
             <button
               onClick={handleLogout}
-              className="flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-900/20 transition-colors"
+              className={`flex items-center justify-center w-8 h-8 rounded-lg text-[#A8ADB7] hover:text-[#FF8A8A] hover:bg-white/10 transition-colors ${collapsed ? '' : 'ml-auto'}`}
               title="Cerrar sesión"
             >
               <Icon name="logout" size={20} weight={500} />
@@ -112,25 +156,23 @@ export function Layout() {
         </div>
       </aside>
 
-      {/* Main */}
+      {/* Contenido */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Topbar */}
-        <header className="h-14 bg-white border-b border-slate-100 flex items-center justify-between px-6 flex-shrink-0">
+        <header className="h-14 bg-white border-b border-[color:var(--line)] flex items-center justify-between px-6 flex-shrink-0">
           <div />
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 text-sm text-slate-600">
-              <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
-              <span className="font-medium">{user?.nombre} {user?.apellidos}</span>
-              <span className="text-slate-300">·</span>
-              <span className="text-slate-400">{rolLabel[user?.rol ?? '']}</span>
+          {user && (
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 text-sm text-[color:var(--ink2)]">
+                <div className="w-2 h-2 rounded-full bg-[color:var(--ok)]" />
+                <span className="font-semibold text-[color:var(--ink)]">{user.nombre} {user.apellidos}</span>
+                <span className="text-[color:var(--ink3)]">·</span>
+                <span className="text-[color:var(--ink3)]">{rolLabel[user.rol]}</span>
+              </div>
+              <Avatar user={user} className="w-8 h-8 bg-[color:var(--dark)] text-[color:var(--accent)] text-xs" />
             </div>
-            <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center text-white text-xs font-bold">
-              {user?.nombre[0]}{user?.apellidos[0]}
-            </div>
-          </div>
+          )}
         </header>
 
-        {/* Content */}
         <main className="flex-1 overflow-y-auto p-6">
           <Outlet />
         </main>

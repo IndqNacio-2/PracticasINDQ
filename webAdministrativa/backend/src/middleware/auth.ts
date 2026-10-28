@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import type { UserRole } from '../data/usuarios';
+import type { UserRole } from '../types/roles';
 
 declare global {
   namespace Express {
@@ -26,9 +26,10 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
 
 export const requireRole =
   (...roles: UserRole[]) =>
-  (req: Request, res: Response, next: NextFunction) => {
-    if (!req.auth || !roles.includes(req.auth.rol)) {
-      return res.status(403).json({ message: 'No tienes permiso para esta acción.' });
-    }
-    next();
-  };
+    (req: Request, res: Response, next: NextFunction) => {
+      console.log('requireRole', req.originalUrl, 'rol del token:', req.auth?.rol, 'permitidos:', roles);
+      if (!req.auth || !roles.includes(req.auth.rol)) {
+        return res.status(403).json({ message: 'No tienes permiso para esta acción.' });
+      }
+      next();
+    };

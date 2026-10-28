@@ -1,5 +1,3 @@
-version: "3.9"
-
 networks:
   PracticasINDQ:
     driver: bridge
@@ -13,7 +11,7 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
-      - "5432:5432"
+      - "5434:5432"
     volumes:
       - ./database/postgres/data:/var/lib/postgresql/data
     networks:
@@ -29,19 +27,19 @@ services:
     networks:
       - PracticasINDQ
 
+  webadministrativa-backend:
+    build: ./webadministrativa/backend
+    env_file: ./webadministrativa/backend/.env
+    ports:
+      - "3001:3001"
+    depends_on:
+      - postgres
+      - mongo
+    networks:
+      - PracticasINDQ
+
   # Descomentar cada bloque cuando la app tenga su backend/ y su Dockerfile
   # (copiar docker/Dockerfile.backend.example a backend/Dockerfile)
-
-  # webAdministrativa-backend:
-  #   build: ./webAdministrativa/backend
-  #   env_file: ./webAdministrativa/backend/.env
-  #   ports:
-  #     - "3001:3001"
-  #   depends_on:
-  #     - postgres
-  #     - mongo
-  #   networks:
-  #     - PracticasINDQ
 
   # webCobro-backend:
   #   build: ./webCobro/backend

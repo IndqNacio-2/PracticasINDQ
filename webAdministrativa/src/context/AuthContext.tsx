@@ -1,72 +1,63 @@
-import { createContext, useContext, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { api, clearToken, getToken, setToken, AUTH_EXPIRED_EVENT } from '../lib/api';
 import type { Usuario, UserRole } from '../types';
 
 interface AuthContextType {
   user: Usuario | null;
-  login: (correo: string, password: string) => boolean;
+  /** Lanza ApiError si las credenciales son incorrectas o el servidor no responde */
+  login: (correo: string, password: string) => Promise<void>;
   logout: () => void;
   hasRole: (roles: UserRole[]) => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-// Usuarios de demostración: uno por rol.
-// TODO: reemplazar por la autenticación real con tu API.
-const USUARIOS: (Usuario & { password: string })[] = [
-  {
-    idUsuario: 'u1',
-    nombre: 'Administrador',
-    apellidos: 'Demo',
-    correo: 'admin@gymfit.mx',
-    telefono: '',
-    codigoAcceso: 'ADM-001',
-    rol: 'administrador',
-    estatus: 'activo',
-    fechaCreacion: '2026-01-01',
-    password: 'admin123',
-  },
-  {
-    idUsuario: 'u2',
-    nombre: 'Entrenador',
-    apellidos: 'Demo',
-    correo: 'entrenador@gymfit.mx',
-    telefono: '',
-    codigoAcceso: 'ENT-001',
-    rol: 'entrenador',
-    estatus: 'activo',
-    fechaCreacion: '2026-01-01',
-    password: 'entrenador123',
-  },
-  {
-    idUsuario: 'u3',
-    nombre: 'Recepción',
-    apellidos: 'Demo',
-    correo: 'recepcion@gymfit.mx',
-    telefono: '',
-    codigoAcceso: 'REC-001',
-    rol: 'recepcion',
-    estatus: 'activo',
-    fechaCreacion: '2026-01-01',
-    password: 'recepcion123',
-  },
-];
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<Usuario | null>(null);
+  // No se pinta la app hasta saber si el token guardado sigue siendo válido,
+  // así al recargar la página no se rebota al login por un instante.
+  const [ready, setReady] = useState(false);
 
-  const login = (correo: string, password: string) => {
-    const found = USUARIOS.find(
-      u => u.correo === correo && u.password === password && u.estatus === 'activo'
-    );
-    if (!found) return false;
-    const { password: _password, ...usuario } = found;
-    setUser(usuario);
-    return true;
+  useEffect(() => {
+    let cancelado = false;
+
+    if (!getToken()) {
+      setReady(true);
+      return;
+    }
+
+    api
+      .get<{ user: Usuario }>('/auth/me')
+      .then(r => { if (!cancelado) setUser(r.user); })
+      .catch(() => clearToken())
+      .finally(() => { if (!cancelado) setReady(true); });
+
+    return () => { cancelado = true; };
+  }, []);
+
+  // Token vencido o usuario dado de baja mientras usaba la app
+  useEffect(() => {
+    const alExpirar = () => setUser(null);
+    window.addEventListener(AUTH_EXPIRED_EVENT, alExpirar);
+    return () => window.removeEventListener(AUTH_EXPIRED_EVENT, alExpirar);
+  }, []);
+
+  const login = async (correo: string, password: string) => {
+    const r = await api.post<{ token: string; user: Usuario }>('/auth/login', { correo: correo.trim(), password });
+    setToken(r.token);
+    setUser(r.user);
   };
 
-  const logout = () => setUser(null);
+  const logout = () => {
+    clearToken();
+    setUser(null);
+  };
 
   const hasRole = (roles: UserRole[]) => (user ? roles.includes(user.rol) : false);
+
+  if (!ready) {
+    return <div className="min-h-screen flex items-center justify-center text-slate-400 text-sm">Cargando…</div>;
+  }
 
   return (
     <AuthContext.Provider value={{ user, login, logout, hasRole }}>

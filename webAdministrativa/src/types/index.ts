@@ -2,17 +2,41 @@ export type UserRole = 'administrador' | 'entrenador' | 'recepcion' | 'cliente';
 export type Estatus = 'activo' | 'inactivo';
 export type ReservaEstatus = 'confirmada' | 'pendiente' | 'cancelada';
 
+/** Documento de respaldo (PDF o imagen) como data URL; en listados viene sin contenido (data vacío) */
+export interface DocumentoFormacion {
+  nombre: string;
+  data: string;
+}
+
+/** Capacitación o certificación de un entrenador */
+export interface Formacion {
+  nombre: string;
+  fecha: string; // AAAA-MM-DD
+  vigencia: string; // AAAA-MM-DD, vacío si no tiene
+  documento: DocumentoFormacion | null;
+}
+
 export interface Usuario {
   idUsuario: string;
   nombre: string;
   apellidos: string;
   correo: string;
   telefono: string;
-  codigoAcceso: string;
+  fechaNacimiento?: string; // AAAA-MM-DD
   estatus: Estatus;
   rol: UserRole;
   avatar?: string;
   fechaCreacion: string;
+  // Solo personal (entrenador / recepción)
+  especialidad?: string;
+  turnoEntrada?: string; // HH:MM, sirve para calcular retardos
+  turnoSalida?: string;
+  /** Imagen como data URL (base64); vacío si no tiene foto */
+  foto?: string;
+  // Solo entrenadores: perfil profesional
+  resumen?: string;
+  capacitaciones?: Formacion[];
+  certificaciones?: Formacion[];
 }
 
 export interface PerfilSalud {
@@ -42,6 +66,7 @@ export interface Membresia {
 }
 
 export interface Cliente extends Usuario {
+  codigoAcceso?: string;
   fechaNacimiento: string;
   direccion: string;
   fechaRegistro: string;
@@ -83,6 +108,9 @@ export interface Reservacion {
   clase: string;
   entrenador: string;
   horaClase: string;
+  /** Día en que se imparte la clase */
+  fechaClase: string;
+  /** Día en que se hizo la reservación */
   fechaReservacion: string;
   estatus: ReservaEstatus;
   asistenciaConfirmada: boolean;
@@ -100,11 +128,14 @@ export interface Producto {
 
 export interface Venta {
   idVenta: string;
-  idCliente: string;
+  idCliente: string | null;
   nombreCliente: string;
   fecha: string;
+  hora: string;
   total: number;
-  productos: { nombre: string; cantidad: number; precio: number }[];
+  metodoPago: 'efectivo' | 'tarjeta' | 'transferencia';
+  estatus: 'completada' | 'cancelada';
+  productos: { idProducto: string; nombre: string; categoria: string; cantidad: number; precio: number }[];
   recepcionistaId: string;
 }
 
@@ -120,9 +151,10 @@ export interface MovimientoInventario {
 
 export interface RegistroAsistencia {
   id: string;
-  idEmpleado: string;
-  nombreEmpleado: string;
-  rol: 'entrenador' | 'recepcion';
+  tipoPersona: 'cliente' | 'personal';
+  idPersona: string;
+  nombrePersona: string;
+  rol?: 'administrador' | 'entrenador' | 'recepcion';
   fecha: string;
   horaEntrada: string;
   horaSalida?: string;
@@ -149,4 +181,38 @@ export interface CorteCaja {
   totalVentas: number;
   montoFinal: number;
   observaciones: string;
+}
+
+/* ───────────── Respuestas de /api/reportes/* ───────────── */
+
+export interface ReporteVentas {
+  resumen: { total: number; transacciones: number; ticketPromedio: number; productoTop: string };
+  porDia: { fecha: string; total: number; transacciones: number }[];
+  porHorario: { hora: string; total: number; transacciones: number }[];
+  porCategoria: { categoria: string; total: number; unidades: number }[];
+  /** Ordenado de menor a mayor precio */
+  productosPorPrecio: { idProducto: string; nombre: string; categoria: string; precio: number; unidades: number; total: number }[];
+}
+
+export interface ReporteVisitas {
+  resumen: { total: number; promedioDiario: number; diaTop: string };
+  porDia: { fecha: string; visitas: number }[];
+  porHorario: { hora: string; visitas: number }[];
+}
+
+export interface ReporteAsistenciaClases {
+  por: 'clase' | 'entrenador';
+  resumen: { reservaciones: number; asistencias: number; porcentaje: number };
+  filas: { nombre: string; reservaciones: number; asistencias: number; ausencias: number; porcentaje: number }[];
+}
+
+export interface ReporteInventario {
+  resumen: { productosActivos: number; totalUnidades: number; valorTotal: number; mermasUnidades: number };
+  productos: { idProducto: string; nombre: string; categoria: string; precio: number; stock: number; estatus: Estatus; valor: number }[];
+  mermas: { id: string; idProducto: string; nombreProducto: string; cantidad: number; motivo: string; fecha: string }[];
+}
+
+export interface ReportePersonal {
+  resumen: { idPersona: string; nombre: string; rol?: string; asistencias: number; retardos: number; faltas: number; porcentaje: number }[];
+  detalle: { id: string; idPersona: string; nombrePersona: string; rol?: string; fecha: string; horaEntrada: string; horaSalida: string; tipoRegistro: 'asistencia' | 'retardo' | 'falta' }[];
 }

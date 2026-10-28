@@ -3,19 +3,24 @@ interface BadgeProps {
   label?: string;
 }
 
+const OK = 'bg-[color:var(--ok-bg)] text-[color:var(--ok-ink)]';
+const WARN = 'bg-[color:var(--warn-bg)] text-[color:var(--warn-ink)]';
+const BAD = 'bg-[color:var(--bad-bg)] text-[color:var(--bad-ink)]';
+const MUTED = 'bg-[#ECEDF0] text-[color:var(--ink2)]';
+
 const configs: Record<string, string> = {
-  activo: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200',
-  inactivo: 'bg-slate-100 text-slate-500 ring-1 ring-slate-200',
-  confirmada: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200',
-  pendiente: 'bg-amber-50 text-amber-700 ring-1 ring-amber-200',
-  cancelada: 'bg-red-50 text-red-600 ring-1 ring-red-200',
-  asistencia: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200',
-  retardo: 'bg-amber-50 text-amber-700 ring-1 ring-amber-200',
-  falta: 'bg-red-50 text-red-600 ring-1 ring-red-200',
-  administrador: 'bg-purple-50 text-purple-700 ring-1 ring-purple-200',
-  entrenador: 'bg-blue-50 text-blue-700 ring-1 ring-blue-200',
-  recepcion: 'bg-sky-50 text-sky-700 ring-1 ring-sky-200',
-  cliente: 'bg-slate-50 text-slate-600 ring-1 ring-slate-200',
+  activo: OK,
+  inactivo: MUTED,
+  confirmada: OK,
+  pendiente: 'bg-[#FCEFB4] text-[#7A5B00]',
+  cancelada: BAD,
+  asistencia: OK,
+  retardo: WARN,
+  falta: BAD,
+  administrador: 'bg-[color:var(--violet-bg)] text-[color:var(--violet)]',
+  entrenador: 'bg-[color:var(--info-bg)] text-[color:var(--info)]',
+  recepcion: 'bg-[#EEF0F3] text-[color:var(--ink2)]',
+  cliente: 'bg-[color:var(--soft)] text-[color:var(--ink2)]',
 };
 
 const defaultLabels: Record<string, string> = {
@@ -27,7 +32,7 @@ const defaultLabels: Record<string, string> = {
 
 export function Badge({ variant, label }: BadgeProps) {
   return (
-    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${configs[variant]}`}>
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap ${configs[variant]}`}>
       {label ?? defaultLabels[variant]}
     </span>
   );

@@ -1,4 +1,5 @@
 import { Schema, model, InferSchemaType } from 'mongoose';
+import { fechaLocal } from '../../lib/fecha';
 
 const membresiaSchema = new Schema(
     {
@@ -47,7 +48,7 @@ const clienteSchema = new Schema(
         avatar: String,
         fechaNacimiento: String,
         direccion: String,
-        fechaRegistro: { type: String, default: () => new Date().toISOString().slice(0, 10) },
+        fechaRegistro: { type: String, default: () => fechaLocal() },
 
         membresia: { type: membresiaSchema, default: null },
         perfilSalud: { type: perfilSaludSchema, default: null },

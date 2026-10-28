@@ -1,0 +1,101 @@
+/* Tema GymFit: paleta, tipografía y formas compartidas.
+   Importar una sola vez en main.tsx, después del CSS global: import './theme.css'; */
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+:root {
+    --bg: #F5F4F0;
+    --card: #FFFFFF;
+    --soft: #F5F4F0;
+    --line: #E6E4DE;
+    --ink: #16181D;
+    --ink2: #5B606B;
+    --ink3: #9298A3;
+    --dark: #16181D;
+    --dark2: #23262D;
+    --accent: #C6F24E;
+
+    --ok: #2E9E5B;
+    --ok-bg: #EAF8C8;
+    --ok-ink: #3C520C;
+    --warn: #E8803A;
+    --warn-bg: #FDEEE2;
+    --warn-ink: #8A4415;
+    --bad: #D64545;
+    --bad-bg: #FCE8E8;
+    --bad-ink: #B42323;
+    --info: #2459A3;
+    --info-bg: #E2EDFB;
+    --violet: #5B3FB0;
+    --violet-bg: #EFEAFB;
+    --avatar: #E3E0D8;
+}
+
+html,
+body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+}
+
+/* Tablas donde cada fila es una tarjeta redondeada con borde */
+.rowtable {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0 6px;
+}
+
+.rowtable th {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink2);
+    font-weight: 700;
+    padding: 0 8px 2px;
+}
+
+.rowtable th:first-child {
+    padding-left: 16px;
+}
+
+.rowtable th:last-child {
+    padding-right: 12px;
+}
+
+.rowtable td {
+    background: var(--card);
+    border-top: 1.5px solid var(--line);
+    border-bottom: 1.5px solid var(--line);
+    padding-left: 8px;
+    padding-right: 8px;
+}
+
+.rowtable td:first-child {
+    border-left: 1.5px solid var(--line);
+    border-radius: 14px 0 0 14px;
+    padding-left: 16px;
+}
+
+.rowtable td:last-child {
+    border-right: 1.5px solid var(--line);
+    border-radius: 0 14px 14px 0;
+    padding-right: 12px;
+}
+
+.rowtable tbody tr:hover td {
+    border-color: #D3D0C8;
+}
+
+.rowtable tbody tr.selected td {
+    border-color: var(--ink);
+}
+
+/* Scrollbars discretas */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--line);
+    border-radius: 9px;
+}
