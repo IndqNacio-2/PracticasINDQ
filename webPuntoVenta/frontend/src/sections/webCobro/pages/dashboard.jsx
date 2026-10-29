@@ -24,6 +24,27 @@ const METHOD_LABELS = {
   transferencia: 'Transferencia',
 };
 
+const formatMoney = (value) =>
+  Number(value ?? 0).toLocaleString('es-MX', {
+    style: 'currency',
+    currency: 'MXN',
+  });
+
+const formatTicketDate = (value) =>
+  new Intl.DateTimeFormat('es-MX', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(value));
+
+/*
+ * Fecha de hoy en YYYY-MM-DD (zona local). Vive fuera del componente porque
+ * la usan el estado inicial del formulario y los helpers de validacion.
+ */
+const hoyISO = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
 export default function Dashboard() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -34,13 +55,21 @@ export default function Dashboard() {
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [clientes, setClientes] = useState([]);
-  const [classes, setClasses] = useState([]);
+  const [clases, setClases] = useState([]);
+  /*
+   * Horarios reales del modulo administrativo (MongoDB). Son la unica fuente
+   * de verdad: una reserva solo es valida si su (clase, fecha, hora) coincide
+   * con un horario activo de esa fecha.
+   */
+  const [horarios, setHorarios] = useState([]);
+  const [fechaReserva, setFechaReserva] = useState(hoyISO());
   const [tipoReserva, setTipoReserva] = useState('cliente');
   const [selectedClient, setSelectedClient] = useState(null);
   const [showClientList, setShowClientList] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [selectedReservationForPayment, setSelectedReservationForPayment] = useState(null);
   const [paymentLoading, setPaymentLoading] = useState(false);
+  const [ticket, setTicket] = useState(null);
   /*
    * Forma de pago del cobro (las mismas opciones que el Punto de Venta):
    * efectivo, tarjeta o transferencia, con sus datos extra según el método.
@@ -76,54 +105,155 @@ export default function Dashboard() {
   const API = '/cobro';
 
   useEffect(() => {
+    /**
+     * primero cargamos las reservaciones guardadas en PostgreSQL
+     * las reservaciones canceladas no se muestran en el tablero principal,
+     * pero siguen guardadas para que administrativa pueda consultarlas.
+     */
     fetch(`${API}/api/reservas`)
-      .then(res => res.json())
-      // Las canceladas no se muestran en el tablero: quedan como historial
-      // (el módulo administrativo sí las lista en su filtro "Canceladas").
-      .then(data => setReservations((Array.isArray(data) ? data : []).filter(r => r.status !== 'cancelado')))
-      .catch(() => console.warn('Backend no disponible, usando datos locales.'));
+      .then(res => {
+        if (!res.ok) {
+          throw new Error(`No se pudieron cargar las reservaciones. HTTP ${res.status}`);
+        }
 
+        return res.json();
+      })
+      .then(data => {
+        const reservacionesActivas = (Array.isArray(data) ? data : [])
+          .filter(reservaciones => reservaciones.status !== 'cancelado');
+
+        setReservations(reservacionesActivas);
+      })
+      .catch(error => {
+        console.warn('No se pudieron cargar las reservaciones:', error);
+        setReservations([]);
+      });
+
+    /**
+     * cargamos los socios registrados desde el backend de cobro
+     * estos clientes se utilizan para validar su estado, membresia y vigencia.
+     */
     fetch(`${API}/api/clientes`)
-      .then(res => res.json())
-      .then(data => setClientes(data))
-      .catch(() => console.warn('No se pudieron cargar los clientes.'));
+      .then(res => {
+        if (!res.ok) {
+          throw new Error(`No se pudieron consultar los clientes. HTTP ${res.status}`);
+        }
 
-    // Las clases ahora se registran en el módulo administrativo (MongoDB) y se
-    // leen de /admin/api/clases (ruta pública del gateway). Ya no se usa el
-    // catálogo local de webcobro; solo se ofrecen las clases activas.
+        return res.json();
+      })
+      .then(data => {
+        setClientes(Array.isArray(data) ? data : []);
+      })
+      .catch(error => {
+        console.warn('No se pudieron cargar los clientes:', error);
+        setClientes([]);
+      });
+
+    /**
+     * las clases se crean en el modulo de administrativa y se guardan en MongoDB
+     * desde cobro consultamos esas mismas clases para obtener su nombre,
+     * precio, capacidad, color y estatus.
+     *
+     * el error anterior estaba aqui: se usaba serclasses, pero el estado
+     * fue declarado como setClases,no existia las clases
+     * nunca se guardaban en el estado y cobro mostraba el preciio como $0
+     */
     fetch('/admin/api/clases')
-      .then(res => res.json())
-      .then(data => setClasses((Array.isArray(data) ? data : []).filter(c => c.estatus !== 'inactivo')))
-      .catch(() => console.warn('No se pudieron cargar las clases de administrativa.'));
+      .then(res => {
+        if(!res.ok) {
+          throw new Error(`No se pudieron consulat las clases. HTTP ${res.status}`);
+        }
+
+        return res.json();
+      })
+      .then(data => {
+        /**
+         * solo conservamos las clases activas
+         * la funcion correcta es serClases porque asi se declaro el estado
+         *
+         * const [clases, setClases] = useState([]);
+         */
+        const clasesActivas = (Array.isArray(data) ? data : [])
+          .filter(clase => clase.estatus !== 'inactivo');
+
+        setClases(clasesActivas);
+      })
+      .catch(error => {
+        /**
+         * si administrativa no responde o devuelve un error, impiamos la lista
+         * tambien imprimimos el error real para facilitar el diagnostico
+         */
+        console.warn('No se pudieron cargar las calses de Administrativa:', error);
+        setClases([]);
+      });
+
+    /**
+     * Por ultimo cargamos los indicadores superiores del dashboard:
+     * ingresos del dia, clientes esperados y total de reservaciones.
+     */
     fetch(`${API}/api/kpis`)
-      .then(res => res.json())
-      .then(data => setKpis(data))
-      .catch(() => console.warn('No se puedieron cargar los KPIs.'));
+      .then(res => {
+        if (!res.ok) {
+          throw new Error(`No se pudieron cargar los indicadores. HTTP ${res.status}`);
+        }
+
+        return res.json();
+      })
+      .then(data => {
+        setKpis(data);
+      })
+      .catch(error => {
+        console.warn('No se pudieron cargar los indicadores:', error);
+      });
   }, []);
+
+  /*
+   * Los horarios se piden al módulo administrativo por la fecha elegida en el
+   * formulario. Cambiar de fecha vuelve a cargarlos: son los que definen
+   * qué clases se pueden reservar y a qué hora.
+   */
+  useEffect(() => {
+    if (!fechaReserva) return;
+    fetch(`/admin/api/horarios?fecha=${encodeURIComponent(fechaReserva)}&estatus=activo`)
+      .then(res => res.json())
+      .then(data => setHorarios(Array.isArray(data) ? data : []))
+      .catch(() => {
+        setHorarios([]);
+        console.warn('No se pudieron cargar los horarios de la fecha seleccionada.');
+      });
+  }, [fechaReserva]);
 
   // ========== FUNCIONES DE VALIDACIÓN ==========
 
   /*
-   * Cuenta las reservaciones que ocupan lugar en una clase. Una reserva "ocupa"
-   * lugar mientras no esté cancelada (pendiente, pagado o asistido cuentan).
-   * Las clases y su capacidad viven en administrativa; las reservas, en webcobro.
+   * Cuenta las reservaciones que ocupan lugar en un horario concreto. Una
+   * reserva "ocupa" lugar mientras no esté cancelada (pendiente, pagado o
+   * asistido cuentan). Las clases y los horarios viven en administrativa; las
+   * reservas, en webcobro.
    */
-  const reservasActivasDe = (nombreClase) =>
-    reservations.filter(r => r.class === nombreClase && r.status !== 'cancelado').length;
+  const reservasActivasDe = (nombreClase, fecha, hora) =>
+    reservations.filter(
+      r =>
+        r.class === nombreClase &&
+        r.fecha === fecha &&
+        r.time === hora &&
+        r.status !== 'cancelado'
+    ).length;
 
-  // Lugares que le quedan a una clase = capacidad − reservas activas.
-  const lugaresDisponibles = (clase) =>
-    Math.max(0, Number(clase.capacidad ?? 0) - reservasActivasDe(clase.nombre));
+  /*
+   * Lugares que le quedan a un horario = capacidad del horario − reservas
+   * activas de ese (clase, fecha, hora). La capacidad la fija el horario
+   * registrado en el módulo administrativo.
+   */
+  const lugaresDisponibles = (horario) => {
+    if (!horario) return 0;
+    const reservadas = reservasActivasDe(horario.nombreClase, horario.fecha, horario.horaInicio);
+    return Math.max(0, Number(horario.capacidadTotal ?? 0) - reservadas);
+  };
 
   // ========== HELPERS DE VALIDACIÓN DE MEMBRESÍA / DUPLICADOS / HORARIO ==========
 
   const esPremium = (socio) => socio?.membresia === 'Premium';
-
-  // Fecha de hoy en YYYY-MM-DD (zona local), para comparar con la vigencia.
-  const hoyISO = () => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  };
 
   // El socio puede reservar como "cliente" solo si está activo y su membresía
   // no está vencida (vigencia_hasta null = no expira).
@@ -138,7 +268,8 @@ export default function Dashboard() {
    * Precio de una clase según quién reserva. Regla única (evita el bug donde
    * el socio quedaba en $0): solo un socio Premium y vigente paga 0; cualquier
    * otro caso (visitante o socio no premium / por definir) paga la tarifa.
-   * Se pasa el socio explícito para poder calcularlo al momento de elegirlo.
+   * Se pasa el socio explícitamente para poder calcularlo al momento de
+   * elegirlo.
    */
   const precioDeClase = (clase, socio = selectedClient) => {
     if (!clase) return 0;
@@ -148,19 +279,35 @@ export default function Dashboard() {
     return Number(clase.precio ?? 0);
   };
 
-  // ¿La persona ya reservó esta clase en esta hora (y no la canceló)?
-  const yaReservada = (nombre, nombreClase, hora) =>
+  /*
+   * ¿La persona ya reservó esta clase en este horario (y no la canceló)?
+   * La comparación incluye la fecha: el mismo horario puede repetirse otro día.
+   */
+  const yaReservada = (nombre, nombreClase, fecha, hora) =>
     reservations.some(
-      r => r.client === nombre && r.class === nombreClase && r.time === hora && r.status !== 'cancelado',
+      r =>
+        r.client === nombre &&
+        r.class === nombreClase &&
+        r.fecha === fecha &&
+        r.time === hora &&
+        r.status !== 'cancelado',
     );
 
   // Cuántas reservas activas tiene una persona (límite anti-acaparamiento).
+  // Solo cuentan las reservas con fecha: las que no la tienen (registros
+  // viejos, sin horario real) no ocupan cupo.
   const reservasActivasDeCliente = (nombre) =>
-    reservations.filter(r => r.client === nombre && r.status !== 'cancelado').length;
+    reservations.filter(
+      r => r.client === nombre && r.status !== 'cancelado' && r.fecha
+    ).length;
 
-  // ¿La hora de la clase ya pasó hoy? (no se puede reservar en el pasado)
-  const horarioPasado = (hora) => {
+  /*
+   * ¿El horario ya pasó? Solo aplica a la fecha de hoy: un horario de una
+   * fecha futura todavía se puede reservar.
+   */
+  const horarioPasado = (fecha, hora) => {
     if (!/^\d{2}:\d{2}$/.test(hora || '')) return false;
+    if (!fecha || fecha !== hoyISO()) return false;
     const [h, m] = hora.split(':').map(Number);
     const ahora = new Date();
     const claseHoy = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate(), h, m);
@@ -169,24 +316,28 @@ export default function Dashboard() {
 
   // La clase de administrativa debe tener precio > 0 y capacidad > 0 para poderse reservar.
   const claseReservable = (clase) =>
-    Number(clase.precio ?? 0) > 0 && Number(clase.capacidad ?? 0) > 0;
+    Number(clase?.precio ?? 0) > 0 && Number(clase?.capacidad ?? 0) > 0;
 
   /*
    * ¿El formulario del modal está listo para guardar? El botón se deshabilita
-   * hasta cumplir TODO: nombre válido, tipo seleccionado, clase elegida, socio
-   * vigente (si es "cliente"), que no sea duplicado y que haya cupo.
+   * hasta cumplir TODO: nombre válido, tipo seleccionado, horario elegido,
+   * socio vigente (si es "cliente"), que no sea duplicado y que haya cupo.
    */
-  const claseSelModal = classes.find(c => c.nombre === newReservation.class);
+  const horarioSelModal = horarios.find(
+    h => h.nombreClase === newReservation.class && h.horaInicio === newReservation.time
+  );
+  const claseSelModal = clases.find(c => c.nombre === newReservation.class);
   const nombreValido = (newReservation.client || '').trim().length >= 3;
   const socioOk = tipoReserva === 'visitante' || (selectedClient && membresiaVigente(selectedClient));
   const puedeGuardar =
     nombreValido &&
+    !!horarioSelModal &&
     !!claseSelModal &&
     claseReservable(claseSelModal) &&
-    lugaresDisponibles(claseSelModal) > 0 &&
-    !horarioPasado(claseSelModal.hora) &&
+    lugaresDisponibles(horarioSelModal) > 0 &&
+    !horarioPasado(horarioSelModal.fecha, horarioSelModal.horaInicio) &&
     socioOk &&
-    !yaReservada(newReservation.client, newReservation.class, newReservation.time) &&
+    !yaReservada(newReservation.client, newReservation.class, fechaReserva, newReservation.time) &&
     reservasActivasDeCliente(newReservation.client) < 3;
 
   // ========== FUNCIONES DE ACCIONES PRINCIPALES ==========
@@ -260,6 +411,7 @@ export default function Dashboard() {
           efectivoRecibido: metodoPago === 'efectivo' ? efectivoRecibido : undefined,
           // La referencia solo aplica cuando se cobra por transferencia.
           referencia: metodoPago === 'transferencia' ? referenciaInput.trim() : undefined,
+          usuario: user?.nombre || user?.name || user?.username || null,
         }),
       });
 
@@ -273,6 +425,7 @@ export default function Dashboard() {
       setReservations(prev => prev.map(res =>
         res.id === data.reserva.id ? data.reserva : res
       ));
+      setTicket(data.ticket ?? null);
 
       /*
        * Aviso con el método cobrado y, si hubo cambio en efectivo, se muestra
@@ -340,6 +493,8 @@ export default function Dashboard() {
     setTipoReserva('cliente');
     setSelectedClient(null);
     setShowClientList(false);
+    // El formulario siempre arranca en el día de hoy.
+    setFechaReserva(hoyISO());
     setIsModalOpen(true);
   };
 
@@ -350,13 +505,22 @@ export default function Dashboard() {
     try {
       const nombreLimpio = (newReservation.client || '').trim();
       if (!nombreLimpio || !newReservation.class || !newReservation.time) {
-        throw new Error('Selecciona un cliente y una clase disponible.');
+        throw new Error('Selecciona un cliente y un horario disponible.');
       }
       if (nombreLimpio.length < 3) {
         throw new Error('El nombre del cliente es demasiado corto.');
       }
 
-      const claseSel = classes.find(c => c.nombre === newReservation.class);
+      // El horario elegido tiene que existir en la fecha seleccionada: es lo
+      // que valida el backend contra el módulo de horarios.
+      const horarioSel = horarios.find(
+        h => h.nombreClase === newReservation.class && h.horaInicio === newReservation.time
+      );
+      if (!horarioSel) {
+        throw new Error('Elige un horario disponible de la fecha seleccionada.');
+      }
+
+      const claseSel = clases.find(c => c.nombre === newReservation.class);
       if (!claseSel) {
         throw new Error('Selecciona una clase disponible.');
       }
@@ -370,35 +534,38 @@ export default function Dashboard() {
         throw new Error('La membresía del socio no está vigente. Regístralo como visitante.');
       }
 
-      if (lugaresDisponibles(claseSel) <= 0) {
-        throw new Error(`La clase "${claseSel.nombre}" ya no tiene cupo disponible.`);
+      if (lugaresDisponibles(horarioSel) <= 0) {
+        throw new Error(`La clase "${horarioSel.nombreClase}" a las ${horarioSel.horaInicio} ya no tiene cupo disponible.`);
       }
-      if (horarioPasado(claseSel.hora)) {
-        throw new Error(`La clase de las ${claseSel.hora} ya pasó, elige otro horario.`);
+      if (horarioPasado(horarioSel.fecha, horarioSel.horaInicio)) {
+        throw new Error(`La clase de las ${horarioSel.horaInicio} ya pasó, elige otro horario.`);
       }
-      if (yaReservada(nombreLimpio, claseSel.nombre, claseSel.hora)) {
-        throw new Error(`"${nombreLimpio}" ya reservó "${claseSel.nombre}" a las ${claseSel.hora}.`);
+      if (yaReservada(nombreLimpio, horarioSel.nombreClase, horarioSel.fecha, horarioSel.horaInicio)) {
+        throw new Error(`"${nombreLimpio}" ya reservó "${horarioSel.nombreClase}" a las ${horarioSel.horaInicio}.`);
       }
       if (reservasActivasDeCliente(nombreLimpio) >= 3) {
         throw new Error(`"${nombreLimpio}" ya tiene 3 reservaciones activas. Cancela una para crear otra.`);
       }
 
-      if (tipoReserva === 'visitante' && Number(newReservation.price) <= 0) {
+      if (tipoReserva === 'visitante' && Number(claseSel.precio ?? 0) <= 0) {
         throw new Error('El visitante debe pagar la tarifa de la clase.');
       }
 
-      // Se guarda la reservación en el backend (PostgreSQL, esquema webcobro)
+      /*
+       * Se guarda la reservación en el backend (PostgreSQL, esquema webcobro).
+       * El precio NO se manda: el servidor lo calcula con la tarifa de la clase
+       * y la membresía del socio, para que el navegador no pueda inventarse
+       * un monto.
+       */
       const response = await fetch(`${API}/api/reservas`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           client: nombreLimpio,
           type: tipoReserva,
-          class: newReservation.class,
-          time: newReservation.time,
-          price: Number(newReservation.price),
-          // Capacidad de la clase: el backend cobro la usa para validar el cupo.
-          capacity: claseSel ? Number(claseSel.capacidad) : undefined,
+          class: horarioSel.nombreClase,
+          time: horarioSel.horaInicio,
+          fecha: horarioSel.fecha,
         }),
       });
 
@@ -455,6 +622,60 @@ export default function Dashboard() {
     setMetodoPago(null);
     setEfectivoInput('');
     setReferenciaInput('');
+  };
+
+  const printTicket = () => {
+    if (!ticket) return;
+
+    const popup = window.open('', '_blank', 'width=420,height=720');
+    if (!popup) {
+      showNotification('El navegador bloqueó la ventana de impresión.', 'error');
+      return;
+    }
+
+    const escapeHtml = (value) =>
+      String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+
+    const items = (ticket.items ?? []).map(item => `
+      <div class="item">
+        <strong>${escapeHtml(item.descripcion)}</strong>
+        <div class="row"><span>${item.cantidad} × ${escapeHtml(formatMoney(item.precioUnitario))}</span><span>${escapeHtml(formatMoney(item.importe))}</span></div>
+      </div>
+    `).join('');
+
+    popup.document.write(`<!doctype html>
+      <html lang="es"><head><meta charset="utf-8"><title>Ticket ${escapeHtml(ticket.folio)}</title>
+      <style>
+        @page { size: 80mm auto; margin: 6mm; }
+        body { width: 68mm; margin: 0 auto; color: #111; font: 12px/1.4 monospace; }
+        h1, p { margin: 0; } h1 { font-size: 18px; text-align: center; }
+        .center { text-align: center; } .line { border-top: 1px dashed #555; margin: 10px 0; }
+        .row { display: flex; justify-content: space-between; gap: 12px; }
+        .item { margin: 8px 0; } .total { font-size: 15px; font-weight: 700; }
+      </style></head><body>
+      <h1>NUUCLEO</h1><p class="center">Comprobante de cobro</p><div class="line"></div>
+      <p><strong>Folio:</strong> ${escapeHtml(ticket.folio)}</p>
+      <p><strong>Fecha:</strong> ${escapeHtml(formatTicketDate(ticket.fecha))}</p>
+      <p><strong>Cliente:</strong> ${escapeHtml(ticket.cliente)}</p>
+      <p><strong>Reserva:</strong> #${escapeHtml(ticket.reservaId)}</p>
+      <p><strong>Clase:</strong> ${escapeHtml(ticket.clase)}</p>
+      <p><strong>Horario:</strong> ${escapeHtml(ticket.fechaClase)} ${escapeHtml(ticket.horaClase)}</p>
+      <p><strong>Atendió:</strong> ${escapeHtml(ticket.usuario || 'Recepción')}</p>
+      <div class="line"></div>${items}<div class="line"></div>
+      <div class="row total"><span>TOTAL</span><span>${escapeHtml(formatMoney(ticket.total))}</span></div>
+      <p><strong>Método:</strong> ${escapeHtml(METHOD_LABELS[ticket.metodoPago] || ticket.metodoPago)}</p>
+      ${ticket.efectivoRecibido !== null ? `<p><strong>Recibido:</strong> ${escapeHtml(formatMoney(ticket.efectivoRecibido))}</p>` : ''}
+      ${ticket.cambio !== null ? `<p><strong>Cambio:</strong> ${escapeHtml(formatMoney(ticket.cambio))}</p>` : ''}
+      ${ticket.referencia ? `<p><strong>Referencia:</strong> ${escapeHtml(ticket.referencia)}</p>` : ''}
+      <div class="line"></div><p class="center">Gracias por su visita.</p>
+      <script>window.addEventListener('load', () => { window.print(); });<\/script>
+      </body></html>`);
+    popup.document.close();
   };
 
   const filteredReservations = reservations.filter(res => {
@@ -562,6 +783,7 @@ export default function Dashboard() {
               <tr>
                 <th className="px-6 py-4">ID</th>
                 <th className="px-6 py-4">Tipo</th>
+                <th className="px-6 py-4">Fecha</th>
                 <th className="px-6 py-4">Hora</th>
                 <th className="px-6 py-4">Cliente</th>
                 <th className="px-6 py-4">Clase</th>
@@ -573,7 +795,7 @@ export default function Dashboard() {
             <tbody className="divide-y divide-gray-200">
               {filteredReservations.length === 0 ? (
                 <tr>
-                  <td colSpan="8" className="px-6 py-8 text-center text-gray-500">
+                  <td colSpan="9" className="px-6 py-8 text-center text-gray-500">
                     {searchTerm ? 'No se encontraron resultados.' : 'No hay reservaciones para hoy.'}
                   </td>
                 </tr>
@@ -584,6 +806,7 @@ export default function Dashboard() {
                     <td className="px-6 py-4 text-gray-600 text-xs">
                       {res.type === 'visitante' ? '🚪 Visitante' : '👤 Socio'}
                     </td>
+                    <td className="px-6 py-4 text-gray-600 text-xs">{res.fecha || '—'}</td>
                     <td className="px-6 py-4 text-gray-800 font-medium">{res.time}</td>
                     <td className="px-6 py-4 text-gray-800">{res.client}</td>
                     <td className="px-6 py-4 text-gray-600">{res.class}</td>
@@ -684,7 +907,7 @@ export default function Dashboard() {
                           setSelectedClient(match);
                           // El precio depende de la clase ya elegida y de si el
                           // socio es Premium vigente; ya NO se fuerza a 0.
-                          const claseSel = classes.find(c => c.nombre === newReservation.class);
+                          const claseSel = clases.find(c => c.nombre === newReservation.class);
                           setNewReservation(p => ({ ...p, client: match.nombre, price: precioDeClase(claseSel, match) }));
                           setShowClientList(false);
                         } else {
@@ -714,7 +937,7 @@ export default function Dashboard() {
                                 setSelectedClient(c);
                                 // Igual que arriba: recalcula el precio real de
                                 // la clase elegida según la membresía del socio.
-                                const claseSel = classes.find(cl => cl.nombre === newReservation.class);
+                                const claseSel = clases.find(cl => cl.nombre === newReservation.class);
                                 setNewReservation(p => ({ ...p, client: c.nombre, price: precioDeClase(claseSel, c) }));
                                 setShowClientList(false);
                               }}
@@ -768,42 +991,64 @@ export default function Dashboard() {
                   </div>
                 )}
 
-                {/* ③ CLASE (tarjetas de las clases registradas en administrativa).
-                    Ya no hay dropdown ni selector de horario: cada clase trae su
-                    propia hora, precio y cupo. Al elegir una se autocompletan. */}
+                {/* ③ FECHA */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Clase disponible</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de la clase</label>
+                  <input
+                    type="date"
+                    value={fechaReserva}
+                    min={hoyISO()}
+                    onChange={(e) => {
+                      const nuevaFecha = e.target.value;
+                      setFechaReserva(nuevaFecha);
+                      // Al cambiar de fecha se limpian clase y hora: el horario
+                      // elegido era de la fecha anterior.
+                      setNewReservation(p => ({ ...p, class: '', time: '', price: '' }));
+                    }}
+                    className="w-full px-4 py-2 border border-[#111827] rounded-lg focus:ring-2 focus:ring-primary text-gray-800"
+                  />
+                </div>
 
-                  {classes.length === 0 ? (
+                {/* ④ HORARIOS (los horarios reales del módulo administrativo para
+                    la fecha elegida). Solo se puede reservar un horario activo. */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Horarios disponibles del {fechaReserva}
+                  </label>
+
+                  {horarios.length === 0 ? (
                     <p className="text-xs text-gray-400 italic px-3 py-4 bg-[#F3F4F6] rounded-lg border border-dashed border-[#111827]">
-                      No hay clases registradas. Crea clases en el módulo administrativo
-                      (Clases) para poder reservar.
+                      No hay horarios registrados para esta fecha. Agrégalos en el módulo
+                      administrativo (Horarios) para poder reservar.
                     </p>
                   ) : (
                     <div className="grid grid-cols-2 gap-2 max-h-64 overflow-y-auto pr-1">
-                      {classes.map(c => {
-                        const disponibles = lugaresDisponibles(c);
-                        const pasada = horarioPasado(c.hora);
+                      {horarios.map(h => {
+                        const claseDelHorario = clases.find(c => c.nombre === h.nombreClase);
+                        const disponibles = lugaresDisponibles(h);
+                        const pasada = horarioPasado(h.fecha, h.horaInicio);
                         const duplicada =
                           tipoReserva === 'cliente' &&
                           newReservation.client &&
-                          yaReservada(newReservation.client, c.nombre, c.hora);
-                        const noReservable = !claseReservable(c);
-                        // Una clase se bloquea si no tiene cupo, ya pasó su hora,
-                        // el socio ya la reservó, o está mal definida (precio/capacidad).
+                          yaReservada(newReservation.client, h.nombreClase, h.fecha, h.horaInicio);
+                        const noReservable = !claseReservable(claseDelHorario);
+                        // Un horario se bloquea si no tiene cupo, ya pasó su hora,
+                        // el socio ya lo reservó, o su clase está mal definida.
                         const bloqueada = disponibles <= 0 || pasada || duplicada || noReservable;
-                        const seleccionada = newReservation.class === c.nombre;
+                        const seleccionada =
+                          newReservation.class === h.nombreClase &&
+                          newReservation.time === h.horaInicio;
                         return (
                           <button
-                            key={c.idClase ?? c.id}
+                            key={h.idHorario ?? `${h.nombreClase}-${h.horaInicio}`}
                             type="button"
                             disabled={bloqueada}
                             onClick={() => {
                               setNewReservation(p => ({
                                 ...p,
-                                class: c.nombre,
-                                time: c.hora || '',
-                                price: precioDeClase(c),
+                                class: h.nombreClase,
+                                time: h.horaInicio,
+                                price: precioDeClase(claseDelHorario),
                               }));
                             }}
                             className={`text-left p-3 rounded-lg border-2 transition-colors ${
@@ -817,18 +1062,20 @@ export default function Dashboard() {
                             <div className="flex items-center gap-2">
                               <span
                                 className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                                style={{ backgroundColor: c.color || '#6B7280' }}
+                                style={{ backgroundColor: claseDelHorario?.color || '#6B7280' }}
                               />
                               <span className="font-semibold text-gray-800 text-sm truncate">
-                                {c.nombre}
+                                {h.nombreClase}
                               </span>
                             </div>
                             <div className="mt-1 flex items-center gap-2 text-xs text-gray-500">
                               <span className="flex items-center gap-1">
-                                <MaterialIcon name="schedule" className="text-sm" /> {c.hora || '—'}
+                                <MaterialIcon name="schedule" className="text-sm" /> {h.horaInicio}
                               </span>
                               <span className="text-gray-300">·</span>
-                              <span className="font-medium text-[#6B7280]">${c.precio ?? 0}</span>
+                              <span className="font-medium text-[#6B7280]">
+                                ${claseDelHorario?.precio ?? 0}
+                              </span>
                             </div>
                             <p className={`mt-1 text-xs font-medium ${bloqueada ? 'text-red-500' : 'text-gray-400'}`}>
                               {disponibles <= 0
@@ -1057,6 +1304,67 @@ export default function Dashboard() {
     </div>
   </div>
 )}
+
+        {/* ========== COMPROBANTE DEL COBRO ========== */}
+        {ticket && (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl shadow-2xl border border-[#111827] w-full max-w-md overflow-hidden text-gray-800">
+              <div className="bg-[#111827] px-6 py-4 flex justify-between items-center">
+                <div>
+                  <p className="text-xs uppercase tracking-wider text-gray-300">Cobro registrado</p>
+                  <h3 className="text-lg font-bold text-white">Ticket {ticket.folio}</h3>
+                </div>
+                <button onClick={() => setTicket(null)} className="text-gray-200 hover:text-white" aria-label="Cerrar ticket">
+                  <MaterialIcon name="close" className="text-2xl" />
+                </button>
+              </div>
+
+              <div className="p-6">
+                <div className="font-mono text-sm border border-dashed border-gray-400 rounded-lg p-5 bg-[#FAFAFA]">
+                  <div className="text-center mb-4">
+                    <p className="font-bold text-lg">NUUCLEO</p>
+                    <p className="text-xs text-gray-500">Comprobante de cobro</p>
+                  </div>
+                  <div className="space-y-1 border-y border-dashed border-gray-400 py-3">
+                    <p><span className="text-gray-500">Fecha:</span> {formatTicketDate(ticket.fecha)}</p>
+                    <p><span className="text-gray-500">Cliente:</span> {ticket.cliente}</p>
+                    <p><span className="text-gray-500">Reserva:</span> #{ticket.reservaId}</p>
+                    <p><span className="text-gray-500">Clase:</span> {ticket.clase}</p>
+                    <p><span className="text-gray-500">Horario:</span> {ticket.fechaClase} {ticket.horaClase}</p>
+                    <p><span className="text-gray-500">Atendió:</span> {ticket.usuario || 'Recepción'}</p>
+                  </div>
+                  <div className="py-3 space-y-2">
+                    {(ticket.items ?? []).map((item, index) => (
+                      <div key={`${item.descripcion}-${index}`}>
+                        <p className="font-semibold">{item.descripcion}</p>
+                        <div className="flex justify-between text-gray-600">
+                          <span>{item.cantidad} × {formatMoney(item.precioUnitario)}</span>
+                          <span>{formatMoney(item.importe)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="border-t border-dashed border-gray-400 pt-3 space-y-1">
+                    <div className="flex justify-between text-base font-bold"><span>TOTAL</span><span>{formatMoney(ticket.total)}</span></div>
+                    <p><span className="text-gray-500">Método:</span> {METHOD_LABELS[ticket.metodoPago] || ticket.metodoPago}</p>
+                    {ticket.efectivoRecibido !== null && <p><span className="text-gray-500">Recibido:</span> {formatMoney(ticket.efectivoRecibido)}</p>}
+                    {ticket.cambio !== null && <p><span className="text-gray-500">Cambio:</span> {formatMoney(ticket.cambio)}</p>}
+                    {ticket.referencia && <p><span className="text-gray-500">Referencia:</span> {ticket.referencia}</p>}
+                  </div>
+                </div>
+
+                <div className="flex gap-3 mt-5">
+                  <button type="button" onClick={() => setTicket(null)} className="flex-1 px-4 py-2 border border-[#111827] rounded-lg font-medium hover:bg-gray-100">
+                    Cerrar
+                  </button>
+                  <button type="button" onClick={printTicket} className="flex-1 px-4 py-2 bg-[#111827] text-white rounded-lg font-medium hover:bg-[#374151] flex items-center justify-center gap-2">
+                    <MaterialIcon name="print" className="text-lg" /> Imprimir
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
       </main>
     </div>
