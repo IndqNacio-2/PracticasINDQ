@@ -16,6 +16,7 @@ const navItems: NavItem[] = [
   { path: '/dashboard', label: 'Dashboard', icon: 'dashboard', roles: ['administrador', 'entrenador', 'recepcion'] },
   { path: '/usuarios', label: 'Usuarios', icon: 'manage_accounts', roles: ['administrador'] },
   { path: '/clientes', label: 'Clientes', icon: 'groups', roles: ['administrador', 'recepcion'] },
+  { path: '/membresias', label: 'Membresías', icon: 'card_membership', roles: ['administrador', 'recepcion'] },
   { path: '/clases', label: 'Clases', icon: 'fitness_center', roles: ['administrador', 'entrenador', 'recepcion'] },
   { path: '/horarios', label: 'Horarios', icon: 'calendar_month', roles: ['administrador', 'entrenador', 'recepcion'] },
   { path: '/reservaciones', label: 'Reservaciones', icon: 'event_available', roles: ['administrador', 'recepcion', 'entrenador'] },
@@ -94,8 +95,7 @@ export function Layout() {
                 to={item.path}
                 title={collapsed ? item.label : undefined}
                 className={({ isActive }) =>
-                  `relative flex items-center gap-2.5 rounded-xl py-[11px] text-sm font-semibold transition-colors ${
-                    collapsed ? 'justify-center px-0' : 'px-3'
+                  `relative flex items-center gap-2.5 rounded-xl py-[11px] text-sm font-semibold transition-colors ${collapsed ? 'justify-center px-0' : 'px-3'
                   } ${isActive ? 'bg-[color:var(--dark2)] text-white' : 'text-[#C9CDD4] hover:bg-white/5 hover:text-white'}`
                 }
               >

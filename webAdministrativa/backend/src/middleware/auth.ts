@@ -27,7 +27,6 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
 export const requireRole =
   (...roles: UserRole[]) =>
     (req: Request, res: Response, next: NextFunction) => {
-      console.log('requireRole', req.originalUrl, 'rol del token:', req.auth?.rol, 'permitidos:', roles);
       if (!req.auth || !roles.includes(req.auth.rol)) {
         return res.status(403).json({ message: 'No tienes permiso para esta acción.' });
       }

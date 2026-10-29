@@ -5,6 +5,7 @@ import { DashboardPage } from './features/dashboard/DashboardPage';
 import { UsuariosPage } from './features/usuarios/UsuariosPage';
 import { ClientesPage } from './features/clientes/ClientesPage';
 import { ClienteDetalle } from './features/clientes/ClienteDetalle';
+import { MembresiasPage } from './features/membresia/membresia';
 import { ClasesPage } from './features/clases/ClasesPage';
 import { HorariosPage } from './features/horarios/HorariosPage';
 import { ReservacionesPage } from './features/reservaciones/ReservacionesPage';
@@ -25,6 +26,7 @@ export const router = createBrowserRouter([
       { path: 'usuarios', Component: UsuariosPage },
       { path: 'clientes', Component: ClientesPage },
       { path: 'clientes/:id', Component: ClienteDetalle },
+      { path: 'membresias', Component: MembresiasPage },
       { path: 'clases', Component: ClasesPage },
       { path: 'horarios', Component: HorariosPage },
       { path: 'reservaciones', Component: ReservacionesPage },

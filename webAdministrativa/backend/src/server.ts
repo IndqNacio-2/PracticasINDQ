@@ -12,6 +12,8 @@ import usuarioRoutes from './routes/usuarios.routes';
 import ventaRoutes from './routes/ventas.routes';
 import reporteRoutes from './routes/reportes.routes';
 import asistenciaRoutes from './routes/asistencia.routes';
+import membresiaRoutes from './routes/membresia.routes';
+import { sembrarMembresias } from './lib/membresia.lib';
 import { requireAuth } from './middleware/auth';
 import { connectDB } from './lib/mongo';
 
@@ -41,9 +43,13 @@ app.use('/api/usuarios', requireAuth, usuarioRoutes);
 app.use('/api/ventas', requireAuth, ventaRoutes);
 app.use('/api/reportes', requireAuth, reporteRoutes);
 app.use('/api/asistencia', requireAuth, asistenciaRoutes);
+app.use('/api/membresias', requireAuth, membresiaRoutes);
 
 connectDB()
-  .then(() => {
+  .then(async () => {
+    // Primera vez: carga el catálogo de membresías de la especificación
+    const nuevas = await sembrarMembresias();
+    if (nuevas) console.log(`Catálogo de membresías cargado (${nuevas})`);
     app.listen(PORT, () => {
       console.log(`API escuchando en http://localhost:${PORT}`);
     });
