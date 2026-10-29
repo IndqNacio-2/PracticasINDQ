@@ -3,15 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import MaterialIcon from '../../../components/MaterialIcon';
 
-/*
- * Las reservaciones se cargan desde el backend (esquema webcobro). Ya no hay
- * datos de ejemplo: la tabla inicia vacía y se llena con la respuesta de la API.
- */
 
-/*
- * Las mismas formas de pago que maneja el Punto de Venta: efectivo, tarjeta
- * y transferencia. Los iconos son Material Symbols, iguales a los del POS.
- */
 const PAY_METHODS = [
   { key: 'efectivo', label: 'Efectivo', icon: 'payments' },
   { key: 'tarjeta', label: 'Tarjeta', icon: 'credit_card' },
