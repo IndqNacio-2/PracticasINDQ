@@ -1,271 +1,152 @@
-// Importo useState para controlar si el menú está abierto o contraído.
-import { useState } from "react";
+import { useState } from "react"
 
-// Importo el tipo que identifica los módulos disponibles.
-import type { AppModule } from "../types";
+import type { AppModule } from "../types"
 
-// Reutilizo el componente de Material Icons de la aplicación.
-import MaterialIcon from "./MaterialIcon";
+import MaterialIcon from "./MaterialIcon"
+import { clearSession, getStoredUser, LOGIN_PATH } from "../auth/session"
 
-/*
- * Defino los datos que el componente recibe desde App.
- */
 interface SidebarProps {
-  // Indica qué módulo está seleccionado actualmente.
-  activeModule: AppModule;
+  activeModule: AppModule
 
-  // Comunica a App cuando selecciono otro módulo.
-  onModuleChange: (module: AppModule) => void;
+  onModuleChange: (module: AppModule) => void
 }
 
-/*
- * Defino la estructura de cada opción del menú.
- */
 interface MenuItem {
-  id: AppModule;
-  label: string;
-  icon: string;
+  id: AppModule
+
+  label: string
+
+  icon: string
 }
 
-/*
- * Mantengo las opciones fuera del componente porque son fijas
- * y no necesitan volver a crearse en cada renderizado.
- */
 const MENU_ITEMS: MenuItem[] = [
-  {
-    id: "sale",
-    label: "Venta",
-    icon: "point_of_sale",
-  },
-  {
-    id: "inventory",
-    label: "Inventario",
-    icon: "inventory_2",
-  },
-  {
-    id: "waste",
-    label: "Mermas",
-    icon: "delete_sweep",
-  },
-  {
-    id: "cash-closing",
-    label: "Corte de caja",
-    icon: "payments",
-  },
-  {
-    id: "reports",
-    label: "Reportes",
-    icon: "bar_chart",
-  },
-];
+  { id: "sale", label: "Venta", icon: "point_of_sale" },
 
-/*
- * Muestro la navegación lateral de la aplicación.
- *
- * El componente controla localmente si el menú se encuentra
- * expandido o contraído.
- */
+  { id: "inventory", label: "Inventario", icon: "inventory_2" },
+
+  { id: "waste", label: "Mermas", icon: "delete_sweep" },
+
+  { id: "cash-closing", label: "Corte de caja", icon: "payments" },
+
+  { id: "reports", label: "Reportes", icon: "bar_chart" },
+]
+
 export default function Sidebar({
   activeModule,
+
   onModuleChange,
 }: SidebarProps) {
-  /*
-   * true significa que el sidebar está expandido.
-   * false significa que solamente se muestran los iconos.
-   */
-  const [isExpanded, setIsExpanded] = useState(true);
+  /* Mantengo aquí el estado porque solo el sidebar necesita conocerlo. */
+
+  const [isExpanded, setIsExpanded] = useState(true)
+  const user = getStoredUser()
+  const initials = user ? `${user.nombre[0]}${user.apellidos[0]}` : "?"
+
+  const handleLogout = () => {
+    clearSession()
+    window.location.assign(LOGIN_PATH)
+  }
 
   return (
     <aside
-      className={`flex h-screen flex-shrink-0 flex-col overflow-hidden border-r border-gray-700/50 bg-[#111827] text-gray-300 shadow-sm transition-[width] duration-300 ease-in-out ${
-        isExpanded ? "w-60" : "w-20"
+      className={`rx-sidebar ${
+        isExpanded ? "rx-sidebar--expanded" : "rx-sidebar--collapsed"
       }`}
     >
-      {/*
-       * Botón para expandir o contraer el sidebar.
-       *
-       * Lo coloco sobre el borde derecho para que sea fácil
-       * encontrarlo en los dos estados.
-       */}
-        {/* Encabezado e identidad visual de la aplicación. */}
-        <div
-        className={`flex h-[73px] flex-shrink-0 items-center border-b border-gray-700/50 ${
-            isExpanded
-            ? "gap-3 px-5"
-            : "justify-center px-3"
-        }`}
-        >
-        {isExpanded ? (
-            <>
-            {/* Logotipo del sistema. */}
-            <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-[#4B5563] text-white shadow-sm">
-                <MaterialIcon
-                name="fitness_center"
-                className="text-2xl"
-                filled
-                />
-            </div>
-
-            {/* Nombre y descripción del sistema. */}
-            <div className="min-w-0 flex-1">
-                <h1 className="truncate text-base font-bold text-white">
-                Sistema Gym
-                </h1>
-
-                <p className="truncate text-xs text-gray-400">
-                Gestión de ventas
-                </p>
-            </div>
-
-            {/* Botón para contraer el menú. */}
-            <button
-                type="button"
-                onClick={() =>
-                setIsExpanded((currentValue) => !currentValue)
-                }
-                aria-label="Contraer menú lateral"
-                title="Contraer menú"
-                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl border border-gray-700/50 bg-[#4B5563] text-white shadow-sm transition-all duration-150 hover:border-gray-600 hover:bg-[#6B7280] active:scale-95"
-            >
-                <MaterialIcon
-                name="chevron_left"
-                className="text-xl"
-                />
-            </button>
-            </>
-        ) : (
-            /* En modo compacto, el botón ocupa el lugar del logotipo. */
-            <button
-            type="button"
-            onClick={() =>
-                setIsExpanded((currentValue) => !currentValue)
-            }
-            aria-label="Expandir menú lateral"
-            title="Expandir menú"
-            className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#4B5563] text-white shadow-sm transition-all duration-150 hover:bg-[#6B7280] hover:shadow-md active:scale-95"
-            >
-            <MaterialIcon
-                name="chevron_right"
-                className="text-2xl"
-            />
-            </button>
-        )}
-        </div>
-      {/* Opciones principales de navegación. */}
-      <nav
-        className={`flex flex-1 flex-col gap-1 py-4 ${
-          isExpanded ? "px-3" : "px-2"
+      <header
+        className={`rx-sidebar-header ${
+          !isExpanded ? "rx-sidebar-header--collapsed" : ""
         }`}
       >
-        {/*
-         * Este título únicamente aparece cuando existe
-         * suficiente espacio para mostrar texto.
-         */}
+        <div className="rx-brand-logo">
+          <MaterialIcon name="fitness_center" className="text-2xl" filled />
+        </div>
+
         {isExpanded && (
-          <p className="mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.18em] text-gray-500">
-            Módulos
-          </p>
+          <>
+            <div className="rx-brand-content">
+              <h1 className="rx-brand-title">Sistema Gym</h1>
+              <p className="rx-brand-subtitle">Punto de Venta</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsExpanded(false)}
+              className="rx-sidebar-toggle"
+              aria-label="Contraer menú"
+              title="Contraer menú"
+            >
+              <MaterialIcon name="chevron_left" className="text-xl" />
+            </button>
+          </>
         )}
 
+        {!isExpanded && (
+          <button
+            type="button"
+            onClick={() => setIsExpanded(true)}
+            className="rx-sidebar-toggle"
+            aria-label="Expandir menú"
+            title="Expandir menú"
+          >
+            <MaterialIcon name="chevron_right" className="text-xl" />
+          </button>
+        )}
+      </header>
+
+      <nav className="rx-sidebar-nav" aria-label="Módulos del Punto de Venta">
         {MENU_ITEMS.map((item) => {
-          // Compruebo si esta opción corresponde al módulo actual.
-          const isActive =
-            activeModule === item.id;
+          const isActive = activeModule === item.id
 
           return (
             <button
               key={item.id}
               type="button"
-              onClick={() =>
-                onModuleChange(item.id)
-              }
+              onClick={() => onModuleChange(item.id)}
+              aria-current={isActive ? "page" : undefined}
               aria-label={item.label}
-              title={
-                isExpanded
-                  ? undefined
-                  : item.label
-              }
-              className={`flex h-11 w-full items-center rounded-xl text-sm font-semibold transition-all duration-150 ${
-                isExpanded
-                  ? "gap-3 px-3"
-                  : "justify-center px-0"
-              } ${
-                isActive
-                  ? "bg-[#4B5563] text-white shadow-sm"
-                  : "text-gray-400 hover:bg-gray-700/50 hover:text-gray-100"
-              }`}
+              title={isExpanded ? undefined : item.label}
+              className={`rx-nav-item ${
+                !isExpanded ? "rx-nav-item--collapsed" : ""
+              } ${isActive ? "rx-nav-item--active" : ""}`}
             >
               <MaterialIcon
                 name={item.icon}
                 className="flex-shrink-0 text-xl"
                 filled={isActive}
               />
-
-              {/*
-               * El nombre del módulo desaparece cuando
-               * el menú está contraído.
-               */}
-              {isExpanded && (
-                <span className="truncate">
-                  {item.label}
-                </span>
-              )}
+              {isExpanded && <span className="truncate">{item.label}</span>}
             </button>
-          );
+          )
         })}
       </nav>
 
-      {/* Información temporal del usuario. */}
-      <div className="flex-shrink-0 border-t border-gray-700/50 p-3">
+      <footer className="rx-sidebar-footer">
         <div
-          className={`flex items-center rounded-xl bg-white/5 ${
-            isExpanded
-              ? "gap-3 px-3 py-2.5"
-              : "justify-center p-2"
+          className={`rx-user-card ${
+            !isExpanded ? "rx-user-card--collapsed" : ""
           }`}
         >
-          {/*
-           * Uso las iniciales como avatar mientras se
-           * implementa la autenticación real.
-           */}
-          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-[#4B5563] text-xs font-bold text-white">
-            ER
-          </div>
-
-          {isExpanded && (
+          <div className="rx-user-avatar">{initials}</div>
+          {isExpanded && user && (
             <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-gray-200">
-                Edgar Rodríguez
-              </p>
-
-              <p className="truncate text-xs text-gray-500">
-                Recepcionista
-              </p>
+              <p className="rx-user-name">{user.nombre} {user.apellidos}</p>
+              <p className="rx-user-role">Vendedor</p>
             </div>
           )}
         </div>
 
-        {/* Regreso al panel administrativo. Es un enlace normal (no un cambio
-            de estado interno) porque /administrativa es otra sección de esta
-            misma aplicación y el navegador debe volver a cargarla; si la sesión
-            administrativa quedó guardada, el dashboard deja el usuario puesto. */}
-        <a
-          href="/administrativa/dashboard"
-          title={isExpanded ? undefined : "Panel administrativo"}
-          className={`mt-2 flex h-11 w-full items-center rounded-xl text-sm font-semibold transition-all duration-150 ${
-            isExpanded ? "gap-3 px-3" : "justify-center px-0"
-          } text-gray-400 hover:bg-gray-700/50 hover:text-gray-100`}
+        <button
+          type="button"
+          onClick={handleLogout}
+          title={isExpanded ? undefined : "Cerrar sesión"}
+          className={`rx-nav-item rx-nav-item--danger mt-2 ${
+            !isExpanded ? "rx-nav-item--collapsed" : ""
+          }`}
         >
-          <MaterialIcon
-            name="arrow_back"
-            className="flex-shrink-0 text-xl"
-          />
-
-          {isExpanded && (
-            <span className="truncate">Panel administrativo</span>
-          )}
-        </a>
-      </div>
+          <MaterialIcon name="logout" className="flex-shrink-0 text-xl" />
+          {isExpanded && <span className="truncate">Cerrar sesión</span>}
+        </button>
+      </footer>
     </aside>
-  );
+  )
 }

@@ -63,12 +63,12 @@ export const mockClientes: Cliente[] = [
 ];
 
 export const mockClases: Clase[] = [
-  { idClase: 'cl1', nombre: 'Spinning', descripcion: 'Clase de ciclismo indoor de alta intensidad con música motivadora', capacidad: 20, color: '#f59e0b', estatus: 'activo', entrenadorId: 'u2' },
-  { idClase: 'cl2', nombre: 'Yoga Flow', descripcion: 'Yoga dinámico para mejorar flexibilidad, fuerza y equilibrio mental', capacidad: 15, color: '#8b5cf6', estatus: 'activo', entrenadorId: 'u3' },
-  { idClase: 'cl3', nombre: 'CrossFit', descripcion: 'Entrenamiento funcional de alta intensidad con movimientos compuestos', capacidad: 12, color: '#ef4444', estatus: 'activo', entrenadorId: 'u2' },
-  { idClase: 'cl4', nombre: 'Pilates Mat', descripcion: 'Ejercicios de control corporal y fortalecimiento del núcleo', capacidad: 10, color: '#ec4899', estatus: 'activo', entrenadorId: 'u3' },
-  { idClase: 'cl5', nombre: 'Box Fitness', descripcion: 'Técnicas de boxeo aplicadas al fitness sin contacto', capacidad: 16, color: '#0891b2', estatus: 'activo', entrenadorId: 'u2' },
-  { idClase: 'cl6', nombre: 'Zumba', descripcion: 'Baile fitness con ritmos latinos y caribeños', capacidad: 25, color: '#10b981', estatus: 'inactivo', entrenadorId: 'u3' },
+  { idClase: 'cl1', nombre: 'Spinning', descripcion: 'Clase de ciclismo indoor de alta intensidad con música motivadora', capacidad: 20, precio: 150, color: '#4B5563', estatus: 'activo', entrenadorId: 'u2' },
+  { idClase: 'cl2', nombre: 'Yoga Flow', descripcion: 'Yoga dinámico para mejorar flexibilidad, fuerza y equilibrio mental', capacidad: 15, precio: 150, color: '#6B7280', estatus: 'activo', entrenadorId: 'u3' },
+  { idClase: 'cl3', nombre: 'CrossFit', descripcion: 'Entrenamiento funcional de alta intensidad con movimientos compuestos', capacidad: 12, precio: 200, color: '#9CA3AF', estatus: 'activo', entrenadorId: 'u2' },
+  { idClase: 'cl4', nombre: 'Pilates Mat', descripcion: 'Ejercicios de control corporal y fortalecimiento del núcleo', capacidad: 10, precio: 180, color: '#4B5563', estatus: 'activo', entrenadorId: 'u3' },
+  { idClase: 'cl5', nombre: 'Box Fitness', descripcion: 'Técnicas de boxeo aplicadas al fitness sin contacto', capacidad: 16, precio: 100, color: '#6B7280', estatus: 'activo', entrenadorId: 'u2' },
+  { idClase: 'cl6', nombre: 'Zumba', descripcion: 'Baile fitness con ritmos latinos y caribeños', capacidad: 25, precio: 120, color: '#9CA3AF', estatus: 'inactivo', entrenadorId: 'u3' },
 ];
 
 export const mockHorarios: HorarioClase[] = [

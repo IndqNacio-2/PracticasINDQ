@@ -6,15 +6,15 @@ import { DataState } from '../../components/DataState';
 import { api } from '../../lib/api';
 import type { Clase, Usuario, Estatus } from '../../types';
 
-const COLORS = ['#10b981', '#6366f1', '#f59e0b', '#ec4899', '#0891b2', '#ef4444', '#8b5cf6', '#14b8a6'];
+const COLORS = ['#4B5563', '#111827', '#F3F4F6', '#6B7280'];
 
-const EMPTY_FORM = { nombre: '', descripcion: '', capacidad: '12', color: '#10b981', estatus: 'activo' as Estatus, entrenadorId: '' };
+const EMPTY_FORM = { nombre: '', descripcion: '', capacidad: '12', precio: '0', color: '#4B5563', estatus: 'activo' as Estatus, entrenadorId: '' };
 
 export function ClasesPage() {
   /*
    * Las clases y los entrenadores viven en MongoDB (backend-administrativa).
    * El formulario del entrenador se llena con los usuarios reales de rol
-   * "entrenador", no con datos de ejemplo.
+   * "entrenador".
    */
   const [clases, setClases] = useState<Clase[]>([]);
   const [entrenadores, setEntrenadores] = useState<Usuario[]>([]);
@@ -52,7 +52,7 @@ export function ClasesPage() {
     setModal({ open: true });
   };
   const openEdit = (c: Clase) => {
-    setForm({ nombre: c.nombre, descripcion: c.descripcion, capacidad: String(c.capacidad), color: c.color, estatus: c.estatus, entrenadorId: c.entrenadorId ?? '' });
+    setForm({ nombre: c.nombre, descripcion: c.descripcion, capacidad: String(c.capacidad), precio: String(c.precio ?? 0), color: c.color, estatus: c.estatus, entrenadorId: c.entrenadorId ?? '' });
     setFormError(null);
     setModal({ open: true, editing: c });
   };
@@ -64,8 +64,10 @@ export function ClasesPage() {
    */
   const save = async () => {
     const capacidad = Number(form.capacidad);
+    const precio = Number(form.precio);
     if (!form.nombre.trim()) { setFormError('El nombre de la clase es obligatorio.'); return; }
     if (!Number.isFinite(capacidad) || capacidad < 1) { setFormError('La capacidad debe ser al menos 1.'); return; }
+    if (!Number.isFinite(precio) || precio < 0) { setFormError('El precio no puede ser negativo.'); return; }
 
     setSaving(true);
     setFormError(null);
@@ -73,6 +75,7 @@ export function ClasesPage() {
       nombre: form.nombre.trim(),
       descripcion: form.descripcion,
       capacidad,
+      precio,
       color: form.color,
       estatus: form.estatus,
       entrenadorId: form.entrenadorId,
@@ -108,13 +111,14 @@ export function ClasesPage() {
   };
 
   return (
-    <div className="space-y-5 max-w-7xl">
-      <div className="flex items-center justify-between">
+    <div className="rx-admin-page rx-classes-page">
+      <div className="rx-page-heading">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>Clases</h1>
-          <p className="text-slate-500 text-sm mt-0.5">{clases.filter(c => c.estatus === 'activo').length} activas · {clases.length} totales</p>
+          <span className="rx-page-kicker">Catálogo de actividades</span>
+          <h2>Clases</h2>
+          <p>{clases.filter(c => c.estatus === 'activo').length} activas · {clases.length} totales</p>
         </div>
-        <button onClick={openNew} className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors">
+        <button onClick={openNew} className="rx-btn rx-btn--accent">
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
           Nueva clase
         </button>
@@ -127,11 +131,11 @@ export function ClasesPage() {
         emptyMessage="Aún no hay clases registradas. Crea la primera con el botón superior."
         onRetry={cargar}
       >
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="rx-class-grid">
           {clases.map(clase => {
             const entrenador = entrenadores.find(u => u.idUsuario === clase.entrenadorId);
           return (
-            <div key={clase.idClase} className={`bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow ${clase.estatus === 'inactivo' ? 'opacity-60' : ''}`}>
+            <article key={clase.idClase} className={`rx-class-card ${clase.estatus === 'inactivo' ? 'rx-card--muted' : ''}`}>
               <div className="h-1.5" style={{ backgroundColor: clase.color }} />
               <div className="p-5">
                 <div className="flex items-start justify-between mb-3">
@@ -142,36 +146,45 @@ export function ClasesPage() {
                       </svg>
                     </div>
                     <div>
-                      <h3 className="font-semibold text-slate-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>{clase.nombre}</h3>
+                      <h3 className="rx-class-card-title">{clase.nombre}</h3>
                       <Badge variant={clase.estatus} />
                     </div>
                   </div>
                   <div className="flex gap-1">
-                    <button onClick={() => openEdit(clase)} className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors">
+                    <button onClick={() => openEdit(clase)} className="rx-compact-icon-button" aria-label={`Editar ${clase.nombre}`}>
                       <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                     </button>
-                    <button onClick={() => toggleEstatus(clase.idClase)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors">
+                    <button onClick={() => toggleEstatus(clase.idClase)} className="rx-compact-icon-button rx-compact-icon-button--danger" aria-label={`${clase.estatus === 'activo' ? 'Desactivar' : 'Activar'} ${clase.nombre}`}>
                       <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
                     </button>
                   </div>
                 </div>
 
-                <p className="text-sm text-slate-500 line-clamp-2 mb-4">{clase.descripcion}</p>
+                <p className="text-sm text-gray-500 line-clamp-2 mb-4">{clase.descripcion}</p>
 
                 <div className="flex items-center justify-between text-sm">
-                  <div className="flex items-center gap-1.5 text-slate-500">
+                  <div className="flex items-center gap-1.5 text-gray-500">
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                     <span>{clase.capacidad} lugares</span>
                   </div>
-                  {entrenador && (
+                  {/* La clase ya no tiene hora fija: la fecha y el intervalo
+                      se programan en el modulo Horarios. */}
+                  <span className="text-gray-400 text-xs">Ver Horarios</span>
+                </div>
+
+                <div className="flex items-center justify-between text-sm mt-2">
+                  {entrenador ? (
                     <div className="flex items-center gap-1.5">
-                      <div className="w-5 h-5 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 text-xs font-bold">{entrenador.nombre[0]}</div>
-                      <span className="text-slate-500 text-xs">{entrenador.nombre} {entrenador.apellidos}</span>
+                      <div className="w-5 h-5 rounded-full bg-[#F3F4F6] flex items-center justify-center text-[#6B7280] text-xs font-bold">{entrenador.nombre[0]}</div>
+                      <span className="text-gray-500 text-xs">{entrenador.nombre} {entrenador.apellidos}</span>
                     </div>
+                  ) : (
+                    <span className="text-gray-500">Precio</span>
                   )}
+                  <span className="font-semibold text-[#6B7280]">${clase.precio ?? 0}</span>
                 </div>
               </div>
-            </div>
+            </article>
           );
         })}
         </div>
@@ -183,26 +196,29 @@ export function ClasesPage() {
           <TextareaField label="Descripción" value={form.descripcion} onChange={v => setForm(f => ({ ...f, descripcion: v }))} rows={2} />
           <div className="grid grid-cols-2 gap-4">
             <InputField label="Capacidad" required type="number" min="1" value={form.capacidad} onChange={e => setForm(f => ({ ...f, capacidad: e.target.value }))} />
+            <InputField label="Precio" required type="number" min="0" step="0.01" value={form.precio} onChange={e => setForm(f => ({ ...f, precio: e.target.value }))} />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
             <SelectField label="Entrenador" value={form.entrenadorId} onChange={e => setForm(f => ({ ...f, entrenadorId: e.target.value }))}
               options={entrenadores.map(e => ({ value: e.idUsuario, label: `${e.nombre} ${e.apellidos}` }))} />
           </div>
           <SelectField label="Estatus" value={form.estatus} onChange={e => setForm(f => ({ ...f, estatus: e.target.value as Estatus }))}
             options={[{ value: 'activo', label: 'Activo' }, { value: 'inactivo', label: 'Inactivo' }]} />
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">Color identificador</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Color identificador</label>
             <div className="flex gap-2 flex-wrap">
               {COLORS.map(c => (
                 <button key={c} onClick={() => setForm(f => ({ ...f, color: c }))}
-                  className={`w-7 h-7 rounded-full transition-transform hover:scale-110 ${form.color === c ? 'ring-2 ring-offset-2 ring-slate-400 scale-110' : ''}`}
+                  className={`w-7 h-7 rounded-full transition-transform hover:scale-110 ${form.color === c ? 'ring-2 ring-offset-2 ring-gray-400 scale-110' : ''}`}
                   style={{ backgroundColor: c }} />
               ))}
             </div>
           </div>
-          {formError && <p className="text-sm text-red-500">{formError}</p>}
+          {formError && <p className="rx-schedule-message rx-schedule-message--error">{formError}</p>}
         </div>
-        <div className="flex gap-3 mt-6 pt-4 border-t border-slate-100">
-          <button onClick={() => setModal({ open: false })} disabled={saving} className="flex-1 px-4 py-2.5 border border-slate-200 text-slate-700 rounded-xl text-sm font-medium hover:bg-slate-50 disabled:opacity-50">Cancelar</button>
-          <button onClick={save} disabled={saving} className="flex-1 px-4 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-sm font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+        <div className="rx-schedule-actions">
+          <button onClick={() => setModal({ open: false })} disabled={saving} className="rx-btn rx-btn--outline">Cancelar</button>
+          <button onClick={save} disabled={saving} className="rx-btn rx-btn--accent">
             {saving && <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" /></svg>}
             {saving ? 'Guardando...' : modal.editing ? 'Guardar cambios' : 'Crear clase'}
           </button>

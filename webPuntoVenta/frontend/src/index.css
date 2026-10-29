@@ -6,34 +6,41 @@
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 @import 'tailwindcss';
 
+/* Importo una sola vez el sistema visual compartido del Punto de Venta. */
 @import './styles/pos-ui.css';
 
 /* ---- Sección webCobro (trabajo de un compañero) ----
    Colores personalizados que su proyecto definía en tailwind.config.js.
-   En Tailwind v4 los colores del tema se declaran aquí con @theme. */
+   En Tailwind v4 los colores del tema se declaran aquí con @theme.
+   Paleta (monocromática gris) del módulo de cobro:
+     fondo de la app        #4B5563 (gray-600)  -> --color-dark-900
+     header / bordes        #111827 (gray-900)  -> --color-dark-800 y --color-primary
+     hover de botones       #6B7280 (gray-500)  -> --color-primary-hover
+     superficies / muted    #F3F4F6 (gray-100) y #6B7280 (gray-500) se usan
+                            directo en el JSX como valores arbitrarios. */
 @theme {
-  --color-dark-900: #0f172a;
-  --color-dark-800: #1e293b;
-  --color-primary: #10b981;
-  --color-primary-hover: #059669;
+  --color-dark-900: #4B5563;
+  --color-dark-800: #111827;
+  --color-primary: #111827;
+  --color-primary-hover: #6B7280;
 }
 
 /* ---- Sección webAdministrativa (trabajo de un compañero) ----
    Estilos de la barra lateral que su proyecto definía en su index.css. */
 @layer components {
   .sidebar-link {
-    @apply flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-400 transition-colors hover:text-slate-200 hover:bg-slate-700/40;
+    @apply flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-gray-400 transition-colors hover:text-gray-100 hover:bg-gray-700/40;
   }
 
   .sidebar-link.active {
-    @apply bg-emerald-500/15 text-emerald-400;
+    @apply bg-white/10 text-white;
   }
 }
 
 :root {
-  --primary: #FF5C00;
-  --primary-dark: #E54E00;
-  --bg: #F0F2F7;
+  --primary: #111827;
+  --primary-dark: #6B7280;
+  --bg: #F3F4F6;
   --border: #E5E7EB;
 }
 

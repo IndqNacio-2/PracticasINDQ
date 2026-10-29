@@ -72,6 +72,28 @@ ALTER TABLE webcobro.reservas
 ALTER TABLE webcobro.reservas
     ADD COLUMN IF NOT EXISTS fecha TEXT NOT NULL DEFAULT '';
 
+-- Vinculo estable con la sesion de MongoDB y estado independiente del cupo.
+-- Una reserva puede estar pendiente de pago y, al mismo tiempo, en lista de
+-- espera; por eso estado_cupo no reutiliza la columna financiera estado.
+ALTER TABLE webcobro.reservas
+    ADD COLUMN IF NOT EXISTS horario_id TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE webcobro.reservas
+    ADD COLUMN IF NOT EXISTS estado_cupo TEXT NOT NULL DEFAULT 'confirmada';
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'reservas_estado_cupo_check'
+          AND conrelid = 'webcobro.reservas'::regclass
+    ) THEN
+        ALTER TABLE webcobro.reservas
+            ADD CONSTRAINT reservas_estado_cupo_check
+            CHECK (estado_cupo IN ('confirmada', 'espera'));
+    END IF;
+END $$;
+
 -- Modelo de CUPO: varias personas pueden reservar la misma clase a la misma
 -- hora (el límite es la capacidad de la clase, validada en el backend). Por eso
 -- se elimina el índice único (clase, hora) de la versión anterior de slots.
@@ -81,6 +103,9 @@ DROP INDEX IF EXISTS webcobro.reservas_clase_hora_idx;
 -- concretas (la clave de consistencia con el modulo de horarios).
 CREATE INDEX IF NOT EXISTS reservas_clase_fecha_hora_idx
     ON webcobro.reservas (clase, fecha, hora);
+
+CREATE INDEX IF NOT EXISTS reservas_horario_cupo_idx
+    ON webcobro.reservas (horario_id, estado_cupo, estado, id);
 
 -- Pagos registrados desde el modal de cobro.
 -- Cada pago se liga a la reservación que se cobró (reserva_id). El cliente_id

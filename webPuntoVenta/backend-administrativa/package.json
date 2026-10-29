@@ -7,7 +7,9 @@
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
     "typecheck": "tsc --noEmit",
-    "db:seed": "tsx src/db/seed-usuarios.ts"
+    "db:seed": "tsx src/db/seed-usuarios.ts",
+    "db:migrar-hora-clase": "tsx src/db/migrar-hora-clase.ts",
+    "db:cargar-programacion": "tsx src/db/cargar-programacion-semanal.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

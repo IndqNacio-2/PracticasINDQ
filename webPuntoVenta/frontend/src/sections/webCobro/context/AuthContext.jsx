@@ -1,9 +1,9 @@
 import { createContext, useContext, useState } from 'react';
+import { clearSession, getStoredUser } from '../../../auth/session';
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
-  // null significa: nadie ha iniciado sesión todavía
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(getStoredUser);
 
   // Función para iniciar sesión: recibe el usuario encontrado en el Login
   const login = (userData) => {
@@ -13,6 +13,7 @@ export const AuthProvider = ({ children }) => {
   // Función para cerrar sesión: borra al usuario
   const logout = () => {
     setUser(null);
+    clearSession();
   };
 
   return (

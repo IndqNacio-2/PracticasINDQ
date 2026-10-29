@@ -6,11 +6,13 @@ import clienteRoutes from './routes/clientes.routes';
 import reservacionRoutes from './routes/reservaciones.routes';
 import horarioRoutes from './routes/horarios.routes';
 import claseRoutes from './routes/clases.routes';
+import plantillaHorarioRoutes from './routes/plantillas-horarios.routes';
 import productoRoutes from './routes/productos.routes';
 import movimientoRoutes from './routes/movimientos.routes';
 import usuarioRoutes from './routes/usuarios.routes';
 import ventaRoutes from './routes/ventas.routes';
 import { connectDB } from './lib/mongo';
+import { iniciarMantenimientoHorizonte } from './services/mantener-horizonte-sesiones';
 
 if (!process.env.JWT_SECRET) {
   throw new Error('Falta JWT_SECRET en el archivo .env');
@@ -28,6 +30,7 @@ app.use('/api/clientes', clienteRoutes);
 app.use('/api/reservaciones', reservacionRoutes);
 app.use('/api/horarios', horarioRoutes);
 app.use('/api/clases', claseRoutes);
+app.use('/api/plantillas-horarios', plantillaHorarioRoutes);
 app.use('/api/productos', productoRoutes);
 app.use('/api/movimientos', movimientoRoutes);
 app.use('/api/usuarios', usuarioRoutes);
@@ -40,6 +43,7 @@ export default app;
 
 connectDB()
   .then(() => {
+    iniciarMantenimientoHorizonte();
     if (process.env.GATEWAY_MODE) {
       console.log('API administrativa conectada a MongoDB (gateway unificado)');
       return;

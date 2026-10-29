@@ -14,8 +14,6 @@ import {
 
 import { Icon } from "../../components/Icon"
 
-import { useAuth } from "../../context/AuthContext"
-
 import { api, apiCobro } from "../../lib/api"
 
 import type { HorarioClase, Venta } from "../../types"
@@ -84,10 +82,6 @@ function socioVigente(socio: SocioCobro, hoy: string): boolean {
 }
 
 export function DashboardPage() {
-  const { hasRole } = useAuth()
-
-  const puedeEntrarAlPuntoDeVenta = hasRole(["administrador", "recepcion"])
-
   const [kpis, setKpis] = useState<KpisCobro | null>(null)
 
   const [reservas, setReservas] = useState<ReservaCobro[]>([])
@@ -276,12 +270,6 @@ export function DashboardPage() {
             {fechaHoy.charAt(0).toUpperCase() + fechaHoy.slice(1)}
           </p>
         </div>
-        {puedeEntrarAlPuntoDeVenta && (
-          <a href="/" className="rx-btn rx-btn--primary">
-            <Icon name="point_of_sale" size={19} />
-            Ir al Punto de Venta
-          </a>
-        )}
       </header>
 
       <div className="rx-page-content">

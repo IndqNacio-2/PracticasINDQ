@@ -6,16 +6,16 @@ interface StatCardProps {
   accent?: string;
 }
 
-export function StatCard({ label, value, icon, trend, accent = '#10b981' }: StatCardProps) {
+export function StatCard({ label, value, icon, trend, accent = "#4B5563" }: StatCardProps) {
   return (
-    <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 hover:shadow-md transition-shadow">
+    <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-sm text-slate-500 font-medium">{label}</p>
-          <p className="text-2xl font-bold text-slate-900 mt-1" style={{ fontFamily: 'DM Sans, sans-serif' }}>{value}</p>
+          <p className="text-sm text-gray-500 font-medium">{label}</p>
+          <p className="text-2xl font-bold text-gray-900 mr-1" style={{ fontFamily: "DM Sans, sans-serif" }}>{value}</p>
           {trend && (
-            <p className={`text-xs mt-1.5 font-medium ${trend.positive ? 'text-emerald-600' : 'text-red-500'}`}>
-              {trend.positive ? '↑' : '↓'} {trend.value} vs. mes anterior
+            <p className={`text-xs mr-1.5 font-medium ${trend.positive ? "text-emerald-600" : "text-red-500"}`}>
+              {trend.positive ? "↑" : "↓"} {trend.value} vs. mes anterior
             </p>
           )}
         </div>

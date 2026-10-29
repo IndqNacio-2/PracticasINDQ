@@ -1,92 +1,101 @@
-import type { Product } from "../types";
-import MaterialIcon from "./MaterialIcon";
+import type { Product } from "../types"
 
-const fmt = (n: number) => `$${n.toFixed(2)}`;
+import MaterialIcon from "./MaterialIcon"
+
+const fmt = (value: number) => `$${value.toFixed(2)}`
 
 interface ProductCardProps {
-  product: Product;
-  cartQty: number;
-  onAdd: () => void;
+  product: Product
+
+  cartQty: number
+
+  onAdd: () => void
 }
 
-export default function ProductCard({ product, cartQty, onAdd }: ProductCardProps) {
-  /*
-  * Considero agotado el producto cuando ya no tiene
-  * ninguna unidad disponible.
-  */
-  const isOut = product.stock === 0;
+export default function ProductCard({
+  product,
 
-  /*
-  * Considero que existe stock bajo cuando todavía hay unidades,
-  * pero la cantidad es igual o menor al mínimo configurado
-  * específicamente para este producto.
-  */
-  const isLow =
-    product.stock > 0 &&
-    product.stock <= product.minimumStock;
+  cartQty,
 
-  /*
-  * Evito agregar más unidades cuando la cantidad del carrito
-  * ya alcanzó la existencia disponible.
-  */
-  const atMax =
-    cartQty >= product.stock &&
-    !isOut;
+  onAdd,
+}: ProductCardProps) {
+  /* Considero agotado el producto cuando ya no tiene unidades disponibles. */
+
+  const isOut = product.stock === 0
+
+  /* Muestro una advertencia al alcanzar el mínimo configurado. */
+
+  const isLow = product.stock > 0 && product.stock <= product.minimumStock
+
+  /* Evito agregar más unidades que las disponibles en inventario. */
+
+  const atMax = cartQty >= product.stock && !isOut
+
+  const stockClassName = isOut
+    ? "rx-product-stock rx-product-stock--danger"
+    : isLow
+      ? "rx-product-stock rx-product-stock--warning"
+      : "rx-product-stock"
 
   return (
-    <div className={`bg-white rounded-2xl overflow-hidden border transition-all duration-150 ${
-      isOut
-        ? 'border-[#E5E7EB] opacity-60'
-        : 'border-[#E5E7EB] hover:border-[#111827]/40 hover:shadow-md cursor-pointer'
-    }`}>
-      <div className="relative h-28 flex items-center justify-center" style={{ backgroundColor: product.bgColor }}>
-        <MaterialIcon name={product.icon} className="select-none text-5xl text-[#374151]" filled />
+    <article
+      className={`rx-product-card ${isOut ? "rx-product-card--disabled" : ""}`}
+    >
+      {/* Mantengo este color inline porque viene de los datos del producto. */}
+      <div
+        className="rx-product-visual"
+        style={{ backgroundColor: product.bgColor }}
+      >
+        <MaterialIcon
+          name={product.icon}
+          className="select-none text-5xl text-[#374151]"
+          filled
+        />
 
         {cartQty > 0 && (
-          <span className="absolute top-2 left-2 w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center text-white"
-            style={{ backgroundColor: '#111827' }}>
+          <span
+            className="rx-product-quantity"
+            aria-label={`${cartQty} unidades en el carrito`}
+          >
             {cartQty}
           </span>
         )}
 
         {isOut && (
-          <span className="absolute top-2 right-2 bg-[#FEE2E2] text-[#991B1B] text-[10px] font-bold px-2 py-0.5 rounded-full">
+          <span className="rx-product-state rx-badge rx-badge--danger">
             Agotado
           </span>
         )}
+
         {isLow && !isOut && (
-          <span className="absolute top-2 right-2 bg-[#FEF3C7] text-[#92400E] text-[10px] font-bold px-2 py-0.5 rounded-full">
+          <span className="rx-product-state rx-badge rx-badge--warning">
             Pocas existencias
           </span>
         )}
       </div>
 
-      <div className="p-3">
-        <p className="text-[10px] font-medium text-[#9CA3AF] uppercase tracking-wide mb-0.5">{product.category}</p>
-        <p className="text-sm font-bold text-[#0D0F14] leading-tight mb-2 line-clamp-2">{product.name}</p>
+      <div className="rx-product-content">
+        <p className="rx-product-category">{product.category}</p>
+        <h3 className="rx-product-name">{product.name}</h3>
 
-        <div className="flex items-center justify-between mb-2.5">
-          <span className="text-base font-bold" style={{ color: '#111827' }}>{fmt(product.price)}</span>
-          <span className={`text-[10px] font-semibold ${
-            isOut ? 'text-[#EF4444]' : isLow ? 'text-[#F59E0B]' : 'text-[#10B981]'
-          }`}>
-            {isOut ? 'Sin existencias' : `${product.stock} disp.`}
+        <div className="rx-product-info">
+          <span className="rx-product-price">{fmt(product.price)}</span>
+          <span className={stockClassName}>
+            {isOut ? "Sin existencias" : `${product.stock} disp.`}
           </span>
         </div>
 
         <button
+          type="button"
           onClick={onAdd}
           disabled={isOut || atMax}
-          className={`w-full py-1.5 text-sm font-semibold rounded-lg transition-all duration-150 ${
-            isOut || atMax
-              ? 'bg-[#F3F4F6] text-[#9CA3AF] cursor-not-allowed'
-              : 'text-white hover:opacity-90 active:scale-95'
+          className={`rx-btn rx-btn--block ${
+            isOut || atMax ? "rx-btn--outline" : "rx-btn--accent"
           }`}
-          style={!(isOut || atMax) ? { backgroundColor: '#6B7280' } : {}}
         >
-          {isOut ? 'Agotado' : atMax ? 'Máx. alcanzado' : 'Agregar'}
+          {isOut ? "Agotado" : atMax ? "Máximo alcanzado" : "Agregar"}
         </button>
       </div>
-    </div>
-  );
+    </article>
+  )
 }

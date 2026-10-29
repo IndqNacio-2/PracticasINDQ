@@ -1322,12 +1322,10 @@ export default function ReportsPage({
 
             <p className="mt-0.5 text-xs leading-5 text-[#6B7280]">
               El reporte calcula los indicadores del periodo con las ventas y
-              las mermas de la sesión, permite filtrar por rango de fechas y
+              las mermas del gimnasio, permite filtrar por rango de fechas y
               por forma de pago, y muestra el detalle de las ventas, el
               desglose por forma de pago, los productos más vendidos y las
-              mermas por motivo y por producto. Queda pendiente guardar la
-              información en la base de datos para consultar periodos
-              anteriores.
+              mermas por motivo y por producto.
             </p>
           </div>
         </div>

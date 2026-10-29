@@ -9,6 +9,7 @@ build/
 !.env.example
 !**/.env.example
 *.log
+*.md
 npm-debug.log*
 .DS_Store
 Thumbs.db

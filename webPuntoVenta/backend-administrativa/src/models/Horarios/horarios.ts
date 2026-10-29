@@ -13,6 +13,12 @@ const horarioSchema = new Schema(
         capacidadDisponible: { type: Number, required: true },
         estatus: { type: String, enum: ['activo', 'inactivo'], default: 'activo' },
         salon: { type: String, required: true },
+        idPlantilla: { type: String, default: '' },
+        claveGeneracion: { type: String, sparse: true, unique: true },
+        origen: { type: String, enum: ['manual', 'plantilla'], default: 'manual' },
+        esExcepcionPlantilla: { type: Boolean, default: false },
+        visibleReservas: { type: Boolean, default: true },
+        listaEsperaHabilitada: { type: Boolean, default: false },
     },
     {
         toJSON: {
@@ -25,6 +31,8 @@ const horarioSchema = new Schema(
         },
     }
 );
+
+horarioSchema.index({ fecha: 1, horaInicio: 1, salon: 1 });
 
 export type HorarioDoc = InferSchemaType<typeof horarioSchema>;
 export const Horario = model('Horario', horarioSchema, 'webadministrativa_horarios');

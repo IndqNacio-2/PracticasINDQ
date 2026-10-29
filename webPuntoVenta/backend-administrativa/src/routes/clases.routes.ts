@@ -16,6 +16,9 @@ router.post('/', async (req, res) => {
         return res.status(400).json({ error: 'Nombre y capacidad son obligatorios' });
     }
 
+    // La clase es solo el catalogo (nombre, capacidad, precio, color...). Ya NO
+    // tiene hora fija: la fecha y el intervalo (horaInicio/horaFin) viven en
+    // los HORARIOS, que son los que evitan los solapamientos del entrenador.
     const nueva = await Clase.create(req.body);
     res.status(201).json(nueva);
 });

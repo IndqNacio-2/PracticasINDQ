@@ -1,4 +1,4 @@
-export type UserRole = 'administrador' | 'entrenador' | 'recepcion' | 'cliente';
+export type UserRole = 'administrador' | 'entrenador' | 'recepcion' | 'vendedor' | 'cliente';
 export type Estatus = 'activo' | 'inactivo';
 export type ReservaEstatus = 'confirmada' | 'pendiente' | 'cancelada';
 
@@ -55,6 +55,8 @@ export interface Clase {
   nombre: string;
   descripcion: string;
   capacidad: number;
+  /** Precio de la clase; webCobro lo usa como monto a cobrar. */
+  precio: number;
   color: string;
   estatus: Estatus;
   entrenadorId?: string;
@@ -73,6 +75,116 @@ export interface HorarioClase {
   capacidadDisponible: number;
   estatus: Estatus;
   salon: string;
+  idPlantilla?: string;
+  origen?: 'manual' | 'plantilla';
+  esExcepcionPlantilla?: boolean;
+  visibleReservas?: boolean;
+  listaEsperaHabilitada?: boolean;
+}
+
+export interface EditarExcepcionSesion {
+  entrenadorId: string;
+  salon: string;
+  horaInicio: string;
+  horaFin: string;
+  estatus: Estatus;
+  visibleReservas: boolean;
+  listaEsperaHabilitada: boolean;
+}
+
+export interface ResultadoExcepcionSesion {
+  mensaje: string;
+  horario: HorarioClase;
+}
+
+export interface PlantillaHorario {
+  idPlantilla: string;
+  clave: string;
+  idClase: string;
+  nombreClase: string;
+  entrenadorId: string;
+  nombreEntrenador: string;
+  diaSemana: number;
+  horaInicio: string;
+  horaFin: string;
+  capacidadTotal: number;
+  salon: string;
+  vigenteDesde: string;
+  vigenteHasta: string;
+  serieId?: string;
+  visibleReservas: boolean;
+  listaEsperaHabilitada: boolean;
+  estatus: Estatus;
+}
+
+export interface CrearProgramacionSemanal {
+  idClase: string;
+  entrenadorId: string;
+  salon: string;
+  fechaInicio: string;
+  horaInicio: string;
+  horaFin: string;
+  diasSemana: number[];
+  fechaFin?: string;
+  visibleReservas: boolean;
+  listaEsperaHabilitada: boolean;
+  estatus: Estatus;
+}
+
+export interface ResultadoCreacionProgramacionSemanal {
+  mensaje: string;
+  serieId: string;
+  capacidadHeredada: number;
+  plantillas: PlantillaHorario[];
+  generacion: {
+    desde: string;
+    hasta: string;
+    plantillasActivas: number;
+    sesionesCreadas: number;
+    sesionesExistentes: number;
+  };
+}
+
+/* Resumen que devuelve el backend despues de editar una regla semanal. */
+export interface ResultadoEdicionPlantilla {
+  mensaje: string;
+  plantilla: PlantillaHorario;
+  sesionesActualizadas: number;
+  sesionesProtegidas: number;
+  protegidas: {
+    idHorario: string;
+    fecha: string;
+    clase: string;
+    horaInicio: string;
+  }[];
+}
+
+export interface EditarProgramacionSemanal {
+  idClase: string;
+  entrenadorId: string;
+  salon: string;
+  horaInicio: string;
+  horaFin: string;
+  diasSemana: number[];
+  aplicarDesde: string;
+  visibleReservas: boolean;
+  listaEsperaHabilitada: boolean;
+}
+
+export interface ResultadoOperacionSerieSemanal {
+  mensaje: string;
+  serieId: string;
+  plantillas?: PlantillaHorario[];
+  sesionesCreadas?: number;
+  sesionesDesactivadas?: number;
+  sesionesEliminadas: number;
+  sesionesProtegidas: number;
+  protegidas: {
+    idHorario: string;
+    fecha: string;
+    clase: string;
+    horaInicio: string;
+  }[];
 }
 
 export interface Reservacion {

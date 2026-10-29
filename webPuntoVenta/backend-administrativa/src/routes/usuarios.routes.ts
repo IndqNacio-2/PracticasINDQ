@@ -9,8 +9,8 @@ const router = Router();
 // se pobla y requireRole respondería 403 incluso a un administrador válido.
 router.use(requireAuth);
 
-// Solo administrador y recepción pueden crear/editar usuarios.
-const soloAdminRecepcion = requireRole('administrador', 'recepcion');
+// Solo el administrador puede crear, editar o cambiar el estatus de usuarios.
+const soloAdministrador = requireRole('administrador');
 
 // GET /api/usuarios
 router.get('/', async (_req, res) => {
@@ -20,7 +20,7 @@ router.get('/', async (_req, res) => {
 });
 
 // POST /api/usuarios
-router.post('/', soloAdminRecepcion, async (req, res) => {
+router.post('/', soloAdministrador, async (req, res) => {
     const { nombre, apellidos, correo, rol, codigoAcceso, password } = req.body;
     if (!nombre || !apellidos || !correo || !rol || !codigoAcceso || !password) {
         return res.status(400).json({ error: 'Nombre, apellidos, correo, código de acceso, rol y contraseña son obligatorios' });
@@ -38,7 +38,7 @@ router.post('/', soloAdminRecepcion, async (req, res) => {
 });
 
 // PATCH /api/usuarios/:id  (editar, cambiar contraseña y togglear estatus)
-router.patch('/:id', soloAdminRecepcion, async (req, res) => {
+router.patch('/:id', soloAdministrador, async (req, res) => {
     if (req.body.correo) {
         const enUso = await Usuario.findOne({ correo: req.body.correo.toLowerCase(), _id: { $ne: req.params.id } });
         if (enUso) return res.status(409).json({ error: 'Ese correo ya está en uso por otro usuario' });

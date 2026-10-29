@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import MaterialIcon from '../../../components/MaterialIcon';
+import { LOGIN_PATH } from '../../../auth/session';
 
 /*
  * Las reservaciones se cargan desde el backend (esquema webcobro). Ya no hay
@@ -47,7 +47,6 @@ const hoyISO = () => {
 
 export default function Dashboard() {
   const { user, logout } = useAuth();
-  const navigate = useNavigate();
 
   // ========== ESTADOS ==========
   const [reservations, setReservations] = useState([]);
@@ -87,7 +86,8 @@ export default function Dashboard() {
     client: '',
     class: '',
     time: '',
-    price: ''
+    price: '',
+    horarioId: '',
   });
   // pide los KPIs al backend unificado (vite los reenvia al gateway).
   const cargarKpis = async () => {
@@ -237,6 +237,7 @@ export default function Dashboard() {
         r.class === nombreClase &&
         r.fecha === fecha &&
         r.time === hora &&
+        r.capacityStatus !== 'espera' &&
         r.status !== 'cancelado'
     ).length;
 
@@ -324,7 +325,7 @@ export default function Dashboard() {
    * socio vigente (si es "cliente"), que no sea duplicado y que haya cupo.
    */
   const horarioSelModal = horarios.find(
-    h => h.nombreClase === newReservation.class && h.horaInicio === newReservation.time
+    h => h.idHorario === newReservation.horarioId
   );
   const claseSelModal = clases.find(c => c.nombre === newReservation.class);
   const nombreValido = (newReservation.client || '').trim().length >= 3;
@@ -334,7 +335,7 @@ export default function Dashboard() {
     !!horarioSelModal &&
     !!claseSelModal &&
     claseReservable(claseSelModal) &&
-    lugaresDisponibles(horarioSelModal) > 0 &&
+    (lugaresDisponibles(horarioSelModal) > 0 || horarioSelModal.listaEsperaHabilitada === true) &&
     !horarioPasado(horarioSelModal.fecha, horarioSelModal.horaInicio) &&
     socioOk &&
     !yaReservada(newReservation.client, newReservation.class, fechaReserva, newReservation.time) &&
@@ -352,6 +353,7 @@ export default function Dashboard() {
       const reservation = reservations.find(r => r.id === id);
       if (!reservation) throw new Error('La reservación no existe.');
       if (reservation.status === 'asistido') throw new Error('Este cliente ya tiene asistencia confirmada.');
+      if (reservation.capacityStatus === 'espera') throw new Error('El cliente sigue en lista de espera.');
 
       const response = await fetch(`${API}/api/reservas/${id}`, {
         method: 'PATCH',
@@ -383,6 +385,10 @@ export default function Dashboard() {
       }
       if (reservation.status === 'pagado'){
         showNotification('Esta clase ya fue cobrada.', 'error');
+        return;
+      }
+      if (reservation.capacityStatus === 'espera') {
+        showNotification('No se puede cobrar mientras el cliente siga en lista de espera.', 'error');
         return;
       }
       setSelectedReservationForPayment(reservation);
@@ -472,15 +478,18 @@ export default function Dashboard() {
         body: JSON.stringify({ status: 'cancelado' }),
       });
 
+      const body = await response.json().catch(() => null);
       if (!response.ok) {
-        const body = await response.json().catch(() => null);
         throw new Error(body?.error || 'No se pudo cancelar la reservación.');
       }
 
-      // Se quita de la tabla y se refrescan los KPIs (ya no cuenta como pendiente).
-      setReservations(prev => prev.filter(res => res.id !== id));
+      // Se quita la cancelada y, si el backend promovió la primera reserva en
+      // espera, se refleja de inmediato como confirmada en la tabla.
+      setReservations(prev => prev
+        .filter(res => res.id !== id)
+        .map(res => body?.promovida?.id === res.id ? body.promovida : res));
       await cargarKpis();
-      showNotification('Reservación cancelada.', 'success');
+      showNotification(body?.mensaje || 'Reservación cancelada.', 'success');
     } catch (error) {
       showNotification(error.message, 'error');
     }
@@ -489,7 +498,7 @@ export default function Dashboard() {
   // ========== FUNCIONES DEL MODAL ==========
 
   const openModal = () => {
-    setNewReservation({ client: '', class: '', time: '', price: '' });
+    setNewReservation({ client: '', class: '', time: '', price: '', horarioId: '' });
     setTipoReserva('cliente');
     setSelectedClient(null);
     setShowClientList(false);
@@ -514,7 +523,7 @@ export default function Dashboard() {
       // El horario elegido tiene que existir en la fecha seleccionada: es lo
       // que valida el backend contra el módulo de horarios.
       const horarioSel = horarios.find(
-        h => h.nombreClase === newReservation.class && h.horaInicio === newReservation.time
+        h => h.idHorario === newReservation.horarioId
       );
       if (!horarioSel) {
         throw new Error('Elige un horario disponible de la fecha seleccionada.');
@@ -534,7 +543,7 @@ export default function Dashboard() {
         throw new Error('La membresía del socio no está vigente. Regístralo como visitante.');
       }
 
-      if (lugaresDisponibles(horarioSel) <= 0) {
+      if (lugaresDisponibles(horarioSel) <= 0 && horarioSel.listaEsperaHabilitada !== true) {
         throw new Error(`La clase "${horarioSel.nombreClase}" a las ${horarioSel.horaInicio} ya no tiene cupo disponible.`);
       }
       if (horarioPasado(horarioSel.fecha, horarioSel.horaInicio)) {
@@ -566,6 +575,7 @@ export default function Dashboard() {
           class: horarioSel.nombreClase,
           time: horarioSel.horaInicio,
           fecha: horarioSel.fecha,
+          horarioId: horarioSel.idHorario,
         }),
       });
 
@@ -577,7 +587,7 @@ export default function Dashboard() {
 
       // Se agrega a la tabla la reservación que devolvió el backend.
       setReservations(prev => [...prev, data.reservacion]);
-      showNotification(`Reservación creada para ${data.reservacion.client}.`, 'success');
+      showNotification(data.mensaje || `Reservación creada para ${data.reservacion.client}.`, 'success');
       closeModal();
     } catch (error) {
       showNotification(error.message, 'error');
@@ -593,7 +603,7 @@ export default function Dashboard() {
 
   const handleLogout = () => {
     logout();
-    navigate('/front-desk/login');
+    window.location.assign(LOGIN_PATH);
   };
 
   // ========== CÁLCULOS DE RESUMEN Y FILTRADO ==========
@@ -706,7 +716,7 @@ export default function Dashboard() {
         </div>
         <div className="flex items-center gap-6">
           <div className="text-right hidden md:block">
-            <p className="text-sm text-gray-300">Hola, <span className="font-bold text-white">{user?.name}</span></p>
+            <p className="text-sm text-gray-300">Hola, <span className="font-bold text-white">{user ? `${user.nombre} ${user.apellidos}` : ''}</span></p>
             <p className="text-xs text-gray-500">{new Date().toLocaleDateString()}</p>
           </div>
           <button onClick={handleLogout} className="flex items-center px-4 py-2 bg-[#4B5563] hover:bg-[#111827] rounded-lg text-white text-sm transition-colors">
@@ -789,13 +799,14 @@ export default function Dashboard() {
                 <th className="px-6 py-4">Clase</th>
                 <th className="px-6 py-4">Monto</th>
                 <th className="px-6 py-4">Estado</th>
+                <th className="px-6 py-4">Cupo</th>
                 <th className="px-6 py-4 text-right">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
               {filteredReservations.length === 0 ? (
                 <tr>
-                  <td colSpan="9" className="px-6 py-8 text-center text-gray-500">
+                  <td colSpan="10" className="px-6 py-8 text-center text-gray-500">
                     {searchTerm ? 'No se encontraron resultados.' : 'No hay reservaciones para hoy.'}
                   </td>
                 </tr>
@@ -820,14 +831,23 @@ export default function Dashboard() {
                         {res.status === 'pagado' ? 'Pagado' : res.status === 'asistido' ? 'Asistió' : 'Pendiente'}
                       </span>
                     </td>
+                    <td className="px-6 py-4">
+                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                        res.capacityStatus === 'espera'
+                          ? 'bg-amber-100 text-amber-800'
+                          : 'bg-green-100 text-green-800'
+                      }`}>
+                        {res.capacityStatus === 'espera' ? 'En espera' : 'Confirmada'}
+                      </span>
+                    </td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex justify-end gap-2">
-                        {res.status === 'pendiente' && (
+                        {res.status === 'pendiente' && res.capacityStatus !== 'espera' && (
                           <button onClick={() => handleConfirmAttendance(res.id)} className="p-2 text-[#4B5563] hover:bg-[#F3F4F6] rounded-lg transition-colors" title="Confirmar Asistencia">
                             <MaterialIcon name="how_to_reg" className="text-xl" />
                           </button>
                         )}
-                        {res.status !== 'pagado' && (
+                        {res.status !== 'pagado' && res.capacityStatus !== 'espera' && (
                           <button onClick={() => handlePayment(res.id)} className="p-2 text-[#4B5563] hover:bg-[#F3F4F6] rounded-lg transition-colors" title="Cobrar">
                             <MaterialIcon name="credit_card" className="text-xl" />
                           </button>
@@ -1003,7 +1023,7 @@ export default function Dashboard() {
                       setFechaReserva(nuevaFecha);
                       // Al cambiar de fecha se limpian clase y hora: el horario
                       // elegido era de la fecha anterior.
-                      setNewReservation(p => ({ ...p, class: '', time: '', price: '' }));
+                      setNewReservation(p => ({ ...p, class: '', time: '', price: '', horarioId: '' }));
                     }}
                     className="w-full px-4 py-2 border border-[#111827] rounded-lg focus:ring-2 focus:ring-primary text-gray-800"
                   />
@@ -1032,12 +1052,12 @@ export default function Dashboard() {
                           newReservation.client &&
                           yaReservada(newReservation.client, h.nombreClase, h.fecha, h.horaInicio);
                         const noReservable = !claseReservable(claseDelHorario);
-                        // Un horario se bloquea si no tiene cupo, ya pasó su hora,
-                        // el socio ya lo reservó, o su clase está mal definida.
-                        const bloqueada = disponibles <= 0 || pasada || duplicada || noReservable;
+                        const aceptaEspera = disponibles <= 0 && h.listaEsperaHabilitada === true;
+                        // Una sesión llena permanece seleccionable solo si admite
+                        // lista de espera. Recepción también ve sesiones ocultas.
+                        const bloqueada = (disponibles <= 0 && !aceptaEspera) || pasada || duplicada || noReservable;
                         const seleccionada =
-                          newReservation.class === h.nombreClase &&
-                          newReservation.time === h.horaInicio;
+                          newReservation.horarioId === h.idHorario;
                         return (
                           <button
                             key={h.idHorario ?? `${h.nombreClase}-${h.horaInicio}`}
@@ -1049,6 +1069,7 @@ export default function Dashboard() {
                                 class: h.nombreClase,
                                 time: h.horaInicio,
                                 price: precioDeClase(claseDelHorario),
+                                horarioId: h.idHorario,
                               }));
                             }}
                             className={`text-left p-3 rounded-lg border-2 transition-colors ${
@@ -1078,8 +1099,10 @@ export default function Dashboard() {
                               </span>
                             </div>
                             <p className={`mt-1 text-xs font-medium ${bloqueada ? 'text-red-500' : 'text-gray-400'}`}>
-                              {disponibles <= 0
-                                ? 'Sin cupo'
+                              {aceptaEspera
+                                ? 'Lista de espera disponible'
+                                : disponibles <= 0
+                                  ? 'Sin cupo'
                                 : pasada
                                   ? 'Horario ya pasó'
                                   : duplicada

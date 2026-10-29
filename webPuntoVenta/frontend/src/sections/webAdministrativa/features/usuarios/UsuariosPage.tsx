@@ -10,13 +10,14 @@ import type { Usuario, Estatus } from '../../types';
 
 // Roles de PLATAFORMA (staff). "Cliente" no aplica aquí:
 // los clientes se gestionan en el módulo Clientes y no inician sesión en esta web.
-type PlatformRole = 'administrador' | 'entrenador' | 'recepcion';
+type PlatformRole = 'administrador' | 'entrenador' | 'recepcion' | 'vendedor';
 type FilterRole = 'todos' | PlatformRole;
 
 const roleOptions = [
   { value: 'administrador', label: 'Administrador' },
   { value: 'entrenador', label: 'Entrenador' },
   { value: 'recepcion', label: 'Recepción' },
+  { value: 'vendedor', label: 'Vendedor' },
 ];
 
 const filterTabs: { value: FilterRole; label: string }[] = [
@@ -24,6 +25,7 @@ const filterTabs: { value: FilterRole; label: string }[] = [
   { value: 'administrador', label: 'Administrador' },
   { value: 'entrenador', label: 'Entrenador' },
   { value: 'recepcion', label: 'Recepción' },
+  { value: 'vendedor', label: 'Vendedor' },
 ];
 
 // Formulario: incluye password (solo al crear; al editar es opcional).
@@ -41,9 +43,9 @@ interface UsuarioForm {
 const EMPTY_FORM: UsuarioForm = { nombre: '', apellidos: '', correo: '', telefono: '', codigoAcceso: '', rol: '', estatus: 'activo', password: '' };
 
 export function UsuariosPage() {
-  // Solo administrador y recepción pueden crear/editar usuarios.
+  // Solo el administrador puede crear o editar usuarios.
   const { hasRole } = useAuth();
-  const puedeGestionar = hasRole(['administrador', 'recepcion']);
+  const puedeGestionar = hasRole(['administrador']);
 
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [loading, setLoading] = useState(true);

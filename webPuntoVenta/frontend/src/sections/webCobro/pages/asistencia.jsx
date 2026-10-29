@@ -76,7 +76,7 @@ const Attendance = () => {
       setResultado(null);
     } catch {
       if (id === busqRef.current) {
-        setResultado({ exitoso: false, msg: 'No se pudo conectar con el servidor.' });
+        setResultado({ exitoso: false, msg: 'No se pudo conectar. Verifica tu conexión e intenta de nuevo.' });
       }
     } finally {
       if (id === busqRef.current) setCargando(false);
@@ -115,7 +115,7 @@ const Attendance = () => {
         msg: `${data.tipo === 'entrada' ? '🟢 Entrada' : '🔴 Salida'} registrada correctamente`
       });
     } catch {
-      setResultado({ exitoso: false, tipo: null, msg: 'No se pudo conectar con el servidor.' });
+      setResultado({ exitoso: false, tipo: null, msg: 'No se pudo conectar. Verifica tu conexión e intenta de nuevo.' });
     }
   };
 
@@ -145,12 +145,12 @@ const Attendance = () => {
   });
 
   return (
-    <div className="min-h-screen w-full bg-slate-900 flex items-center justify-center p-4 font-sans">
+    <div className="min-h-screen w-full bg-[#4B5563] flex items-center justify-center p-4 font-sans">
       
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden">
         
         {/* Header con reloj compacto */}
-        <div className="bg-emerald-500 p-5 text-white flex items-center justify-between gap-4">
+        <div className="bg-dark-800 p-5 text-white flex items-center justify-between gap-4">
           <div className="text-left">
             <h1 className="text-2xl font-bold">GymFit Checador de Asistencia</h1>
             <p className="opacity-90 text-sm">Registro de Asistencia</p>
@@ -168,7 +168,7 @@ const Attendance = () => {
           <div className="flex flex-col gap-4">
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                <User className="text-slate-400" size={24} />
+                <User className="text-[#6B7280]" size={24} />
               </div>
               <input
                 type="text"
@@ -178,8 +178,8 @@ const Attendance = () => {
                   setResultado(null); // Limpiar resultado al escribir
                 }}
                 placeholder="Escanea o captura tu codigo (EMP-101 o id del socio)"
-                className="w-full pl-12 pr-4 py-4 text-xl border-2 border-slate-200 rounded-xl 
-                           focus:outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/20 
+                className="w-full pl-12 pr-4 py-4 text-xl border-2 border-[#6B7280] rounded-xl
+                           focus:outline-none focus:border-[#111827] focus:ring-4 focus:ring-[#111827]/20
                            transition-all text-center tracking-[0.3em] uppercase placeholder:tracking-normal"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && codigo.trim()) {
@@ -192,7 +192,7 @@ const Attendance = () => {
             </div>
 
             {cargando && !listoParaMarcar ? (
-              <div className="py-3 text-center text-sm text-slate-400 animate-pulse">
+              <div className="py-3 text-center text-sm text-[#6B7280] animate-pulse">
                 Buscando codigo...
               </div>
             ) : null}
@@ -229,12 +229,12 @@ const Attendance = () => {
 
           {/* Usuario encontrado + boton de entrada/salida */}
           {empleado && (
-            <div className="mt-6 bg-emerald-50 border-2 border-emerald-200 rounded-xl p-4">
+            <div className="mt-6 bg-[#F3F4F6] border-2 border-[#6B7280] rounded-xl p-4">
               <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div>
-                  <p className="text-xs text-slate-500 uppercase font-semibold">Usuario Encontrado</p>
-                  <p className="text-2xl font-bold text-slate-800">{empleado.nombre}</p>
-                  <p className="text-sm text-slate-600 mt-1">
+                  <p className="text-xs text-[#6B7280] uppercase font-semibold">Usuario Encontrado</p>
+                  <p className="text-2xl font-bold text-[#111827]">{empleado.nombre}</p>
+                  <p className="text-sm text-[#6B7280] mt-1">
                     {empleado.tipo === 'cliente'
                       ? `Membresía: ${empleado.membresia}`
                       : `${empleado.rol || 'Empleado'} · ${empleado.codigo}`}
@@ -242,10 +242,10 @@ const Attendance = () => {
                 </div>
                 <span className={`text-xs font-semibold px-3 py-1 rounded-full ${
                   empleado.siguienteTipo === 'salida'
-                    ? 'bg-amber-100 text-amber-700'
+                    ? 'bg-[#6B7280] text-white'
                     : empleado.marcoHoy
-                      ? 'bg-emerald-100 text-emerald-700'
-                      : 'bg-slate-200 text-slate-600'
+                      ? 'bg-[#F3F4F6] text-[#4B5563]'
+                      : 'bg-[#E5E7EB] text-[#6B7280]'
                 }`}>
                   {empleado.siguienteTipo === 'salida'
                     ? 'Dentro de la jornada · falta registrar salida'
@@ -257,16 +257,16 @@ const Attendance = () => {
 
               {/* Ultimo registro */}
               {empleado.ultimoRegistro && (
-                <div className="mt-4 p-3 bg-white rounded-lg border border-slate-200 flex items-center justify-between">
+                <div className="mt-4 p-3 bg-white rounded-lg border border-[#6B7280] flex items-center justify-between">
                   <div>
-                    <p className="text-xs text-slate-500 uppercase mb-1">Último registro</p>
+                    <p className="text-xs text-[#6B7280] uppercase mb-1">Último registro</p>
                     <span className={`font-semibold ${
-                      empleado.ultimoRegistro === 'entrada' ? 'text-emerald-600' : 'text-red-600'
+                      empleado.ultimoRegistro === 'entrada' ? 'text-[#4B5563]' : 'text-[#111827]'
                     }`}>
-                      {empleado.ultimoRegistro === 'entrada' ? '🟢 ENTRADA' : '🔴 SALIDA'}
+                      {empleado.ultimoRegistro === 'entrada' ? 'ENTRADA' : 'SALIDA'}
                     </span>
                   </div>
-                  <span className="text-sm text-slate-600 tabular-nums">
+                  <span className="text-sm text-[#6B7280] tabular-nums">
                     {empleado.timestamp
                       ? new Date(empleado.timestamp).toLocaleString('es-MX', {
                           day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
@@ -282,8 +282,8 @@ const Attendance = () => {
                   onClick={marcar}
                   className={`mt-4 w-full py-3 rounded-lg text-white font-semibold transition-all active:scale-[0.98] flex items-center justify-center gap-2 ${
                     empleado.siguienteTipo === 'entrada'
-                      ? 'bg-emerald-500 hover:bg-emerald-600'
-                      : 'bg-red-500 hover:bg-red-600'
+                      ? 'bg-[#4B5563] hover:bg-[#111827]'
+                      : 'bg-[#111827] hover:bg-[#4B5563]'
                   }`}
                 >
                   {empleado.siguienteTipo === 'entrada' ? (
@@ -302,24 +302,24 @@ const Attendance = () => {
 
           {/* Historial reciente del socio (ultimos 10 registros) */}
           {empleado && historial.length > 0 && (
-            <div className="mt-6 pt-6 border-t border-slate-100">
-              <h3 className="text-sm text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+            <div className="mt-6 pt-6 border-t border-[#6B7280]">
+              <h3 className="text-sm text-[#6B7280] uppercase tracking-widest mb-3 flex items-center gap-2">
                 <History size={14} /> Últimos registros de {empleado.nombre}
               </h3>
               <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
                 {historial.map((reg) => (
-                  <div key={reg._id} className="flex items-center justify-between py-2 px-3 bg-slate-50 rounded-lg">
+                  <div key={reg._id} className="flex items-center justify-between py-2 px-3 bg-[#F3F4F6] rounded-lg">
                     <div className="flex items-center gap-3">
                       <div className={`w-2 h-2 rounded-full ${
-                        reg.tipo === 'entrada' ? 'bg-emerald-500' : 'bg-red-500'
+                        reg.tipo === 'entrada' ? 'bg-[#6B7280]' : 'bg-[#111827]'
                       }`} />
-                      <span className="text-sm font-medium text-slate-700">
+                      <span className="text-sm font-medium text-[#111827]">
                         {reg.nombre || reg.codigo}
                       </span>
                     </div>
-                    <div className="flex items-center gap-4 text-sm text-slate-500">
+                    <div className="flex items-center gap-4 text-sm text-[#6B7280]">
                       <span className={`font-semibold ${
-                        reg.tipo === 'entrada' ? 'text-emerald-600' : 'text-red-600'
+                        reg.tipo === 'entrada' ? 'text-[#4B5563]' : 'text-[#111827]'
                       }`}>
                         {reg.tipo === 'entrada' ? 'ENTRADA' : 'SALIDA'}
                       </span>
@@ -336,8 +336,8 @@ const Attendance = () => {
           )}
 
           {empleado && historial.length === 0 && (
-            <div className="mt-6 pt-6 border-t border-slate-100 text-center">
-              <p className="text-sm text-slate-500">Sin registros previos para {empleado.codigo}</p>
+            <div className="mt-6 pt-6 border-t border-[#6B7280] text-center">
+              <p className="text-sm text-[#6B7280]">Sin registros previos para {empleado.codigo}</p>
             </div>
           )}
 
@@ -345,8 +345,8 @@ const Attendance = () => {
           {empleado && (
             <button
               onClick={limpiar}
-              className="mt-6 w-full py-2 text-sm text-slate-500 hover:text-slate-700
-                         border border-slate-200 hover:border-slate-300 rounded-lg transition-all"
+              className="mt-6 w-full py-2 text-sm text-[#6B7280] hover:text-[#111827]
+                         border border-[#6B7280] hover:border-[#111827] rounded-lg transition-all"
             >
               Atender otro código
             </button>
@@ -354,7 +354,7 @@ const Attendance = () => {
         </div>
 
         {/* Footer */}
-        <div className="bg-slate-50 p-3 text-center text-xs text-slate-400">
+        <div className="bg-[#F3F4F6] p-3 text-center text-xs text-[#6B7280]">
           GymFit — Sistema de Gestión • Módulo de Asistencia
         </div>
       </div>

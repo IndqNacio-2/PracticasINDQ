@@ -64,14 +64,17 @@ export const api = {
   post: <T>(path: string, body?: unknown) => request<T>(path, { method: 'POST', body: body !== undefined ? JSON.stringify(body) : undefined }),
   patch: <T>(path: string, body?: unknown) => request<T>(path, { method: 'PATCH', body: body !== undefined ? JSON.stringify(body) : undefined }),
   put: <T>(path: string, body?: unknown) => request<T>(path, { method: 'PUT', body: body !== undefined ? JSON.stringify(body) : undefined }),
-  delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
+  delete: <T>(path: string, body?: unknown) => request<T>(path, { method: 'DELETE', body: body !== undefined ? JSON.stringify(body) : undefined }),
 };
 
-// Cliente de SOLO LECTURA para consultar datos del módulo de Cobro (front desk).
-// Se usa por ejemplo en ReservacionesPage para mostrar las reservaciones que se
-// registran en recepción.
+// Cliente para hablar con el módulo de Cobro (front desk) desde la
+// administrativa. Se usa en ReservacionesPage (solo lectura) y en
+// ClientesPage (CRUD completo contra webcobro.clientes).
 export const apiCobro = {
   get: <T>(path: string) => request<T>(path, {}, COBRO_BASE_URL),
+  post: <T>(path: string, body?: unknown) => request<T>(path, { method: 'POST', body: body !== undefined ? JSON.stringify(body) : undefined }, COBRO_BASE_URL),
+  patch: <T>(path: string, body?: unknown) => request<T>(path, { method: 'PATCH', body: body !== undefined ? JSON.stringify(body) : undefined }, COBRO_BASE_URL),
+  del: <T>(path: string) => request<T>(path, { method: 'DELETE' }, COBRO_BASE_URL),
 };
 
 // Construye un query string a partir de un objeto, omitiendo valores vacíos.

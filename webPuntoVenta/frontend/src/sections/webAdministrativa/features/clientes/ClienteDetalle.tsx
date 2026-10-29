@@ -19,17 +19,17 @@ const nivelLabels: Record<string, string> = {
 };
 
 const membresiaColors: Record<string, string> = {
-  mensual: 'bg-blue-50 text-blue-700',
-  trimestral: 'bg-purple-50 text-purple-700',
-  semestral: 'bg-amber-50 text-amber-700',
-  anual: 'bg-emerald-50 text-emerald-700',
+  mensual: 'bg-[#F3F4F6] text-[#6B7280]',
+  trimestral: 'bg-[#F3F4F6] text-[#6B7280]',
+  semestral: 'bg-[#F3F4F6] text-[#6B7280]',
+  anual: 'bg-[#F3F4F6] text-emerald-700',
 };
 
 function InfoRow({ label, value }: { label: string; value?: string | number }) {
   return (
-    <div className="flex justify-between py-3 border-b border-slate-50 last:border-0">
-      <span className="text-sm text-slate-500">{label}</span>
-      <span className="text-sm font-medium text-slate-800 text-right max-w-xs">{value ?? '—'}</span>
+    <div className="flex justify-between py-3 border-b border-gray-50 last:border-0">
+      <span className="text-sm text-gray-500">{label}</span>
+      <span className="text-sm font-medium text-gray-800 text-right max-w-xs">{value ?? '—'}</span>
     </div>
   );
 }
@@ -41,9 +41,9 @@ export function ClienteDetalle() {
 
   const cliente = mockClientes.find(c => c.idUsuario === id);
   if (!cliente) return (
-    <div className="text-center py-20 text-slate-400">
+    <div className="text-center py-20 text-gray-400">
       <p className="text-lg">Cliente no encontrado</p>
-      <button onClick={() => navigate('/clientes')} className="mt-4 text-emerald-500 hover:underline text-sm">← Volver a clientes</button>
+      <button onClick={() => navigate('/clientes')} className="mt-4 text-[#6B7280] hover:underline text-sm">← Volver a clientes</button>
     </div>
   );
 
@@ -58,46 +58,46 @@ export function ClienteDetalle() {
     <div className="space-y-5 max-w-5xl">
       {/* Header */}
       <div className="flex items-center gap-4">
-        <button onClick={() => navigate('/clientes')} className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors">
+        <button onClick={() => navigate('/clientes')} className="p-2 rounded-xl text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors">
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
         </button>
         <div>
-          <h1 className="text-2xl font-bold text-slate-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>
+          <h1 className="text-2xl font-bold text-gray-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>
             {cliente.nombre} {cliente.apellidos}
           </h1>
-          <p className="text-slate-500 text-sm">Expediente de cliente · {cliente.codigoAcceso}</p>
+          <p className="text-gray-500 text-sm">Expediente de cliente · {cliente.codigoAcceso}</p>
         </div>
       </div>
 
       {/* Profile card */}
-      <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm">
+      <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
         <div className="flex items-start gap-5">
           {cliente.avatar
-            ? <img src={cliente.avatar} alt="" className="w-16 h-16 rounded-2xl object-cover bg-slate-100 flex-shrink-0" />
-            : <div className="w-16 h-16 rounded-2xl bg-emerald-100 flex items-center justify-center text-emerald-700 text-xl font-bold flex-shrink-0">{cliente.nombre[0]}{cliente.apellidos[0]}</div>
+            ? <img src={cliente.avatar} alt="" className="w-16 h-16 rounded-2xl object-cover bg-gray-100 flex-shrink-0" />
+            : <div className="w-16 h-16 rounded-2xl bg-[#F3F4F6] flex items-center justify-center text-emerald-700 text-xl font-bold flex-shrink-0">{cliente.nombre[0]}{cliente.apellidos[0]}</div>
           }
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-3 flex-wrap">
-              <h2 className="text-lg font-semibold text-slate-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>{cliente.nombre} {cliente.apellidos}</h2>
+              <h2 className="text-lg font-semibold text-gray-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>{cliente.nombre} {cliente.apellidos}</h2>
               <Badge variant={cliente.estatus} />
               {cliente.membresia && <Badge variant={cliente.membresia.estatus} label={`Membresía ${cliente.membresia.tipo}`} />}
             </div>
-            <p className="text-slate-500 text-sm mt-1">{cliente.correo} · {cliente.telefono}</p>
-            <p className="text-slate-500 text-sm">{cliente.direccion}</p>
+            <p className="text-gray-500 text-sm mt-1">{cliente.correo} · {cliente.telefono}</p>
+            <p className="text-gray-500 text-sm">{cliente.direccion}</p>
           </div>
           <div className="text-right flex-shrink-0">
-            <p className="text-xs text-slate-400">Registrado</p>
-            <p className="text-sm font-medium text-slate-700">{cliente.fechaRegistro}</p>
+            <p className="text-xs text-gray-400">Registrado</p>
+            <p className="text-sm font-medium text-gray-700">{cliente.fechaRegistro}</p>
           </div>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-        <div className="flex border-b border-slate-100 overflow-x-auto">
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="flex border-b border-gray-100 overflow-x-auto">
           {tabs.map(tab => (
             <button key={tab.value} onClick={() => setActiveTab(tab.value)}
-              className={`px-5 py-3.5 text-sm font-medium whitespace-nowrap transition-colors border-b-2 ${activeTab === tab.value ? 'border-emerald-500 text-emerald-600 bg-emerald-50/50' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+              className={`px-5 py-3.5 text-sm font-medium whitespace-nowrap transition-colors border-b-2 ${activeTab === tab.value ? 'border-[#111827] text-emerald-600 bg-[#F3F4F6]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
               {tab.label}
             </button>
           ))}
@@ -107,7 +107,7 @@ export function ClienteDetalle() {
           {activeTab === 'general' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <div>
-                <h3 className="font-semibold text-slate-900 mb-3" style={{ fontFamily: 'DM Sans, sans-serif' }}>Información Personal</h3>
+                <h3 className="font-semibold text-gray-900 mb-3" style={{ fontFamily: 'DM Sans, sans-serif' }}>Información Personal</h3>
                 <InfoRow label="Nombre completo" value={`${cliente.nombre} ${cliente.apellidos}`} />
                 <InfoRow label="Fecha de nacimiento" value={cliente.fechaNacimiento} />
                 <InfoRow label="Edad" value={`${calcEdad(cliente.fechaNacimiento)} años`} />
@@ -116,7 +116,7 @@ export function ClienteDetalle() {
                 <InfoRow label="Dirección" value={cliente.direccion} />
               </div>
               <div>
-                <h3 className="font-semibold text-slate-900 mb-3" style={{ fontFamily: 'DM Sans, sans-serif' }}>Datos del Sistema</h3>
+                <h3 className="font-semibold text-gray-900 mb-3" style={{ fontFamily: 'DM Sans, sans-serif' }}>Datos del Sistema</h3>
                 <InfoRow label="ID Cliente" value={cliente.idUsuario} />
                 <InfoRow label="Código de acceso" value={cliente.codigoAcceso} />
                 <InfoRow label="Fecha de registro" value={cliente.fechaRegistro} />
@@ -130,48 +130,48 @@ export function ClienteDetalle() {
               {cliente.perfilSalud ? (
                 <>
                   <div>
-                    <h3 className="font-semibold text-slate-900 mb-3" style={{ fontFamily: 'DM Sans, sans-serif' }}>Métricas Físicas</h3>
+                    <h3 className="font-semibold text-gray-900 mb-3" style={{ fontFamily: 'DM Sans, sans-serif' }}>Métricas Físicas</h3>
                     <InfoRow label="Peso" value={`${cliente.perfilSalud.peso} kg`} />
                     <InfoRow label="Altura" value={`${cliente.perfilSalud.altura} cm`} />
                     <InfoRow label="IMC" value={`${(cliente.perfilSalud.peso / Math.pow(cliente.perfilSalud.altura / 100, 2)).toFixed(1)}`} />
                     <InfoRow label="Tipo de sangre" value={cliente.perfilSalud.tipoSangre} />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-slate-900 mb-3" style={{ fontFamily: 'DM Sans, sans-serif' }}>Condición Médica</h3>
-                    <div className="py-3 border-b border-slate-50">
-                      <p className="text-sm text-slate-500 mb-1.5">Alergias</p>
+                    <h3 className="font-semibold text-gray-900 mb-3" style={{ fontFamily: 'DM Sans, sans-serif' }}>Condición Médica</h3>
+                    <div className="py-3 border-b border-gray-50">
+                      <p className="text-sm text-gray-500 mb-1.5">Alergias</p>
                       <div className="flex flex-wrap gap-1.5">
                         {cliente.perfilSalud.alergias.length > 0
                           ? cliente.perfilSalud.alergias.map(a => <span key={a} className="px-2 py-0.5 bg-red-50 text-red-600 text-xs rounded-lg">{a}</span>)
-                          : <span className="text-sm text-slate-400">Ninguna registrada</span>}
+                          : <span className="text-sm text-gray-400">Ninguna registrada</span>}
                       </div>
                     </div>
-                    <div className="py-3 border-b border-slate-50">
-                      <p className="text-sm text-slate-500 mb-1.5">Enfermedades</p>
+                    <div className="py-3 border-b border-gray-50">
+                      <p className="text-sm text-gray-500 mb-1.5">Enfermedades</p>
                       <div className="flex flex-wrap gap-1.5">
                         {cliente.perfilSalud.enfermedades.length > 0
-                          ? cliente.perfilSalud.enfermedades.map(e => <span key={e} className="px-2 py-0.5 bg-amber-50 text-amber-600 text-xs rounded-lg">{e}</span>)
-                          : <span className="text-sm text-slate-400">Ninguna registrada</span>}
+                          ? cliente.perfilSalud.enfermedades.map(e => <span key={e} className="px-2 py-0.5 bg-[#F3F4F6] text-[#6B7280] text-xs rounded-lg">{e}</span>)
+                          : <span className="text-sm text-gray-400">Ninguna registrada</span>}
                       </div>
                     </div>
-                    <div className="py-3 border-b border-slate-50">
-                      <p className="text-sm text-slate-500 mb-1.5">Lesiones previas</p>
+                    <div className="py-3 border-b border-gray-50">
+                      <p className="text-sm text-gray-500 mb-1.5">Lesiones previas</p>
                       <div className="flex flex-wrap gap-1.5">
                         {cliente.perfilSalud.lesiones.length > 0
-                          ? cliente.perfilSalud.lesiones.map(l => <span key={l} className="px-2 py-0.5 bg-orange-50 text-orange-600 text-xs rounded-lg">{l}</span>)
-                          : <span className="text-sm text-slate-400">Ninguna registrada</span>}
+                          ? cliente.perfilSalud.lesiones.map(l => <span key={l} className="px-2 py-0.5 bg-[#F3F4F6] text-[#6B7280] text-xs rounded-lg">{l}</span>)
+                          : <span className="text-sm text-gray-400">Ninguna registrada</span>}
                       </div>
                     </div>
                     {cliente.perfilSalud.observaciones && (
                       <div className="py-3">
-                        <p className="text-sm text-slate-500 mb-1">Observaciones</p>
-                        <p className="text-sm text-slate-700 bg-amber-50 p-3 rounded-xl border border-amber-100">{cliente.perfilSalud.observaciones}</p>
+                        <p className="text-sm text-gray-500 mb-1">Observaciones</p>
+                        <p className="text-sm text-gray-700 bg-[#F3F4F6] p-3 rounded-xl border border-[#6B7280]">{cliente.perfilSalud.observaciones}</p>
                       </div>
                     )}
                   </div>
                 </>
               ) : (
-                <p className="text-slate-400 col-span-2 text-center py-8">Sin perfil de salud registrado</p>
+                <p className="text-gray-400 col-span-2 text-center py-8">Sin perfil de salud registrado</p>
               )}
             </div>
           )}
@@ -181,24 +181,24 @@ export function ClienteDetalle() {
               {cliente.perfilActividad ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                   <div>
-                    <h3 className="font-semibold text-slate-900 mb-3" style={{ fontFamily: 'DM Sans, sans-serif' }}>Perfil de Actividad</h3>
+                    <h3 className="font-semibold text-gray-900 mb-3" style={{ fontFamily: 'DM Sans, sans-serif' }}>Perfil de Actividad</h3>
                     <InfoRow label="Nivel de actividad" value={nivelLabels[cliente.perfilActividad.nivelActividad]} />
                     <InfoRow label="Objetivo principal" value={cliente.perfilActividad.objetivo} />
                     <InfoRow label="Frecuencia de ejercicio" value={cliente.perfilActividad.frecuenciaEjercicio} />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-slate-900 mb-3" style={{ fontFamily: 'DM Sans, sans-serif' }}>Intereses</h3>
+                    <h3 className="font-semibold text-gray-900 mb-3" style={{ fontFamily: 'DM Sans, sans-serif' }}>Intereses</h3>
                     <div className="pt-2">
-                      <p className="text-sm text-slate-500 mb-3">Hobbies y deportes</p>
+                      <p className="text-sm text-gray-500 mb-3">Hobbies y deportes</p>
                       <div className="flex flex-wrap gap-2">
                         {cliente.perfilActividad.hobbies.map(h => (
-                          <span key={h} className="px-3 py-1.5 bg-emerald-50 text-emerald-700 text-sm rounded-xl font-medium">{h}</span>
+                          <span key={h} className="px-3 py-1.5 bg-[#F3F4F6] text-emerald-700 text-sm rounded-xl font-medium">{h}</span>
                         ))}
                       </div>
                     </div>
                   </div>
                 </div>
-              ) : <p className="text-slate-400 text-center py-8">Sin perfil de actividad registrado</p>}
+              ) : <p className="text-gray-400 text-center py-8">Sin perfil de actividad registrado</p>}
             </div>
           )}
 
@@ -217,27 +217,27 @@ export function ClienteDetalle() {
                       { label: 'Precio', value: `$${cliente.membresia.precio.toLocaleString()}` },
                       { label: 'Estatus', value: cliente.membresia.estatus },
                     ].map(item => (
-                      <div key={item.label} className="bg-slate-50 rounded-xl p-4">
-                        <p className="text-xs text-slate-500 mb-1">{item.label}</p>
-                        <p className="font-semibold text-slate-800 capitalize">{item.value}</p>
+                      <div key={item.label} className="bg-gray-50 rounded-xl p-4">
+                        <p className="text-xs text-gray-500 mb-1">{item.label}</p>
+                        <p className="font-semibold text-gray-800 capitalize">{item.value}</p>
                       </div>
                     ))}
                   </div>
                 </div>
-              ) : <p className="text-slate-400 text-center py-8">Sin membresía activa</p>}
+              ) : <p className="text-gray-400 text-center py-8">Sin membresía activa</p>}
             </div>
           )}
 
           {activeTab === 'historial' && (
             <div className="space-y-3">
-              <h3 className="font-semibold text-slate-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>Historial de Reservaciones</h3>
+              <h3 className="font-semibold text-gray-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>Historial de Reservaciones</h3>
               {reservas.length === 0 ? (
-                <p className="text-slate-400 text-center py-8">Sin reservaciones registradas</p>
+                <p className="text-gray-400 text-center py-8">Sin reservaciones registradas</p>
               ) : reservas.map(r => (
-                <div key={r.idReservacion} className="flex items-center justify-between p-3.5 bg-slate-50 rounded-xl">
+                <div key={r.idReservacion} className="flex items-center justify-between p-3.5 bg-gray-50 rounded-xl">
                   <div>
-                    <p className="font-medium text-slate-800 text-sm">{r.clase}</p>
-                    <p className="text-xs text-slate-400">{r.entrenador} · {r.horaClase} · {r.fechaReservacion}</p>
+                    <p className="font-medium text-gray-800 text-sm">{r.clase}</p>
+                    <p className="text-xs text-gray-400">{r.entrenador} · {r.horaClase} · {r.fechaReservacion}</p>
                   </div>
                   <div className="flex items-center gap-2">
                     <Badge variant={r.estatus} />

@@ -1,6 +1,7 @@
 ﻿import { useState } from "react"
-import { NavLink, Outlet, useNavigate } from "react-router"
+import { NavLink, Outlet } from "react-router"
 import MaterialIcon from "../../../components/MaterialIcon"
+import { LOGIN_PATH } from "../../../auth/session"
 import { useAuth } from "../context/AuthContext"
 import type { UserRole } from "../types"
 
@@ -31,14 +32,8 @@ const navItems: NavItem[] = [
     roles: ["administrador", "recepcion"],
   },
   {
-    path: "/clases",
-    label: "Clases",
-    icon: "fitness_center",
-    roles: ["administrador", "entrenador", "recepcion"],
-  },
-  {
-    path: "/horarios",
-    label: "Horarios",
+    path: "/clases-horarios",
+    label: "Clases y horarios",
     icon: "calendar_month",
     roles: ["administrador", "entrenador", "recepcion"],
   },
@@ -66,12 +61,12 @@ const rolLabel: Record<string, string> = {
   administrador: "Administrador",
   entrenador: "Entrenador",
   recepcion: "Recepción",
+  vendedor: "Vendedor",
   cliente: "Cliente",
 }
 
 export function Layout() {
   const { user, logout } = useAuth()
-  const navigate = useNavigate()
   const [collapsed, setCollapsed] = useState(false)
   const visibleItems = navItems.filter(
     (item) => user && item.roles.includes(user.rol),
@@ -79,7 +74,7 @@ export function Layout() {
 
   const handleLogout = () => {
     logout()
-    navigate("/login")
+    window.location.assign(LOGIN_PATH)
   }
 
   return (

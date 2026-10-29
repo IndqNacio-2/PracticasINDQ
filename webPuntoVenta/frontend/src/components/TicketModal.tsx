@@ -1,10 +1,98 @@
 import type { SaleRecord } from '../types';
 import MaterialIcon from './MaterialIcon';
 
-const fmt = (n: number) => `$${n.toFixed(2)}`;
+const fmt = (n: number) =>
+  n.toLocaleString('es-MX', {
+    style: 'currency',
+    currency: 'MXN',
+  });
 const METHOD_LABELS = { efectivo: 'Efectivo', tarjeta: 'Tarjeta', transferencia: 'Transferencia' };
 
-export default function TicketModal({ sale, onClose }: { sale: SaleRecord; onClose: () => void }) {
+interface TicketModalProps {
+  sale: SaleRecord;
+  onClose: () => void;
+  onNewSale: () => void;
+}
+
+export default function TicketModal({ sale, onClose, onNewSale }: TicketModalProps) {
+  /**
+   * Abro un documento exclusivo para el comprobante. Así el navegador imprime
+   * solamente el ticket y no toda la pantalla del Punto de Venta.
+   */
+  const printTicket = () => {
+    const popup = window.open('', '_blank', 'width=420,height=720');
+
+    if (!popup) {
+      window.alert('El navegador bloqueó la ventana de impresión. Permite las ventanas emergentes e intenta otra vez.');
+      return;
+    }
+
+    const escapeHtml = (value: unknown) =>
+      String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+
+    const items = sale.items
+      .map(
+        (item) => `
+          <div class="item">
+            <strong>${escapeHtml(item.name)}</strong>
+            <div class="row">
+              <span>${item.qty} × ${escapeHtml(fmt(item.unitPrice))}</span>
+              <span>${escapeHtml(fmt(item.subtotal))}</span>
+            </div>
+          </div>`,
+      )
+      .join('');
+
+    popup.document.write(`<!doctype html>
+      <html lang="es">
+        <head>
+          <meta charset="utf-8">
+          <title>Ticket ${escapeHtml(sale.folio)}</title>
+          <style>
+            @page { size: 80mm auto; margin: 6mm; }
+            * { box-sizing: border-box; }
+            body { width: 68mm; margin: 0 auto; color: #111; font: 12px/1.4 monospace; }
+            h1, p { margin: 0; }
+            h1 { font-size: 17px; text-align: center; }
+            .center { text-align: center; }
+            .muted { color: #555; }
+            .line { border-top: 1px dashed #555; margin: 10px 0; }
+            .row { display: flex; justify-content: space-between; gap: 12px; }
+            .item { margin: 8px 0; }
+            .total { font-size: 15px; font-weight: 700; }
+          </style>
+        </head>
+        <body>
+          <h1>CENTRO DE ENTRENAMIENTO</h1>
+          <p class="center muted">Comprobante de venta</p>
+          <div class="line"></div>
+          <p><strong>Folio:</strong> ${escapeHtml(sale.folio)}</p>
+          <p><strong>Fecha:</strong> ${escapeHtml(sale.date)}</p>
+          <p><strong>Hora:</strong> ${escapeHtml(sale.time)}</p>
+          <div class="line"></div>
+          ${items}
+          <div class="line"></div>
+          <div class="row"><span>Subtotal</span><span>${escapeHtml(fmt(sale.subtotal))}</span></div>
+          ${sale.discount > 0 ? `<div class="row"><span>Descuento</span><span>-${escapeHtml(fmt(sale.discount))}</span></div>` : ''}
+          <div class="row total"><span>TOTAL</span><span>${escapeHtml(fmt(sale.total))}</span></div>
+          <p><strong>Método:</strong> ${escapeHtml(METHOD_LABELS[sale.paymentMethod])}</p>
+          ${sale.cashReceived !== undefined ? `<p><strong>Recibido:</strong> ${escapeHtml(fmt(sale.cashReceived))}</p>` : ''}
+          ${sale.change !== undefined ? `<p><strong>Cambio:</strong> ${escapeHtml(fmt(sale.change))}</p>` : ''}
+          ${sale.transferRef ? `<p><strong>Referencia:</strong> ${escapeHtml(sale.transferRef)}</p>` : ''}
+          <div class="line"></div>
+          <p class="center">Gracias por su compra.</p>
+          <p class="center">¡Sigue entrenando fuerte!</p>
+          <script>window.addEventListener('load', () => window.print());<\/script>
+        </body>
+      </html>`);
+    popup.document.close();
+  };
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="modal-enter bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden">
@@ -78,17 +166,26 @@ export default function TicketModal({ sale, onClose }: { sale: SaleRecord; onClo
           <button
             type="button"
             onClick={onClose}
-            className="flex-1 py-2.5 border border-[#E5E7EB] text-[#6B7280] rounded-xl hover:bg-[#F9FAFB] transition-colors text-sm font-medium"
+            className="py-2.5 px-4 border border-[#E5E7EB] text-[#6B7280] rounded-xl hover:bg-[#F9FAFB] transition-colors text-sm font-medium"
           >
             Cerrar
           </button>
           <button
             type="button"
-            onClick={() => window.print()}
+            onClick={printTicket}
             className="flex flex-1 items-center justify-center gap-2 py-2.5 bg-[#0D0F14] text-white rounded-xl hover:bg-[#1F2937] transition-colors text-sm font-semibold"
           >
             <MaterialIcon name="print" className="text-lg" />
             Imprimir
+          </button>
+          <button
+            type="button"
+            onClick={onNewSale}
+            className="flex items-center justify-center rounded-xl bg-[#6B7280] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#4B5563]"
+            aria-label="Iniciar nueva venta"
+            title="Nueva venta"
+          >
+            <MaterialIcon name="add_shopping_cart" className="text-lg" />
           </button>
         </div>
       </div>

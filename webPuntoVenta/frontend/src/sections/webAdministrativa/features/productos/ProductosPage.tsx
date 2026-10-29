@@ -47,16 +47,16 @@ export function ProductosPage() {
     <div className="space-y-5 max-w-7xl">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>Inventario</h1>
-          <p className="text-slate-500 text-sm mt-0.5">{productos.length} productos · {totalStock} unidades · Valor ${totalValor.toLocaleString()}</p>
+          <h1 className="text-2xl font-bold text-gray-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>Inventario</h1>
+          <p className="text-gray-500 text-sm mt-0.5">{productos.length} productos · {totalStock} unidades · Valor ${totalValor.toLocaleString()}</p>
         </div>
         <div className="flex gap-2">
           <button onClick={() => { setMovForm({ idProducto: '', tipo: 'entrada', cantidad: '', motivo: '' }); setMovModal(true); }}
-            className="flex items-center gap-2 border border-slate-200 text-slate-700 px-4 py-2 rounded-xl text-sm font-medium hover:bg-slate-50 transition-colors">
+            className="flex items-center gap-2 border border-gray-200 text-gray-700 px-4 py-2 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
             Movimiento
           </button>
-          <button onClick={openNew} className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors">
+          <button onClick={openNew} className="flex items-center gap-2 bg-[#111827] hover:bg-[#6B7280] text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
             Nuevo producto
           </button>
@@ -83,8 +83,8 @@ export function ProductosPage() {
               const p = row as unknown as Producto;
               return (
                 <div>
-                  <p className="font-medium text-slate-800">{p.nombre}</p>
-                  <p className="text-xs text-slate-400">{p.descripcion}</p>
+                  <p className="font-medium text-gray-800">{p.nombre}</p>
+                  <p className="text-xs text-gray-400">{p.descripcion}</p>
                 </div>
               );
             }
@@ -92,7 +92,7 @@ export function ProductosPage() {
           { key: 'categoria', header: 'Categoría' },
           {
             key: 'precio', header: 'Precio',
-            render: row => <span className="font-medium text-slate-800">${(row as unknown as Producto).precio.toLocaleString()}</span>
+            render: row => <span className="font-medium text-gray-800">${(row as unknown as Producto).precio.toLocaleString()}</span>
           },
           {
             key: 'stock', header: 'Stock',
@@ -100,7 +100,7 @@ export function ProductosPage() {
               const p = row as unknown as Producto;
               const low = p.stock <= 5;
               return (
-                <span className={`font-semibold ${low ? 'text-red-500' : 'text-slate-800'}`}>
+                <span className={`font-semibold ${low ? 'text-red-500' : 'text-gray-800'}`}>
                   {p.stock} {low && <span className="text-xs font-normal text-red-400">(bajo)</span>}
                 </span>
               );
@@ -115,7 +115,7 @@ export function ProductosPage() {
           const p = row as unknown as Producto;
           return (
             <button onClick={() => { setForm({ nombre: p.nombre, descripcion: p.descripcion, precio: String(p.precio), stock: String(p.stock), categoria: p.categoria, estatus: p.estatus }); setModal({ open: true, editing: p }); }}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors">
+              className="p-1.5 rounded-lg text-gray-400 hover:text-[#6B7280] hover:bg-[#F3F4F6] transition-colors">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
             </button>
           );
@@ -123,11 +123,11 @@ export function ProductosPage() {
       />
 
       {/* Recent movements */}
-      <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm">
-        <h3 className="font-semibold text-slate-900 mb-4" style={{ fontFamily: 'DM Sans, sans-serif' }}>Movimientos Recientes</h3>
+      <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+        <h3 className="font-semibold text-gray-900 mb-4" style={{ fontFamily: 'DM Sans, sans-serif' }}>Movimientos Recientes</h3>
         <div className="space-y-2">
           {mockMovimientos.slice(0, 6).map(m => (
-            <div key={m.id} className="flex items-center justify-between py-2.5 border-b border-slate-50 last:border-0">
+            <div key={m.id} className="flex items-center justify-between py-2.5 border-b border-gray-50 last:border-0">
               <div className="flex items-center gap-3">
                 <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${m.tipo === 'entrada' ? 'bg-emerald-50' : m.tipo === 'merma' ? 'bg-red-50' : 'bg-amber-50'}`}>
                   <svg className={`w-3.5 h-3.5 ${m.tipo === 'entrada' ? 'text-emerald-600' : m.tipo === 'merma' ? 'text-red-500' : 'text-amber-500'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -135,15 +135,15 @@ export function ProductosPage() {
                   </svg>
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-slate-800">{m.nombreProducto}</p>
-                  <p className="text-xs text-slate-400">{m.motivo}</p>
+                  <p className="text-sm font-medium text-gray-800">{m.nombreProducto}</p>
+                  <p className="text-xs text-gray-400">{m.motivo}</p>
                 </div>
               </div>
               <div className="text-right">
                 <p className={`text-sm font-semibold ${m.tipo === 'entrada' ? 'text-emerald-600' : 'text-red-500'}`}>
                   {m.tipo === 'entrada' ? '+' : '-'}{m.cantidad}
                 </p>
-                <p className="text-xs text-slate-400">{m.fecha}</p>
+                <p className="text-xs text-gray-400">{m.fecha}</p>
               </div>
             </div>
           ))}
@@ -163,9 +163,9 @@ export function ProductosPage() {
             <SelectField label="Estatus" value={form.estatus} onChange={e => setForm(f => ({ ...f, estatus: e.target.value as Estatus }))} options={[{ value: 'activo', label: 'Activo' }, { value: 'inactivo', label: 'Inactivo' }]} />
           </div>
         </div>
-        <div className="flex gap-3 mt-6 pt-4 border-t border-slate-100">
-          <button onClick={() => setModal({ open: false })} className="flex-1 px-4 py-2.5 border border-slate-200 text-slate-700 rounded-xl text-sm font-medium hover:bg-slate-50">Cancelar</button>
-          <button onClick={save} className="flex-1 px-4 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-sm font-medium transition-colors">
+        <div className="flex gap-3 mt-6 pt-4 border-t border-gray-100">
+          <button onClick={() => setModal({ open: false })} className="flex-1 px-4 py-2.5 border border-gray-200 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50">Cancelar</button>
+          <button onClick={save} className="flex-1 px-4 py-2.5 bg-[#111827] hover:bg-[#6B7280] text-white rounded-xl text-sm font-medium transition-colors">
             {modal.editing ? 'Guardar cambios' : 'Agregar producto'}
           </button>
         </div>
@@ -179,9 +179,9 @@ export function ProductosPage() {
           <InputField label="Cantidad" required type="number" min="1" value={movForm.cantidad} onChange={e => setMovForm(f => ({ ...f, cantidad: e.target.value }))} />
           <TextareaField label="Motivo" value={movForm.motivo} onChange={v => setMovForm(f => ({ ...f, motivo: v }))} rows={2} />
         </div>
-        <div className="flex gap-3 mt-6 pt-4 border-t border-slate-100">
-          <button onClick={() => setMovModal(false)} className="flex-1 px-4 py-2.5 border border-slate-200 text-slate-700 rounded-xl text-sm font-medium hover:bg-slate-50">Cancelar</button>
-          <button onClick={saveMovimiento} className="flex-1 px-4 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-sm font-medium transition-colors">Registrar</button>
+        <div className="flex gap-3 mt-6 pt-4 border-t border-gray-100">
+          <button onClick={() => setMovModal(false)} className="flex-1 px-4 py-2.5 border border-gray-200 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50">Cancelar</button>
+          <button onClick={saveMovimiento} className="flex-1 px-4 py-2.5 bg-[#111827] hover:bg-[#6B7280] text-white rounded-xl text-sm font-medium transition-colors">Registrar</button>
         </div>
       </Modal>
     </div>

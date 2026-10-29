@@ -15,10 +15,15 @@ interface ReservaCobro {
   class: string;
   time: string;
   status: 'pendiente' | 'pagado' | 'asistido' | 'cancelado';
+  capacityStatus: 'confirmada' | 'espera';
+  horarioId?: string;
   price: number;
+  // Fecha del horario reservado (YYYY-MM-DD). Viene vacia en los registros
+  // antiguos, que no apuntan a ningun horario real del modulo de horarios.
+  fecha?: string;
 }
 
-type FilterEstatus = 'todos' | ReservaCobro['status'];
+type FilterEstatus = 'todos' | ReservaCobro['status'] | 'espera';
 
 const filterTabs: { value: FilterEstatus; label: string }[] = [
   { value: 'todos', label: 'Todas' },
@@ -26,6 +31,7 @@ const filterTabs: { value: FilterEstatus; label: string }[] = [
   { value: 'pagado', label: 'Pagadas' },
   { value: 'asistido', label: 'Asistidas' },
   { value: 'cancelado', label: 'Canceladas' },
+  { value: 'espera', label: 'Lista de espera' },
 ];
 
 // Los estados del módulo de cobro se pintan con las variantes visuales de la
@@ -60,15 +66,20 @@ export function ReservacionesPage() {
     void cargar();
   }, [cargar]);
 
-  const filtered = filter === 'todos' ? reservaciones : reservaciones.filter(r => r.status === filter);
-  const pendientes = reservaciones.filter(r => r.status === 'pendiente').length;
+  const filtered = filter === 'todos'
+    ? reservaciones
+    : filter === 'espera'
+      ? reservaciones.filter(r => r.capacityStatus === 'espera' && r.status !== 'cancelado')
+      : reservaciones.filter(r => r.status === filter);
+  const pendientes = reservaciones.filter(r => r.status === 'pendiente' && r.capacityStatus === 'confirmada').length;
+  const enEspera = reservaciones.filter(r => r.capacityStatus === 'espera' && r.status !== 'cancelado').length;
 
   return (
     <div className="space-y-5 max-w-7xl">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>Reservaciones</h1>
-          <p className="text-gray-500 text-sm mt-0.5">{reservaciones.length} registradas en Cobro · {pendientes} pendientes de pago</p>
+          <p className="text-gray-500 text-sm mt-0.5">{reservaciones.length} registradas en Cobro · {pendientes} pendientes de pago · {enEspera} en espera</p>
         </div>
         <button onClick={() => void cargar()} disabled={loading}
           className="flex items-center gap-2 bg-[#111827] hover:bg-[#6B7280] text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors disabled:opacity-60">
@@ -115,7 +126,9 @@ export function ReservacionesPage() {
                 return (
                   <div>
                     <p className="font-medium text-gray-800">{r.class}</p>
-                    <p className="text-xs text-gray-400">Hora {r.time}</p>
+                    <p className="text-xs text-gray-400">
+                      {r.fecha ? `${r.fecha} · ` : ''}Hora {r.time}
+                    </p>
                   </div>
                 );
               }
@@ -126,6 +139,16 @@ export function ReservacionesPage() {
                 const r = row as unknown as ReservaCobro;
                 const badge = estatusBadge[r.status];
                 return <Badge variant={badge.variant} label={badge.label} />;
+              }
+            },
+            {
+              key: 'capacityStatus', header: 'Cupo',
+              render: row => {
+                const r = row as unknown as ReservaCobro;
+                return <Badge
+                  variant={r.capacityStatus === 'espera' ? 'pendiente' : 'confirmada'}
+                  label={r.capacityStatus === 'espera' ? 'En espera' : 'Confirmada'}
+                />;
               }
             },
             {
