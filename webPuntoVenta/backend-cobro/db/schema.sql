@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS webcobro.reservas (
                                       -- reserva coincide con un horario
                                       -- real (modulo de horarios).
     estado  TEXT NOT NULL DEFAULT 'pendiente'
-        CHECK (estado IN ('pendiente', 'pagado', 'asistido', 'cancelado')),
+        CHECK (estado IN ('pendiente', 'pagado', 'asistido', 'cancelado', 'no_asistio')),
     precio  NUMERIC(10, 2) NOT NULL DEFAULT 0 CHECK (precio >= 0)
 );
 
@@ -106,6 +106,57 @@ CREATE INDEX IF NOT EXISTS reservas_clase_fecha_hora_idx
 
 CREATE INDEX IF NOT EXISTS reservas_horario_cupo_idx
     ON webcobro.reservas (horario_id, estado_cupo, estado, id);
+
+-- ---------------------------------------------------------------------
+-- Release 1.2.0: inasistencia, cancelaciones, reagendar y código de reserva
+-- ---------------------------------------------------------------------
+
+-- Nuevo estado 'no_asistio': la clase ya pasó y el cliente nunca llegó.
+-- No tiene reembolso, no se puede cobrar ni reagendar.
+ALTER TABLE webcobro.reservas DROP CONSTRAINT IF EXISTS reservas_estado_check;
+ALTER TABLE webcobro.reservas
+    ADD CONSTRAINT reservas_estado_check
+    CHECK (estado IN ('pendiente', 'pagado', 'asistido', 'cancelado', 'no_asistio'));
+
+-- Código de reserva (folio) que el cliente da en recepción, p. ej. RSV-7K2M9Q.
+-- Las reservas viejas reciben uno al vuelo para poder buscarlas igual.
+ALTER TABLE webcobro.reservas ADD COLUMN IF NOT EXISTS codigo TEXT;
+UPDATE webcobro.reservas
+   SET codigo = 'RSV-' || upper(substr(md5(random()::text || id::text), 1, 6))
+ WHERE codigo IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS reservas_codigo_idx
+    ON webcobro.reservas (codigo)
+    WHERE codigo IS NOT NULL;
+
+-- De dónde vino la reservación: recepción (front desk) o la app móvil.
+ALTER TABLE webcobro.reservas
+    ADD COLUMN IF NOT EXISTS origen TEXT NOT NULL DEFAULT 'recepcion';
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'reservas_origen_check'
+          AND conrelid = 'webcobro.reservas'::regclass
+    ) THEN
+        ALTER TABLE webcobro.reservas
+            ADD CONSTRAINT reservas_origen_check
+            CHECK (origen IN ('recepcion', 'app'));
+    END IF;
+END $$;
+
+-- Momento en que se hizo la reservación: de aquí corren las 24 horas
+-- que tiene el cliente para cancelar.
+ALTER TABLE webcobro.reservas
+    ADD COLUMN IF NOT EXISTS creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE webcobro.reservas ADD COLUMN IF NOT EXISTS cancelada_en TIMESTAMPTZ;
+
+-- Reagendar: solo se permite una vez y sin costo. Se guarda la fecha y hora
+-- originales para conservar el historial.
+ALTER TABLE webcobro.reservas
+    ADD COLUMN IF NOT EXISTS reagendada BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE webcobro.reservas ADD COLUMN IF NOT EXISTS reagendada_en TIMESTAMPTZ;
+ALTER TABLE webcobro.reservas ADD COLUMN IF NOT EXISTS fecha_original TEXT;
+ALTER TABLE webcobro.reservas ADD COLUMN IF NOT EXISTS hora_original TEXT;
 
 -- Pagos registrados desde el modal de cobro.
 -- Cada pago se liga a la reservación que se cobró (reserva_id). El cliente_id

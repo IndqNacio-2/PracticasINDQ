@@ -289,10 +289,11 @@
   .rx-repeat-status strong { color: var(--rx-ink); font-size: 13px; }
   .rx-repeat-status p { margin: 2px 0 0; color: var(--rx-ink-muted); font-size: 11px; }
   .rx-day-picker { display: grid; grid-template-columns: repeat(7, minmax(42px, 1fr)); gap: 8px; margin: 8px 0; }
-  .rx-day-button { min-height: 44px; color: var(--rx-ink-secondary); background: var(--rx-surface-soft); border: 1.5px solid var(--rx-line); border-radius: var(--rx-radius-medium); font-family: var(--rx-font); font-size: 13px; font-weight: 800; cursor: pointer; }
-  .rx-day-button:hover { color: var(--rx-ink); border-color: var(--rx-ink-muted); }
-  .rx-day-button[aria-pressed="true"] { color: var(--rx-ink); background: var(--rx-accent); border-color: var(--rx-accent); box-shadow: var(--rx-selected-shadow); }
-  .rx-day-button:focus-visible, .rx-switch:focus-visible { outline: 3px solid rgba(22, 24, 29, 0.2); outline-offset: 2px; }
+  /* .rx-toggle-option comparte el estilo de opción presionada (p. ej. Socio / Visitante). */
+  .rx-day-button, .rx-toggle-option { min-height: 44px; color: var(--rx-ink-secondary); background: var(--rx-surface-soft); border: 1.5px solid var(--rx-line); border-radius: var(--rx-radius-medium); font-family: var(--rx-font); font-size: 13px; font-weight: 800; cursor: pointer; }
+  .rx-day-button:hover, .rx-toggle-option:hover { color: var(--rx-ink); border-color: var(--rx-ink-muted); }
+  .rx-day-button[aria-pressed="true"], .rx-toggle-option[aria-pressed="true"] { color: var(--rx-ink); background: var(--rx-accent); border-color: var(--rx-accent); box-shadow: var(--rx-selected-shadow); }
+  .rx-day-button:focus-visible, .rx-toggle-option:focus-visible, .rx-switch:focus-visible { outline: 3px solid rgba(22, 24, 29, 0.2); outline-offset: 2px; }
   .rx-schedule-options { margin-top: 20px; padding: 16px; background: var(--rx-surface-soft); border: 1px solid var(--rx-line); border-radius: var(--rx-radius-large); }
   .rx-schedule-options h3 { margin: 0 0 4px; color: var(--rx-ink); font-size: 14px; font-weight: 800; }
   .rx-switch-row { min-height: 58px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-top: 1px solid var(--rx-line); }
@@ -660,6 +661,79 @@
   .rx-calendar-list-copy strong { display: flex; align-items: center; gap: 6px; color: var(--rx-ink); font-size: 12px; }
   .rx-calendar-list-copy span { color: var(--rx-ink-muted); font-size: 10px; }
   .rx-calendar-list-capacity { flex-shrink: 0; color: var(--rx-ink-secondary); font-size: 10px; font-weight: 700; }
+
+  /* Recepción · cobro front desk (webCobro). Reutiliza la estructura
+     administrativa (rx-admin-shell) y el cobro del Punto de Venta; aquí solo
+     van las piezas que faltaban, siempre con los tokens rx-. */
+  .rx-nav-count { min-width: 22px; margin-left: auto; padding: 1px 8px; color: var(--rx-ink); background: var(--rx-accent); border-radius: 999px; font-size: 11px; font-weight: 800; text-align: center; }
+  .rx-nav-item--collapsed .rx-nav-count { display: none; }
+  .rx-badge--info { color: var(--rx-info-ink); background: var(--rx-info-bg); }
+  .rx-badge--special { color: var(--rx-special-ink); background: var(--rx-special-bg); }
+  .rx-btn--small { min-height: 32px; padding: 6px 12px; border-radius: var(--rx-radius-small); font-size: 12px; }
+  .rx-btn-spinner { width: 16px; height: 16px; flex-shrink: 0; border: 2px solid rgba(255, 255, 255, 0.35); border-top-color: #fff; border-radius: 50%; animation: rx-spin 800ms linear infinite; }
+  .rx-admin-stat-icon--danger { color: var(--rx-danger-ink); background: var(--rx-danger-bg); }
+  .rx-page-heading--stacked { flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: 0; }
+
+  .rx-filter-stack { display: flex; flex-direction: column; gap: 12px; }
+  .rx-filter-bar .rx-search { margin-bottom: 0; }
+  .rx-tab-count { margin-left: 6px; padding: 0 6px; background: rgba(22, 24, 29, 0.06); border-radius: 999px; font-size: 11px; font-weight: 800; }
+  .rx-tab[aria-selected="true"] .rx-tab-count { background: rgba(255, 255, 255, 0.18); }
+
+  .rx-reservations-table { min-width: 880px; }
+  .rx-avatar { width: 32px; height: 32px; display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; color: var(--rx-ink); background: #e3e0d8; border-radius: 50%; font-size: 11px; font-weight: 800; text-transform: uppercase; }
+  .rx-avatar--large { width: 44px; height: 44px; color: var(--rx-accent); background: var(--rx-dark); font-size: 14px; }
+  .rx-cell-caption { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 3px; color: var(--rx-ink-muted); font-size: 11px; font-weight: 600; }
+  .rx-class-dot { width: 8px; height: 8px; display: inline-block; flex-shrink: 0; background: var(--class-color, var(--rx-line-strong)); border-radius: 50%; vertical-align: middle; }
+  .rx-row-actions { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
+  .rx-row-actions .rx-compact-icon-button { width: 32px; height: 32px; background: var(--rx-surface); border-color: var(--rx-line); }
+  .rx-row-actions .rx-compact-icon-button:hover { border-color: var(--rx-ink-muted); }
+  .rx-compact-icon-button[aria-disabled="true"] { opacity: 0.4; cursor: not-allowed; }
+  .rx-row-note { color: var(--rx-danger-ink); font-size: 11px; font-weight: 700; white-space: nowrap; }
+
+  /* Modales del front desk: mismo panel que el cobro del Punto de Venta. */
+  .rx-modal--scroll { max-height: 90vh; display: flex; flex-direction: column; }
+  .rx-modal-subtitle--plain { text-transform: none; }
+  .rx-modal-footer { display: flex; flex-shrink: 0; gap: 10px; padding: 14px 20px; background: var(--rx-surface); border-top: 1px solid var(--rx-line); }
+  .rx-modal-footer .rx-btn { flex: 1; }
+  .rx-form-stack { display: flex; flex-direction: column; gap: 16px; }
+  .rx-form-stack > * { margin-top: 0; margin-bottom: 0; }
+  .rx-form-stack > .rx-back-button { align-self: flex-start; }
+  .rx-toggle-group { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .rx-toggle-option { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+  .rx-context-card .rx-summary-list { margin-bottom: 0; }
+  .rx-inline-note--info { color: var(--rx-info-ink); background: var(--rx-info-bg); }
+  .rx-inline-note--danger { color: var(--rx-danger-ink); background: var(--rx-danger-bg); }
+  .rx-field > .rx-inline-note { margin-top: 0; }
+
+  .rx-autocomplete { position: relative; }
+  .rx-suggestions { position: absolute; z-index: 20; top: calc(100% + 4px); right: 0; left: 0; max-height: 200px; overflow-y: auto; margin: 0; padding: 6px; list-style: none; background: var(--rx-surface); border: 1px solid var(--rx-line); border-radius: var(--rx-radius-medium); box-shadow: var(--rx-floating-shadow); }
+  .rx-suggestion { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 10px; color: var(--rx-ink); border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .rx-suggestion:hover { background: var(--rx-surface-soft); }
+  .rx-suggestion--empty { color: var(--rx-ink-muted); cursor: default; }
+  .rx-suggestion--empty:hover { background: transparent; }
+
+  .rx-slot-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; max-height: 264px; overflow-y: auto; padding: 2px; }
+  .rx-slot { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 10px 12px; color: var(--rx-ink); background: var(--rx-surface); border: 1.5px solid var(--rx-line); border-radius: var(--rx-radius-medium); font-family: var(--rx-font); text-align: left; cursor: pointer; transition: border-color 150ms ease, box-shadow 150ms ease; }
+  .rx-slot:hover:not(:disabled) { border-color: var(--rx-ink-muted); }
+  .rx-slot[aria-pressed="true"] { border-color: var(--rx-ink); box-shadow: var(--rx-selected-shadow); }
+  .rx-slot:disabled { background: var(--rx-surface-soft); opacity: 0.6; cursor: not-allowed; }
+  .rx-slot:focus-visible { outline: 3px solid rgba(22, 24, 29, 0.2); outline-offset: 2px; }
+  .rx-slot-title { max-width: 100%; display: flex; align-items: center; gap: 6px; overflow: hidden; font-size: 13px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+  .rx-slot-meta { display: flex; align-items: center; gap: 4px; color: var(--rx-ink-secondary); font-size: 12px; font-weight: 600; }
+  .rx-slot-status { color: var(--rx-success); font-size: 11px; font-weight: 700; }
+  .rx-slot-status--warning { color: var(--rx-warning-ink); }
+  .rx-slot-status--blocked { color: var(--rx-danger-ink); }
+
+  /* Vista previa del comprobante (ticket térmico). */
+  .rx-receipt { padding: 18px; color: var(--rx-ink); background: #fafaf8; border: 1px dashed var(--rx-line-strong); border-radius: var(--rx-radius-medium); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px; line-height: 1.5; }
+  .rx-receipt p { margin: 0; }
+  .rx-receipt-head { margin-bottom: 10px; text-align: center; }
+  .rx-receipt-brand { font-size: 16px; font-weight: 800; letter-spacing: 0.08em; }
+  .rx-receipt-label { color: var(--rx-ink-muted); }
+  .rx-receipt-section { padding: 10px 0; border-top: 1px dashed var(--rx-line-strong); }
+  .rx-receipt-row { display: flex; justify-content: space-between; gap: 12px; }
+  .rx-receipt-item + .rx-receipt-item { margin-top: 8px; }
+  .rx-receipt-total { font-size: 14px; font-weight: 800; }
 }
 
 @keyframes rx-spin { to { transform: rotate(360deg); } }
@@ -744,6 +818,8 @@
   .rx-calendar-list-item { align-items: flex-start; flex-wrap: wrap; }
   .rx-calendar-list-copy { min-width: calc(100% - 95px); }
   .rx-calendar-list-capacity { margin-left: 67px; }
+  .rx-filter-row > .rx-btn { width: 100%; }
+  .rx-slot-grid { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {
