@@ -3,6 +3,7 @@ import { useState } from "react"
 import type { AppModule } from "../types"
 
 import MaterialIcon from "./MaterialIcon"
+import BrandLogo from "./BrandLogo"
 import { clearSession, getStoredUser, LOGIN_PATH } from "../auth/session"
 
 interface SidebarProps {
@@ -58,16 +59,13 @@ export default function Sidebar({
           !isExpanded ? "rx-sidebar-header--collapsed" : ""
         }`}
       >
-        <div className="rx-brand-logo">
-          <MaterialIcon name="fitness_center" className="text-2xl" filled />
+        <div className={isExpanded ? "rx-brand-content" : "rx-brand-symbol"}>
+          <BrandLogo variant={isExpanded ? "full" : "symbol"} />
+          {isExpanded && <p className="rx-brand-subtitle mt-2">Punto de Venta</p>}
         </div>
 
         {isExpanded && (
           <>
-            <div className="rx-brand-content">
-              <h1 className="rx-brand-title">Sistema Gym</h1>
-              <p className="rx-brand-subtitle">Punto de Venta</p>
-            </div>
             <button
               type="button"
               onClick={() => setIsExpanded(false)}

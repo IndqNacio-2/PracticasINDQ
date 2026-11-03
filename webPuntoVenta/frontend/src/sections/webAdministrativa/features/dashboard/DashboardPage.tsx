@@ -280,7 +280,7 @@ export function DashboardPage() {
             <button
               type="button"
               onClick={() => void cargar()}
-              className="rx-admin-alert-action"
+              className="rx-btn rx-btn--outline rx-btn--sm"
             >
               Reintentar
             </button>

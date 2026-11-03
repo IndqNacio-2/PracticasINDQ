@@ -91,7 +91,7 @@ export function DataTable<T extends Record<string, unknown>>({
               onClick={() => setPage(p => Math.max(1, p - 1))}
               disabled={page === 1}
               aria-label="Página anterior"
-              className="flex items-center px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="rx-btn rx-btn--outline rx-btn--sm"
             >
               <Icon name="chevron_left" size={18} weight={500} />
             </button>
@@ -99,7 +99,7 @@ export function DataTable<T extends Record<string, unknown>>({
               const p = Math.max(1, Math.min(totalPages - 4, page - 2)) + i;
               return (
                 <button key={p} onClick={() => setPage(p)}
-                  className={`px-3 py-1 rounded-lg border transition-colors ${p === page ? 'bg-[#F3F4F6]0 text-white border-[#111827]' : 'border-gray-200 hover:bg-gray-100'}`}>
+                  className={`rx-tab ${p === page ? 'rx-tab--active' : ''}`}>
                   {p}
                 </button>
               );
@@ -108,7 +108,7 @@ export function DataTable<T extends Record<string, unknown>>({
               onClick={() => setPage(p => Math.min(totalPages, p + 1))}
               disabled={page === totalPages}
               aria-label="Página siguiente"
-              className="flex items-center px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="rx-btn rx-btn--outline rx-btn--sm"
             >
               <Icon name="chevron_right" size={18} weight={500} />
             </button>

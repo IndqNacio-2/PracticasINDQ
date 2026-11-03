@@ -58,7 +58,7 @@ export function ReportesPage() {
       <div className="flex gap-2 overflow-x-auto pb-1">
         {tabs.map(tab => (
           <button key={tab.value} onClick={() => setActiveTab(tab.value)}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap transition-colors ${activeTab === tab.value ? 'bg-[#F3F4F6]0 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-[#6B7280] hover:text-[#6B7280]'}`}>
+            className={`rx-tab ${activeTab === tab.value ? 'rx-tab--active' : ''}`}>
             <span>{tab.icon}</span>
             {tab.label}
           </button>
@@ -114,7 +114,7 @@ export function ReportesPage() {
           <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-gray-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>Detalle de Ventas (Mayor a Menor)</h3>
-              <button className="text-xs text-[#6B7280] bg-[#F3F4F6] hover:bg-[#F3F4F6] px-3 py-1.5 rounded-lg font-medium transition-colors">Exportar CSV</button>
+              <button className="rx-btn rx-btn--outline rx-btn--sm">Exportar CSV</button>
             </div>
             <table className="w-full text-sm">
               <thead><tr className="border-b border-gray-100">

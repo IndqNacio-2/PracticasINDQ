@@ -14,12 +14,8 @@ interface ReservaCobro {
   type: 'cliente' | 'visitante';
   class: string;
   time: string;
-  // 'no_asistio': la clase pasó y el cliente no llegó (sin reembolso ni reagenda).
-  status: 'pendiente' | 'pagado' | 'asistido' | 'cancelado' | 'no_asistio';
+  status: 'pendiente' | 'pagado' | 'asistido' | 'cancelado';
   capacityStatus: 'confirmada' | 'espera';
-  // Código de reserva que el cliente da en recepción (RSV-XXXXXX).
-  codigo?: string;
-  reagendada?: boolean;
   horarioId?: string;
   price: number;
   // Fecha del horario reservado (YYYY-MM-DD). Viene vacia en los registros
@@ -35,7 +31,6 @@ const filterTabs: { value: FilterEstatus; label: string }[] = [
   { value: 'pagado', label: 'Pagadas' },
   { value: 'asistido', label: 'Asistidas' },
   { value: 'cancelado', label: 'Canceladas' },
-  { value: 'no_asistio', label: 'No asistió' },
   { value: 'espera', label: 'Lista de espera' },
 ];
 
@@ -46,7 +41,6 @@ const estatusBadge: Record<ReservaCobro['status'], { variant: 'confirmada' | 'pe
   pagado: { variant: 'confirmada', label: 'Pagada' },
   asistido: { variant: 'confirmada', label: 'Asistió' },
   cancelado: { variant: 'cancelada', label: 'Cancelada' },
-  no_asistio: { variant: 'cancelada', label: 'No asistió' },
 };
 
 export function ReservacionesPage() {
@@ -88,7 +82,7 @@ export function ReservacionesPage() {
           <p className="text-gray-500 text-sm mt-0.5">{reservaciones.length} registradas en Cobro · {pendientes} pendientes de pago · {enEspera} en espera</p>
         </div>
         <button onClick={() => void cargar()} disabled={loading}
-          className="flex items-center gap-2 bg-[#111827] hover:bg-[#6B7280] text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors disabled:opacity-60">
+          className="rx-btn rx-btn--outline">
           <svg className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
           Actualizar
         </button>
@@ -101,7 +95,7 @@ export function ReservacionesPage() {
       <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit">
         {filterTabs.map(tab => (
           <button key={tab.value} onClick={() => setFilter(tab.value)}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${filter === tab.value ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+            className={`rx-tab ${filter === tab.value ? 'rx-tab--active' : ''}`}>
             {tab.label}
           </button>
         ))}
@@ -143,7 +137,7 @@ export function ReservacionesPage() {
               key: 'status', header: 'Estatus',
               render: row => {
                 const r = row as unknown as ReservaCobro;
-                const badge = estatusBadge[r.status] ?? { variant: 'pendiente' as const, label: r.status };
+                const badge = estatusBadge[r.status];
                 return <Badge variant={badge.variant} label={badge.label} />;
               }
             },

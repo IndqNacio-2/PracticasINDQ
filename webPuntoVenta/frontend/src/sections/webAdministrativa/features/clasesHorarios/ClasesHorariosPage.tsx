@@ -65,11 +65,7 @@ export default function ClasesHorariosPage() {
                 role="tab"
                 aria-selected={activa}
                 onClick={() => cambiarVista(item.id)}
-                className={`rounded-xl px-4 py-3 text-left transition-colors ${
-                  activa
-                    ? 'bg-[#111827] text-white'
-                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                }`}
+                className={`rx-tab flex-col whitespace-normal ${activa ? 'rx-tab--active' : ''}`}
               >
                 <span className="block text-sm font-semibold">{item.label}</span>
                 <span className={`mt-1 block text-xs ${activa ? 'text-gray-300' : 'text-gray-400'}`}>
@@ -105,7 +101,7 @@ export default function ClasesHorariosPage() {
             <button
               type="button"
               onClick={() => cambiarVista('agenda')}
-              className="mt-5 rounded-xl bg-[#111827] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#6B7280]"
+              className="rx-btn rx-btn--outline mt-5"
             >
               Ir a la agenda
             </button>

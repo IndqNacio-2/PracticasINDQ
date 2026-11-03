@@ -43,7 +43,7 @@ export function ClienteDetalle() {
   if (!cliente) return (
     <div className="text-center py-20 text-gray-400">
       <p className="text-lg">Cliente no encontrado</p>
-      <button onClick={() => navigate('/clientes')} className="mt-4 text-[#6B7280] hover:underline text-sm">← Volver a clientes</button>
+      <button onClick={() => navigate('/clientes')} className="rx-btn rx-btn--outline mt-4">← Volver a clientes</button>
     </div>
   );
 
@@ -58,7 +58,7 @@ export function ClienteDetalle() {
     <div className="space-y-5 max-w-5xl">
       {/* Header */}
       <div className="flex items-center gap-4">
-        <button onClick={() => navigate('/clientes')} className="p-2 rounded-xl text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors">
+        <button onClick={() => navigate('/clientes')} className="rx-icon-btn">
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
         </button>
         <div>
@@ -97,7 +97,7 @@ export function ClienteDetalle() {
         <div className="flex border-b border-gray-100 overflow-x-auto">
           {tabs.map(tab => (
             <button key={tab.value} onClick={() => setActiveTab(tab.value)}
-              className={`px-5 py-3.5 text-sm font-medium whitespace-nowrap transition-colors border-b-2 ${activeTab === tab.value ? 'border-[#111827] text-emerald-600 bg-[#F3F4F6]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+              className={`rx-tab ${activeTab === tab.value ? 'rx-tab--active' : ''}`}>
               {tab.label}
             </button>
           ))}

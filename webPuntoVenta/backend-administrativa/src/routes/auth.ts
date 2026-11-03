@@ -19,7 +19,7 @@ router.post('/login', async (req, res) => {
   // El campo password está en select:false, hay que pedirlo explícitamente.
   // Se castea a any para leer el hash: la inferencia de tipos de Mongoose no
   // siempre resuelve bien los campos con select:false.
-  const usuario: any = await Usuario.findOne({ correo: correo.toLowerCase() }).select('+password');
+  const usuario: any = await Usuario.findOne({ correo: correo.trim().toLowerCase() }).select('+password');
 
   const valido =
     usuario !== null &&

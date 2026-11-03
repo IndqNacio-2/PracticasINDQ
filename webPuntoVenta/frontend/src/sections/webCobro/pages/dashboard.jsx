@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, NavLink } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import MaterialIcon from '../../../components/MaterialIcon';
+import BrandLogo from '../../../components/BrandLogo';
 import { LOGIN_PATH } from '../../../auth/session';
 
 /*
@@ -1038,17 +1039,11 @@ export default function Dashboard() {
               aria-expanded={false}
               className="rx-sidebar-toggle"
             >
-              <MaterialIcon name="chevron_right" className="text-2xl" />
+              <BrandLogo variant="symbol" className="h-8 w-8" />
             </button>
           ) : (
             <>
-              <div className="rx-brand-logo">
-                <MaterialIcon name="fitness_center" className="text-2xl" filled />
-              </div>
-              <div className="rx-brand-content">
-                <p className="rx-brand-title">Sistema Gym</p>
-                <p className="rx-brand-subtitle">Front desk</p>
-              </div>
+              <div className="rx-brand-content"><BrandLogo className="w-40" /><p className="rx-brand-subtitle">Recepción</p></div>
               <button
                 type="button"
                 onClick={() => setMenuColapsado(true)}

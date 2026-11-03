@@ -7,6 +7,8 @@
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
     "typecheck": "tsc --noEmit",
+    "test:integracion": "tsx --test pruebas-integracion-membresias.test.ts",
+    "db:seed-membresias": "tsx src/db/seed-membresias.ts",
     "db:seed": "tsx src/db/seed-usuarios.ts",
     "db:migrar-hora-clase": "tsx src/db/migrar-hora-clase.ts",
     "db:cargar-programacion": "tsx src/db/cargar-programacion-semanal.ts"

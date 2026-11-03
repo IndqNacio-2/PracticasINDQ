@@ -3,18 +3,17 @@ import { DataState } from '../../components/DataState';
 import { Modal } from '../../components/Modal';
 import { InputField, SelectField } from '../../components/FormField';
 import { api } from '../../lib/api';
+import { horariosApi } from './horarios.api';
+import { programacionApi } from './programacion.api';
 import type {
   HorarioClase,
   EditarExcepcionSesion,
-  ResultadoExcepcionSesion,
   Clase,
   Usuario,
   Estatus,
   PlantillaHorario,
   CrearProgramacionSemanal,
   EditarProgramacionSemanal,
-  ResultadoCreacionProgramacionSemanal,
-  ResultadoOperacionSerieSemanal,
 } from '../../types';
 
 const salonOptions = [{ value: 'Force Room', label: 'Force Room' }, { value: 'Reset Room', label: 'Reset Room' }, { value: 'Sala A', label: 'Sala A' }, { value: 'Sala B', label: 'Sala B' }, { value: 'Sala Principal', label: 'Sala Principal' }, { value: 'Sala Outdoor', label: 'Sala Outdoor' }];
@@ -209,7 +208,7 @@ function IndicadoresSesion({ horario }: { horario: HorarioClase }) {
 
 function BotonEditarSesion({ horario, onEdit }: { horario: HorarioClase; onEdit: (horario: HorarioClase) => void }) {
   return (
-    <button type="button" className="rx-calendar-edit" onClick={evento => { evento.stopPropagation(); onEdit(horario); }} aria-label={`Editar ${horario.nombreClase}`} title="Editar sesión">
+    <button type="button" className="rx-icon-btn" onClick={evento => { evento.stopPropagation(); onEdit(horario); }} aria-label={`Editar ${horario.nombreClase}`} title="Editar sesión">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.4-9.4a2 2 0 112.8 2.8L11.8 15H9v-2.8l8.6-8.6z" /></svg>
     </button>
   );
@@ -412,7 +411,7 @@ function ProgramacionSemanal({ plantillas, clases, onCreate, onEdit }: { plantil
                                 <p>{regla.nombreEntrenador}</p>
                               </div>
                               <button type="button" onClick={() => onEdit(regla)} title="Editar horario semanal"
-                                className="rx-compact-icon-button" aria-label={`Editar programación de ${regla.nombreClase}`}>
+                                className="rx-icon-btn" aria-label={`Editar programación de ${regla.nombreClase}`}>
                                 <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                               </button>
                             </div>
@@ -475,10 +474,10 @@ export function HorariosPage() {
     setError(null);
     try {
       const [hs, cs, us, ps] = await Promise.all([
-        api.get<HorarioClase[]>('/horarios'),
+        horariosApi.listar(),
         api.get<Clase[]>('/clases'),
         api.get<Usuario[]>('/usuarios'),
-        api.get<PlantillaHorario[]>('/plantillas-horarios'),
+        programacionApi.listar(),
       ]);
       setHorarios(hs);
       setClases(cs);
@@ -584,7 +583,7 @@ export function HorariosPage() {
         diasSemana: [...createWeeklyForm.diasSemana].sort((a, b) => a - b),
       };
       if (!payload.fechaFin) delete payload.fechaFin;
-      const resultado = await api.post<ResultadoCreacionProgramacionSemanal>('/plantillas-horarios', payload);
+      const resultado = await programacionApi.crear(payload);
       setCreateWeeklyResult(
         `${resultado.mensaje} Se crearon ${resultado.plantillas.length} reglas y ${resultado.generacion.sesionesCreadas} sesiones; ${resultado.generacion.sesionesExistentes} ya existían.`,
       );
@@ -692,7 +691,7 @@ export function HorariosPage() {
     setExceptionSaving(true);
     setExceptionError(null);
     try {
-      const resultado = await api.patch<ResultadoExcepcionSesion>(`/horarios/${sesion.idHorario}/excepcion`, {
+      const resultado = await horariosApi.editarExcepcion(sesion.idHorario, {
         ...exceptionForm,
         salon: exceptionForm.salon.trim(),
       });
@@ -732,7 +731,7 @@ export function HorariosPage() {
     setWeeklyResult(null);
     try {
       const identificadorSerie = plantilla.serieId || plantilla.idPlantilla;
-      const resultado = await api.patch<ResultadoOperacionSerieSemanal>(`/plantillas-horarios/series/${identificadorSerie}`, weeklyForm);
+      const resultado = await programacionApi.editarSerie(identificadorSerie, weeklyForm);
       setWeeklyResult(`${resultado.mensaje} ${resultado.sesionesCreadas ?? 0} sesiones creadas, ${resultado.sesionesEliminadas} reemplazadas y ${resultado.sesionesProtegidas} protegidas.`);
       await cargar();
     } catch (e) {
@@ -762,8 +761,8 @@ export function HorariosPage() {
     setWeeklyResult(null);
     try {
       const resultado = action === 'deactivate'
-        ? await api.post<ResultadoOperacionSerieSemanal>(`/plantillas-horarios/series/${identificadorSerie}/desactivar`, { aplicarDesde: weeklyForm.aplicarDesde })
-        : await api.delete<ResultadoOperacionSerieSemanal>(`/plantillas-horarios/series/${identificadorSerie}/futuro`, { aplicarDesde: weeklyForm.aplicarDesde });
+        ? await programacionApi.desactivarSerie(identificadorSerie, weeklyForm.aplicarDesde)
+        : await programacionApi.eliminarFuturoSerie(identificadorSerie, weeklyForm.aplicarDesde);
       const afectadas = action === 'deactivate' ? resultado.sesionesDesactivadas ?? 0 : resultado.sesionesEliminadas;
       setWeeklyResult(`${resultado.mensaje} ${afectadas} sesiones afectadas y ${resultado.sesionesProtegidas} protegidas.`);
       await cargar();
@@ -816,10 +815,10 @@ export function HorariosPage() {
     setFormError(null);
     try {
       if (modal.editing) {
-        const guardado = await api.patch<HorarioClase>(`/horarios/${modal.editing.idHorario}`, payload);
+        const guardado = await horariosApi.editar(modal.editing.idHorario, payload);
         setHorarios(prev => prev.map(h => h.idHorario === guardado.idHorario ? guardado : h));
       } else {
-        const creado = await api.post<HorarioClase>('/horarios', payload);
+        const creado = await horariosApi.crear(payload);
         setHorarios(prev => [...prev, creado]);
       }
       setModal({ open: false });
@@ -839,7 +838,7 @@ export function HorariosPage() {
           <p>{horarios.length} horarios programados</p>
         </div>
         <div className="rx-page-actions">
-          <button onClick={openNew} className="rx-btn rx-btn--outline">
+          <button onClick={openNew} className="rx-btn rx-btn--accent">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
             Agregar sesión manual
           </button>
@@ -1125,11 +1124,11 @@ export function HorariosPage() {
             {weeklyView === 'actions' ? 'Cerrar' : 'Volver'}
           </button>
           {weeklyView === 'edit' && <button onClick={() => void saveWeekly()} disabled={weeklySaving}
-            className="rx-btn rx-btn--accent">
+            className="rx-btn rx-btn--dark">
             {weeklySaving ? 'Guardando...' : 'Guardar cambios'}
           </button>}
           {weeklyView === 'deactivate' && <button onClick={() => void applyWeeklyAction('deactivate')} disabled={weeklySaving}
-            className="rx-btn rx-btn--warning">
+            className="rx-btn rx-btn--danger">
             {weeklySaving ? 'Desactivando...' : 'Desactivar programación'}
           </button>}
           {weeklyView === 'delete' && <button onClick={() => void applyWeeklyAction('delete')} disabled={weeklySaving}
@@ -1208,7 +1207,7 @@ export function HorariosPage() {
               <button type="button" onClick={() => setExceptionModal({ open: false })} disabled={exceptionSaving}
                 className="rx-btn rx-btn--outline">Cancelar</button>
               <button type="button" onClick={() => void saveException()} disabled={exceptionSaving}
-                className="rx-btn rx-btn--accent">
+                className="rx-btn rx-btn--dark">
                 {exceptionSaving ? 'Guardando...' : 'Guardar excepción'}
               </button>
             </div>
@@ -1244,7 +1243,7 @@ export function HorariosPage() {
         {formError && <p className="rx-schedule-message rx-schedule-message--error">{formError}</p>}
         <div className="rx-schedule-actions">
           <button onClick={() => setModal({ open: false })} disabled={saving} className="rx-btn rx-btn--outline">Cancelar</button>
-          <button onClick={() => void save()} disabled={saving} className="rx-btn rx-btn--accent">
+          <button onClick={() => void save()} disabled={saving} className="rx-btn rx-btn--dark">
             {saving && <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" /></svg>}
             {saving ? 'Guardando...' : modal.editing ? 'Guardar cambios' : 'Crear horario'}
           </button>

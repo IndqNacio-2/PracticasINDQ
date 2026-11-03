@@ -1,0 +1,110 @@
+/* Botones de Administración: GUIA-DISENO-RECEPCION-DEMO.md, secciones 9, 12 y 31.
+   Reutiliza los tokens globales sin cambiar los botones de Cobro o del POS. */
+:root {
+  --rx-button-danger: #E03131;
+  --rx-button-danger-hover: #C92A2A;
+  --rx-control-focus: rgba(198, 242, 78, 0.45);
+}
+
+@layer components {
+  :where(.rx-admin-shell, .rx-admin-modal, .rx-admin-login) .rx-btn {
+    min-height: 40px;
+    gap: 8px;
+    padding: 10px 16px;
+    border-radius: var(--rx-radius-medium);
+    font-family: var(--rx-font);
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.2;
+    transition: background-color 150ms ease, border-color 150ms ease,
+      color 150ms ease, transform 150ms ease, opacity 150ms ease;
+  }
+
+  :where(.rx-admin-shell, .rx-admin-modal, .rx-admin-login) .rx-btn--dark:hover:not(:disabled) {
+    border-color: var(--rx-dark-secondary);
+  }
+
+  :where(.rx-admin-shell, .rx-admin-modal, .rx-admin-login) .rx-btn--accent:hover:not(:disabled) {
+    filter: brightness(0.96);
+  }
+
+  :where(.rx-admin-shell, .rx-admin-modal, .rx-admin-login) .rx-btn--outline {
+    color: var(--rx-ink);
+    background: var(--rx-surface);
+    border-color: var(--rx-line);
+  }
+
+  :where(.rx-admin-shell, .rx-admin-modal, .rx-admin-login) .rx-btn--outline:hover:not(:disabled) {
+    border-color: var(--rx-ink-muted);
+  }
+
+  :where(.rx-admin-shell, .rx-admin-modal, .rx-admin-login) .rx-btn--danger {
+    color: #FFFFFF;
+    background: var(--rx-button-danger);
+    border-color: var(--rx-button-danger);
+  }
+
+  :where(.rx-admin-shell, .rx-admin-modal, .rx-admin-login) .rx-btn--danger:hover:not(:disabled) {
+    color: #FFFFFF;
+    background: var(--rx-button-danger-hover);
+    border-color: var(--rx-button-danger-hover);
+  }
+
+  :where(.rx-admin-shell, .rx-admin-modal, .rx-admin-login) .rx-btn--sm {
+    min-height: 34px;
+    padding: 7px 12px;
+    font-size: 13px;
+  }
+
+  .rx-icon-btn {
+    width: 40px;
+    height: 40px;
+    display: inline-flex;
+    flex: 0 0 40px;
+    align-items: center;
+    justify-content: center;
+    color: var(--rx-ink);
+    background: var(--rx-surface);
+    border: 1.5px solid var(--rx-line);
+    border-radius: 50%;
+    cursor: pointer;
+  }
+
+  .rx-icon-btn:hover:not(:disabled) { border-color: var(--rx-ink-muted); }
+  .rx-icon-btn--remove { width: 22px; height: 22px; flex-basis: 22px; }
+  .rx-tab--active { color: #FFFFFF; background: var(--rx-dark); border-color: var(--rx-dark); }
+  .rx-tab--active:hover { color: #FFFFFF; border-color: var(--rx-dark); }
+
+  :where(.rx-admin-shell, .rx-admin-modal) .rx-icon-btn.rx-btn--dark {
+    color: #FFFFFF;
+    background: var(--rx-dark);
+    border-color: var(--rx-dark);
+  }
+
+  :where(.rx-admin-shell, .rx-admin-modal) .rx-icon-btn.rx-btn--dark:hover:not(:disabled) {
+    background: var(--rx-dark-secondary);
+    border-color: var(--rx-dark-secondary);
+  }
+
+  :where(.rx-admin-shell, .rx-admin-modal, .rx-admin-login) button:focus-visible {
+    outline: 3px solid var(--rx-control-focus);
+    outline-offset: 2px;
+  }
+
+  :where(.rx-admin-shell, .rx-admin-modal, .rx-admin-login) button:disabled,
+  :where(.rx-admin-shell, .rx-admin-modal, .rx-admin-login) button[aria-disabled='true'] {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :where(.rx-admin-shell, .rx-admin-modal, .rx-admin-login) button {
+    transition: none;
+    animation: none;
+  }
+  :where(.rx-admin-shell, .rx-admin-modal, .rx-admin-login) .rx-btn:hover:not(:disabled),
+  :where(.rx-admin-shell, .rx-admin-modal, .rx-admin-login) .rx-btn:active:not(:disabled) {
+    transform: none;
+  }
+}

@@ -9,6 +9,7 @@ import ClasesHorariosPage from './features/clasesHorarios/ClasesHorariosPage';
 import { ReservacionesPage } from './features/reservaciones/ReservacionesPage';
 import { ProductosPage } from './features/productos/ProductosPage';
 import { ReportesPage } from './features/reportes/ReportesPage';
+import MembresiasPage from './features/membresia/membresia';
 
 export const router = createBrowserRouter([
   {
@@ -24,6 +25,7 @@ export const router = createBrowserRouter([
       { path: 'usuarios', Component: UsuariosPage },
       { path: 'clientes', Component: ClientesPage },
       { path: 'clientes/:id', Component: ClienteDetalle },
+      { path: 'membresias', Component: MembresiasPage },
       { path: 'clases-horarios', Component: ClasesHorariosPage },
       { path: 'clases', element: <Navigate to="/clases-horarios?vista=catalogo" replace /> },
       { path: 'horarios', element: <Navigate to="/clases-horarios?vista=agenda" replace /> },

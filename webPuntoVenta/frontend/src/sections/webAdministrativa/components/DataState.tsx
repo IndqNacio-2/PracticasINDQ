@@ -25,7 +25,7 @@ export function DataState({ loading, error, empty, emptyMessage = 'Sin datos reg
             <div className="flex flex-col items-center justify-center py-16 text-center">
                 <p className="text-sm text-red-500 mb-3">{error}</p>
                 {onRetry && (
-                    <button onClick={onRetry} className="text-xs font-medium text-[#6B7280] bg-[#F3F4F6] hover:bg-[#F3F4F6] px-3 py-1.5 rounded-lg transition-colors">
+                    <button onClick={onRetry} className="rx-btn rx-btn--outline rx-btn--sm">
                         Reintentar
                     </button>
                 )}

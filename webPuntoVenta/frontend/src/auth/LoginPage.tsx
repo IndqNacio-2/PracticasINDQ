@@ -1,5 +1,5 @@
 import { useState } from "react"
-import MaterialIcon from "../components/MaterialIcon"
+import BrandLogo from "../components/BrandLogo"
 import {
   clearSession,
   getModulePath,
@@ -62,14 +62,9 @@ export default function LoginPage() {
     <div className="min-h-screen bg-[#111827] px-4 py-8 flex items-center justify-center">
       <div className="w-full max-w-5xl overflow-hidden rounded-3xl bg-white shadow-2xl lg:grid lg:grid-cols-[1.05fr_0.95fr]">
         <section className="hidden bg-gradient-to-br from-[#111827] via-[#1f2937] to-[#374151] p-12 text-white lg:flex lg:flex-col lg:justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/10">
-              <MaterialIcon name="fitness_center" className="text-2xl" filled />
-            </div>
-            <div>
-              <p className="text-lg font-bold">Sistema Gym</p>
-              <p className="text-sm text-gray-300">Acceso del personal</p>
-            </div>
+          <div>
+            <BrandLogo className="w-full max-w-sm" />
+            <p className="mt-5 text-sm text-gray-300">Acceso del personal</p>
           </div>
 
           <div>
@@ -89,6 +84,9 @@ export default function LoginPage() {
         </section>
 
         <section className="p-7 sm:p-10 lg:p-12">
+          <div className="mb-8 rounded-2xl bg-[#111827] p-5 lg:hidden">
+            <BrandLogo className="mx-auto w-full max-w-xs" />
+          </div>
           <div className="mb-8">
             <p className="mb-2 text-sm font-semibold uppercase tracking-[0.16em] text-gray-500">
               Bienvenido
@@ -108,7 +106,7 @@ export default function LoginPage() {
                 autoComplete="username"
                 value={correo}
                 onChange={(event) => setCorreo(event.target.value)}
-                placeholder="usuario@gymfit.mx"
+                placeholder="Tu correo electrónico"
                 className="mt-2 h-12 w-full rounded-xl border border-gray-200 px-4 text-sm text-gray-900 outline-none focus:border-gray-500 focus:ring-4 focus:ring-gray-100"
               />
             </label>

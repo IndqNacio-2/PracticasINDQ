@@ -34,7 +34,7 @@ export function Modal({ open, onClose, title, children, size = 'md' }: ModalProp
   if (!open) return null;
 
   return (
-    <div className="rx-modal-layer">
+    <div className="rx-modal-layer rx-admin-modal">
       <div className="rx-modal-backdrop" onClick={onClose} />
       <div role="dialog" aria-modal="true" aria-labelledby={titleId}
         className={`rx-modal-panel ${sizes[size]}`}>
@@ -42,7 +42,7 @@ export function Modal({ open, onClose, title, children, size = 'md' }: ModalProp
           <h2 id={titleId}>{title}</h2>
           <button
             onClick={onClose}
-            className="rx-modal-close"
+            className="rx-icon-btn"
             aria-label="Cerrar"
           >
             <Icon name="close" size={20} weight={500} />

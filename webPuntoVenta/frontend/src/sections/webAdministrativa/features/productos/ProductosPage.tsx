@@ -52,11 +52,11 @@ export function ProductosPage() {
         </div>
         <div className="flex gap-2">
           <button onClick={() => { setMovForm({ idProducto: '', tipo: 'entrada', cantidad: '', motivo: '' }); setMovModal(true); }}
-            className="flex items-center gap-2 border border-gray-200 text-gray-700 px-4 py-2 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors">
+            className="rx-btn rx-btn--outline">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
             Movimiento
           </button>
-          <button onClick={openNew} className="flex items-center gap-2 bg-[#111827] hover:bg-[#6B7280] text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors">
+          <button onClick={openNew} className="rx-btn rx-btn--accent">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
             Nuevo producto
           </button>
@@ -115,7 +115,7 @@ export function ProductosPage() {
           const p = row as unknown as Producto;
           return (
             <button onClick={() => { setForm({ nombre: p.nombre, descripcion: p.descripcion, precio: String(p.precio), stock: String(p.stock), categoria: p.categoria, estatus: p.estatus }); setModal({ open: true, editing: p }); }}
-              className="p-1.5 rounded-lg text-gray-400 hover:text-[#6B7280] hover:bg-[#F3F4F6] transition-colors">
+              className="rx-icon-btn">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
             </button>
           );
@@ -164,8 +164,8 @@ export function ProductosPage() {
           </div>
         </div>
         <div className="flex gap-3 mt-6 pt-4 border-t border-gray-100">
-          <button onClick={() => setModal({ open: false })} className="flex-1 px-4 py-2.5 border border-gray-200 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50">Cancelar</button>
-          <button onClick={save} className="flex-1 px-4 py-2.5 bg-[#111827] hover:bg-[#6B7280] text-white rounded-xl text-sm font-medium transition-colors">
+          <button onClick={() => setModal({ open: false })} className="rx-btn rx-btn--outline flex-1">Cancelar</button>
+          <button onClick={save} className="rx-btn rx-btn--dark flex-1">
             {modal.editing ? 'Guardar cambios' : 'Agregar producto'}
           </button>
         </div>
@@ -180,8 +180,8 @@ export function ProductosPage() {
           <TextareaField label="Motivo" value={movForm.motivo} onChange={v => setMovForm(f => ({ ...f, motivo: v }))} rows={2} />
         </div>
         <div className="flex gap-3 mt-6 pt-4 border-t border-gray-100">
-          <button onClick={() => setMovModal(false)} className="flex-1 px-4 py-2.5 border border-gray-200 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50">Cancelar</button>
-          <button onClick={saveMovimiento} className="flex-1 px-4 py-2.5 bg-[#111827] hover:bg-[#6B7280] text-white rounded-xl text-sm font-medium transition-colors">Registrar</button>
+          <button onClick={() => setMovModal(false)} className="rx-btn rx-btn--outline flex-1">Cancelar</button>
+          <button onClick={saveMovimiento} className="rx-btn rx-btn--dark flex-1">Registrar</button>
         </div>
       </Modal>
     </div>

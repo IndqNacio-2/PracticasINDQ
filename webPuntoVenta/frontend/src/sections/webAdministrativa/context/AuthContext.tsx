@@ -51,24 +51,32 @@ function restaurarSesion(): Usuario | null {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<Usuario | null>(restaurarSesion);
+  const [ready, setReady] = useState(false);
 
   // Valida la sesión restaurada contra el backend: si el token ya venció o es
   // inválido, se cierra la sesión aquí mismo en lugar de fallar con
   // "Token inválido o expirado" en cada pantalla. De paso refresca el usuario
   // (rol/estatus vigentes) por si cambió en la base de datos.
   useEffect(() => {
-    if (!user) return;
+    if (!localStorage.getItem(CLAVE_TOKEN)) {
+      setReady(true);
+      return;
+    }
     let vigente = true;
     api
       .get<{ user: Usuario }>('/auth/me')
       .then((data) => {
-        if (vigente) setUser(data.user);
+        if (vigente) {
+          localStorage.setItem(CLAVE_SESION, JSON.stringify(data.user));
+          setUser(data.user);
+        }
       })
       .catch((err) => {
         // Solo cierra sesión ante un 401 real; un fallo de red o del backend
         // no debe tirar la sesión del usuario.
         if (vigente && err instanceof ApiError && err.status === 401) setUser(null);
-      });
+      })
+      .finally(() => { if (vigente) setReady(true); });
     return () => {
       vigente = false;
     };
@@ -78,7 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (correo: string, password: string) => {
     // Autenticación real contra el backend (MongoDB + JWT).
-    const data = await api.post<{ token: string; user: Usuario }>('/auth/login', { correo, password });
+    const data = await api.post<{ token: string; user: Usuario }>('/auth/login', { correo: correo.trim(), password });
     // Guarda el token (lo lee lib/api.ts) y la sesión para sobrevivir a recargas.
     localStorage.setItem(CLAVE_TOKEN, data.token);
     localStorage.setItem(CLAVE_SESION, JSON.stringify(data.user));
@@ -93,6 +101,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const hasRole = (roles: UserRole[]) => (user ? roles.includes(user.rol) : false);
+
+  if (!ready) {
+    return <div role="status" className="min-h-screen flex items-center justify-center text-gray-500">Validando sesión...</div>;
+  }
 
   return (
     <AuthContext.Provider value={{ user, login, logout, hasRole }}>

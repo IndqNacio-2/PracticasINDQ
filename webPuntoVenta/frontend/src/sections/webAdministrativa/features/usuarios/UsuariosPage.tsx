@@ -141,7 +141,7 @@ export function UsuariosPage() {
           <p className="text-gray-500 text-sm mt-0.5">{usuarios.filter(u => u.estatus === 'activo').length} activos de {usuarios.length} totales</p>
         </div>
         {puedeGestionar && (
-          <button onClick={openNew} className="flex items-center gap-2 bg-[#111827] hover:bg-[#6B7280] text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors">
+          <button onClick={openNew} className="rx-btn rx-btn--accent">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
             Nuevo usuario
           </button>
@@ -151,7 +151,7 @@ export function UsuariosPage() {
       <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit">
         {filterTabs.map(tab => (
           <button key={tab.value} onClick={() => setFilter(tab.value)}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${filter === tab.value ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+            className={`rx-tab ${filter === tab.value ? 'rx-tab--active' : ''}`}>
             {tab.label}
           </button>
         ))}
@@ -203,10 +203,10 @@ export function UsuariosPage() {
           if (!puedeGestionar) return <span className="text-gray-300 text-xs">Solo lectura</span>;
           return (
             <div className="flex items-center gap-2 justify-end">
-              <button onClick={() => openEdit(u)} className="p-1.5 rounded-lg text-gray-400 hover:text-[#6B7280] hover:bg-[#F3F4F6] transition-colors" title="Editar">
+              <button onClick={() => openEdit(u)} className="rx-icon-btn" title="Editar">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
               </button>
-              <button onClick={() => setConfirmToggle(u)} className={`p-1.5 rounded-lg transition-colors ${u.estatus === 'activo' ? 'text-gray-400 hover:text-red-500 hover:bg-red-50' : 'text-gray-400 hover:text-[#6B7280] hover:bg-[#F3F4F6]'}`} title={u.estatus === 'activo' ? 'Dar de baja' : 'Reactivar'}>
+              <button onClick={() => setConfirmToggle(u)} className={`rx-icon-btn ${u.estatus === 'activo' ? 'rx-btn--danger' : 'rx-btn--dark'}`} title={u.estatus === 'activo' ? 'Dar de baja' : 'Reactivar'}>
                 {u.estatus === 'activo'
                   ? <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
                   : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
@@ -240,8 +240,8 @@ export function UsuariosPage() {
         </div>
         {formError && <p className="mt-3 text-sm text-red-500">{formError}</p>}
         <div className="flex gap-3 mt-6 pt-4 border-t border-gray-100">
-          <button onClick={() => setModal({ open: false })} disabled={saving} className="flex-1 px-4 py-2.5 border border-gray-200 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50 disabled:opacity-50 transition-colors">Cancelar</button>
-          <button onClick={save} disabled={saving} className="flex-1 px-4 py-2.5 bg-[#111827] hover:bg-[#6B7280] text-white rounded-xl text-sm font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+          <button onClick={() => setModal({ open: false })} disabled={saving} className="rx-btn rx-btn--outline flex-1">Cancelar</button>
+          <button onClick={save} disabled={saving} className="rx-btn rx-btn--dark flex-1">
             {saving && <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" /></svg>}
             {saving ? 'Guardando...' : modal.editing ? 'Guardar cambios' : 'Crear usuario'}
           </button>
@@ -256,9 +256,9 @@ export function UsuariosPage() {
           }
         </p>
         <div className="flex gap-3 mt-5">
-          <button onClick={() => setConfirmToggle(null)} className="flex-1 px-4 py-2.5 border border-gray-200 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors">Cancelar</button>
+          <button onClick={() => setConfirmToggle(null)} className="rx-btn rx-btn--outline flex-1">Cancelar</button>
           <button onClick={() => confirmToggle && toggleEstatus(confirmToggle)}
-            className={`flex-1 px-4 py-2.5 rounded-xl text-sm font-medium text-white transition-colors ${confirmToggle?.estatus === 'activo' ? 'bg-red-500 hover:bg-red-600' : 'bg-[#111827] hover:bg-[#6B7280]'}`}>
+            className={`rx-btn flex-1 ${confirmToggle?.estatus === 'activo' ? 'rx-btn--danger' : 'rx-btn--dark'}`}>
             {confirmToggle?.estatus === 'activo' ? 'Dar de baja' : 'Reactivar'}
           </button>
         </div>

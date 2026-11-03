@@ -151,10 +151,10 @@ export function ClasesPage() {
                     </div>
                   </div>
                   <div className="flex gap-1">
-                    <button onClick={() => openEdit(clase)} className="rx-compact-icon-button" aria-label={`Editar ${clase.nombre}`}>
+                    <button onClick={() => openEdit(clase)} className="rx-icon-btn" aria-label={`Editar ${clase.nombre}`}>
                       <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                     </button>
-                    <button onClick={() => toggleEstatus(clase.idClase)} className="rx-compact-icon-button rx-compact-icon-button--danger" aria-label={`${clase.estatus === 'activo' ? 'Desactivar' : 'Activar'} ${clase.nombre}`}>
+                    <button onClick={() => toggleEstatus(clase.idClase)} className={`rx-icon-btn ${clase.estatus === 'activo' ? 'rx-btn--danger' : 'rx-btn--dark'}`} aria-label={`${clase.estatus === 'activo' ? 'Desactivar' : 'Activar'} ${clase.nombre}`}>
                       <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
                     </button>
                   </div>
@@ -218,7 +218,7 @@ export function ClasesPage() {
         </div>
         <div className="rx-schedule-actions">
           <button onClick={() => setModal({ open: false })} disabled={saving} className="rx-btn rx-btn--outline">Cancelar</button>
-          <button onClick={save} disabled={saving} className="rx-btn rx-btn--accent">
+          <button onClick={save} disabled={saving} className="rx-btn rx-btn--dark">
             {saving && <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" /></svg>}
             {saving ? 'Guardando...' : modal.editing ? 'Guardar cambios' : 'Crear clase'}
           </button>

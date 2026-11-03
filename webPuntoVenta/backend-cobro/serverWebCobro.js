@@ -12,6 +12,7 @@ const path = require('node:path');
 const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
+const { imprimirTicket } = require('./ticketService');
 
 const app = express();
 
@@ -1068,6 +1069,13 @@ app.post('/api/cobros', async (req, res) => {
       ],
     };
 
+    // El pago ya está confirmado. La impresora es opcional y se atiende aparte.
+    void imprimirTicket(ticket).then((enviado) => {
+      if (process.env.TICKET_IMPRESION_HABILITADA === 'true' && !enviado) {
+        console.warn('Cobro registrado; no se pudo enviar el comprobante a la impresora.');
+      }
+    }).catch((error) => console.error('Fallo de impresión:', error.message));
+
     res.status(201).json({
       mensaje: 'Cobro registrado',
       reserva: decorarReserva(reservaPagada),
@@ -1124,182 +1132,23 @@ app.get('/api/kpis', async (req, res) => {
   });
 });
 
-//MODULO PARA ASISTENCIA
-
-// Convierte lo que escriban el checador a un codigo normalizado:
-// EMP-101 (empleado), CLI-3 o 3 (socio). Devuelve null si no es valido.
-const normalizarIdentificador = (valor) => {
-  if (/^EMP-\d{3}$/.test(valor)) return valor;
-  if (/^CLI-\d+$/.test(valor)) return valor;
-  if (/^\d+$/.test(valor)) return `CLI-${valor}`;
-  return null;
-};
-
-// Consulta la ultima marca de HOY del empleado para saber si le toca
-// registrar entrada o salida. Se decide por dia: si hoy ya marco entrada
-// le toca salida; si no ha marcado hoy su primera marca es entrada (asi
-// quien no cerro la jornada ayer no empieza el dia pidiendo salida).
-const proximaMarca = async (codigo) => {
-  const ultimaHoy = (
-    await pool.query(
-      `SELECT tipo, creado_en
-         FROM webcobro.asistencias
-        WHERE codigo = $1 AND creado_en::date = CURRENT_DATE
-        ORDER BY creado_en DESC, id DESC
-        LIMIT 1`,
-      [codigo],
-    )
-  ).rows[0];
-  return {
-    marcoHoy: Boolean(ultimaHoy),
-    ultimaHoy: ultimaHoy || null,
-    siguienteTipo: ultimaHoy && ultimaHoy.tipo === 'entrada' ? 'salida' : 'entrada',
-  };
-};
-
-//GET historial de asistencia por codigo (ultimos 10 registros del socio,
-//para que el checador vea si ya registro entrada o salida recientemente)
-app.get('/api/asistencia/historial/:identificador', async (req, res) => {
-  const codigo = normalizarIdentificador((req.params.identificador || '').trim().toUpperCase());
-  if (!codigo) {
-    return res.status(400).json({ error: 'Formato inválido. Ejemplo: EMP-101 o 3' });
-  }
-
-  try {
-    const registros = await pool.query(
-      `SELECT id, codigo, nombre, tipo, creado_en
-         FROM webcobro.asistencias
-        WHERE codigo = $1
-        ORDER BY creado_en DESC, id DESC
-        LIMIT 10`,
-      [codigo],
-    );
-
-    res.json(
-      registros.rows.map((r) => ({
-        _id: r.id,
-        codigo: r.codigo,
-        nombre: r.nombre,
-        tipo: r.tipo,
-        fecha: new Date(r.creado_en).toISOString(),
-        ts: new Date(r.creado_en).getTime(),
-      })),
-    );
-  } catch (error) {
-    console.error('Error al obtener historial:', error);
-    res.status(500).json({ error: 'Error al obtener historial' });
-  }
+// Asistencia adaptada del commit 948c1a5, aislada del cobro y las reservas.
+const { montarAsistencia } = require('./asistenciaService');
+const asistencia = montarAsistencia(app, pool, {
+  turnosHabilitados: process.env.ASISTENCIA_TURNOS_HABILITADOS === 'true',
 });
-
-//GET persona por codigo (empleado o socio): valida que exista y devuelve el
-//boton que debe mostrar el checador (entrada o salida) segun su ultima marca
-//de hoy. Acepta EMP-101, CLI-3 o el id del socio a secas.
-app.get('/api/asistencia/empleado/:codigo', async (req, res) => {
-  const codigo = normalizarIdentificador((req.params.codigo || '').trim().toUpperCase());
-
-  if (!codigo) {
-    return res.status(400).json({ error: 'Formato inválido. Ejemplo: EMP-101' });
-  }
-  const esEmpleado = codigo.startsWith('EMP-');
-
-  try {
-    const persona = esEmpleado
-      ? (
-          await pool.query(
-            'SELECT codigo, nombre, rol FROM webcobro.empleados WHERE codigo = $1',
-            [codigo],
-          )
-        ).rows[0]
-      : (
-          await pool.query(
-            'SELECT id, nombre, membresia FROM webcobro.clientes WHERE id = $1',
-            [codigo.slice(4)],
-          )
-        ).rows[0];
-    if (!persona) return res.status(404).json({ error: `Código ${codigo} no registrado` });
-
-    const estadoDia = await proximaMarca(codigo);
-    const ultimo = (
-      await pool.query(
-        `SELECT tipo, creado_en
-           FROM webcobro.asistencias
-          WHERE codigo = $1
-          ORDER BY creado_en DESC, id DESC
-          LIMIT 1`,
-        [codigo],
-      )
-    ).rows[0];
-
-    res.json({
-      tipo: esEmpleado ? 'empleado' : 'cliente',
-      codigo,
-      nombre: persona.nombre,
-      rol: esEmpleado ? persona.rol : null,
-      membresia: esEmpleado ? null : persona.membresia,
-      marcoHoy: estadoDia.marcoHoy,
-      ultimaMarcaHoy: estadoDia.ultimaHoy ? estadoDia.ultimaHoy.tipo : null,
-      siguienteTipo: estadoDia.siguienteTipo, // 'entrada' | 'salida'
-      ultimoRegistro: ultimo ? ultimo.tipo : null,
-      timestamp: ultimo ? new Date(ultimo.creado_en).toISOString() : null,
-    });
-  } catch (error) {
-    console.error('Error al buscar empleado:', error);
-    res.status(500).json({ error: 'Error al buscar empleado' });
-  }
-});
-
-app.post('/api/asistencia/marcar', async (req, res) => {
-  const codigo = normalizarIdentificador((req.body.codigo || '').trim().toUpperCase());
-
-  //validacion 1 formato EMP-XXX (empleado) o CLI-N (socio)
-  if (!codigo) {
-    return res.status(400).json({ error: 'Formato inválido. Ejemplo: EMP-101' });
-  }
-
-  //Validacon 2 : corroboramos existencia del empleado o socio
-  const persona = codigo.startsWith('EMP-')
-    ? (await pool.query('SELECT codigo, nombre FROM webcobro.empleados WHERE codigo = $1', [codigo])).rows[0]
-    : (await pool.query('SELECT id, nombre FROM webcobro.clientes WHERE id = $1', [codigo.slice(4)])).rows[0];
-  if (!persona) return res.status(404).json({ error: `Código ${codigo} no registrado` });
-
-  //validacion 3 : antispam (60 seg)
-  const ultimo = (
-    await pool.query(
-      `SELECT tipo, creado_en
-         FROM webcobro.asistencias
-        WHERE codigo = $1
-        ORDER BY creado_en DESC, id DESC
-        LIMIT 1`,
-      [codigo],
-    )
-  ).rows[0];
-  const tsUltimo = ultimo ? new Date(ultimo.creado_en).getTime() : 0;
-  if (ultimo && (Date.now() - tsUltimo) < 60000) {
-    return res.status(429).json({ error: 'Espera 1 minuto entre marcas' });
-  }
-
-  //logica para entrada y salida: se decide por dia con proximaMarca
-  const estadoDia = await proximaMarca(codigo);
-  const tipo = estadoDia.siguienteTipo;
-
-  const registro = (
-    await pool.query(
-      `INSERT INTO webcobro.asistencias (codigo, nombre, tipo)
-       VALUES ($1, $2, $3)
-       RETURNING id, codigo, nombre, tipo, creado_en`,
-      [codigo, persona.nombre, tipo],
-    )
-  ).rows[0];
-
-  res.json({
-    _id: Number(registro.id),
-    codigo: registro.codigo,
-    nombre: registro.nombre,
-    tipo: registro.tipo,
-    fecha: new Date(registro.creado_en).toISOString(),
-    ts: new Date(registro.creado_en).getTime(),
-  });
-});
+if (process.env.ASISTENCIA_TURNOS_HABILITADOS === 'true' &&
+    process.env.ASISTENCIA_FALTAS_AUTOMATICAS === 'true') {
+  let revisando = false;
+  const timer = setInterval(async () => {
+    if (revisando) return;
+    revisando = true;
+    try { await asistencia.registrarInasistencias(); }
+    catch (error) { console.error('Revisión de inasistencias:', error.message); }
+    finally { revisando = false; }
+  }, 60000);
+  timer.unref();
+}
 
 //Iniciar Servidor
 const PORT = Number(process.env.PORT) || 3002;
