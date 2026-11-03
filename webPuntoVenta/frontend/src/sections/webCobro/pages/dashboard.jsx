@@ -720,35 +720,34 @@ export default function Dashboard() {
         )}
 
         {/* --- TARJETAS KPI --- */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-white rounded-xl shadow-lg p-6 border-l-4 border-[#111827]">
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-gray-500 text-sm font-medium">Clientes Esperados</p>
-                <h3 className="text-3xl font-bold text-gray-800 mt-1">{kpis.clientesEsperados}</h3>
+        <section className="border-b border-[#E6E4DE] p-5 xl:border-b-0">
+        <div className="grid grid-cols-2 gap-2">
+          <div className="relative rounded-2xl border border-[#E6E4DE] bg-white p-3">
+          <span className="absolute right-2 top-2 rounded-full bg-[#EFEAFB] px-2 py-0.5 text-xs font-semibold text-[#5B3FB0]">
+             Hoy
+            </span>
+              <p className="text-2xl font-bold text-[#16181D]">
+                {kpis.clientesEsperados}
+                </p>
+                <p className="text-xs text-[#5B606B]">Clientes esperados</p>
               </div>
-              <div className="bg-[#F3F4F6] p-3 rounded-full"><MaterialIcon name="person_add" className="text-2xl text-[#4B5563]" /></div>
-            </div>
-          </div>
-          <div className="bg-white rounded-xl shadow-lg p-6 border-l-4 border-[#111827]">
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-gray-500 text-sm font-medium">Ingresos del Día</p>
-                <h3 className="text-3xl font-bold text-gray-800 mt-1">${kpis.ingresosHoy} MXN</h3>
+            <div className="relative rounded-2xl border border-[#E6E4DE] bg-white p-3">
+              <span className="absolute right-2 top-2 rounded-full bg-[#EFEAFB] px-2 py-0.5 text-xs font-semibold text-[#5B3FB0]">
+             Hoy
+         </span>
+            <p className="text-xl font-bold text-[#16181D]">
+             {formatMoney(kpis.ingresosHoy)}
+              </p>
+              <p className="text-xs text-[#5B606B]">Cobrado</p>
               </div>
-              <div className="bg-[#F3F4F6] p-3 rounded-full"><MaterialIcon name="payments" className="text-2xl text-[#4B5563]" /></div>
+          <div className="col-span-2 rounded-2xl border border-[#E6E4DE] bg-white p-3">
+           <p className="text-2xl font-bold text-[#16181D]">
+              {kpis.totalReservas}
+            </p>
+            <p className="text-xs text-[#5B606B]">Reservaciones activas</p>
             </div>
-          </div>
-          <div className="bg-white rounded-xl shadow-lg p-6 border-l-4 border-[#111827]">
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-gray-500 text-sm font-medium">Reservaciones Activas</p>
-                <h3 className="text-3xl font-bold text-gray-800 mt-1">{kpis.totalReservas}</h3>
               </div>
-              <div className="bg-[#F3F4F6] p-3 rounded-full"><MaterialIcon name="schedule" className="text-2xl text-[#4B5563]" /></div>
-            </div>
-          </div>
-        </div>
+              </section>
 
         {/* --- BÚSQUEDA --- */}
         <div className="flex items-center mb-4 gap-3">

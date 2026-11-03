@@ -798,7 +798,7 @@ app.get('/api/asistencia/historial/:identificador', async (req, res) => {
 
   try {
     const registros = await pool.query(
-      `SELECT id, codigo, nombre, tipo, creado_en
+      `SELECT id, codigo, nombre,estado, tipo, creado_en
          FROM webcobro.asistencias
         WHERE codigo = $1
         ORDER BY creado_en DESC, id DESC
@@ -812,6 +812,7 @@ app.get('/api/asistencia/historial/:identificador', async (req, res) => {
         codigo: r.codigo,
         nombre: r.nombre,
         tipo: r.tipo,
+         estado: r.estado, 
         fecha: new Date(r.creado_en).toISOString(),
         ts: new Date(r.creado_en).getTime(),
       })),
@@ -872,6 +873,8 @@ app.get('/api/asistencia/empleado/:codigo', async (req, res) => {
       siguienteTipo: estadoDia.siguienteTipo, // 'entrada' | 'salida'
       ultimoRegistro: ultimo ? ultimo.tipo : null,
       timestamp: ultimo ? new Date(ultimo.creado_en).toISOString() : null,
+       horaInicio: turnoHoy ? turnoHoy.horaInicio.toISOString() : null,
+
     });
   } catch (error) {
     console.error('Error al buscar empleado:', error);
@@ -887,20 +890,18 @@ app.post('/api/asistencia/marcar', async (req, res) => {
     return res.status(400).json({ error: 'Formato inválido. Ejemplo: EMP-101' });
   }
 
-  //Validacon 2 : corroboramos existencia del empleado o socio
-  const persona = codigo.startsWith('EMP-')
-    ? (await pool.query('SELECT codigo, nombre FROM webcobro.empleados WHERE codigo = $1', [codigo])).rows[0]
+  //validacion 2 corroboramos existencia (los socios no generan retardo)
+  const esEmpleado = codigo.startsWith('EMP-');
+  const persona = esEmpleado
+    ? (await pool.query('SELECT codigo, nombre, rol FROM webcobro.empleados WHERE codigo = $1', [codigo])).rows[0]
     : (await pool.query('SELECT id, nombre FROM webcobro.clientes WHERE id = $1', [codigo.slice(4)])).rows[0];
   if (!persona) return res.status(404).json({ error: `Código ${codigo} no registrado` });
 
-  //validacion 3 : antispam (60 seg)
+  //validacion 3 antispam (60 seg)
   const ultimo = (
     await pool.query(
-      `SELECT tipo, creado_en
-         FROM webcobro.asistencias
-        WHERE codigo = $1
-        ORDER BY creado_en DESC, id DESC
-        LIMIT 1`,
+      `SELECT tipo, creado_en FROM webcobro.asistencias
+        WHERE codigo = $1 ORDER BY creado_en DESC, id DESC LIMIT 1`,
       [codigo],
     )
   ).rows[0];
@@ -909,16 +910,20 @@ app.post('/api/asistencia/marcar', async (req, res) => {
     return res.status(429).json({ error: 'Espera 1 minuto entre marcas' });
   }
 
-  //logica para entrada y salida: se decide por dia con proximaMarca
+  //logica entrada/salida por dia
   const estadoDia = await proximaMarca(codigo);
   const tipo = estadoDia.siguienteTipo;
 
+  // Solo la ENTRADA del personal se clasifica; la salida y los socios van null.
+  const turno = tipo === 'entrada' && esEmpleado ? await getTurnoHoy(codigo) : null;
+  const estado = tipo === 'entrada' && esEmpleado ? clasificarAsistencia(new Date(), turno) : null;
+
   const registro = (
     await pool.query(
-      `INSERT INTO webcobro.asistencias (codigo, nombre, tipo)
-       VALUES ($1, $2, $3)
-       RETURNING id, codigo, nombre, tipo, creado_en`,
-      [codigo, persona.nombre, tipo],
+      `INSERT INTO webcobro.asistencias (codigo, nombre, tipo, estado)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, codigo, nombre, tipo, estado, creado_en`,
+      [codigo, persona.nombre, tipo, estado],
     )
   ).rows[0];
 
@@ -927,10 +932,54 @@ app.post('/api/asistencia/marcar', async (req, res) => {
     codigo: registro.codigo,
     nombre: registro.nombre,
     tipo: registro.tipo,
+    estado: registro.estado,                                  // <-- lo espera el front
+    horaInicio: turno ? turno.horaInicio.toISOString() : null, // <-- lo espera el front
     fecha: new Date(registro.creado_en).toISOString(),
     ts: new Date(registro.creado_en).getTime(),
   });
 });
+
+// Marca inasistencia a quien no checó entrada pasado su umbral.
+setInterval(async () => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT DISTINCT t.codigo, e.nombre, t.rol, to_char(min(t.hora_inicio),'HH24:MI') AS hora
+         FROM webcobro.turnos t
+         JOIN webcobro.empleados e ON e.codigo = t.codigo
+        WHERE t.activo AND t.dia_semana = EXTRACT(DOW FROM CURRENT_DATE)::int
+        GROUP BY t.codigo, e.nombre, t.rol`,
+    );
+
+    const ahora = new Date();
+    for (const t of rows) {
+      const regla = REGLAS_PUNTUALIDAD[normalizarRol(t.rol)] ?? { retardo: 1, falta: 5 };
+      const [hh, mm] = t.hora.split(':').map(Number);
+      const vence = new Date(); vence.setHours(hh, mm, 0, 0); vence.setMinutes(vence.getMinutes() + regla.falta);
+      if (ahora < vence) continue;
+
+      const yaMarco = (
+        await pool.query(
+          `SELECT 1 FROM webcobro.asistencias
+            WHERE codigo = $1 AND tipo = 'entrada' AND creado_en::date = CURRENT_DATE LIMIT 1`,
+          [t.codigo],
+        )
+      ).rows[0];
+      if (yaMarco) continue;
+
+      await pool.query(
+        `INSERT INTO webcobro.asistencias (codigo, nombre, tipo, estado)
+         SELECT $1, $2, 'entrada', 'inasistencia'
+          WHERE NOT EXISTS (
+            SELECT 1 FROM webcobro.asistencias
+             WHERE codigo = $1 AND estado = 'inasistencia' AND creado_en::date = CURRENT_DATE
+          )`,
+        [t.codigo, t.nombre],
+      );
+    }
+  } catch (e) {
+    console.error('Cron de inasistencias:', e.message);
+  }
+}, 60000);
 
 //Iniciar Servidor
 const PORT = Number(process.env.PORT) || 3002;
