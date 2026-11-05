@@ -6,7 +6,8 @@ import { InputField, TextareaField } from '../../components/FormField';
 import { Modal } from '../../components/Modal';
 import { StatCard } from '../../components/StatCard';
 import { useAuth } from '../../context/AuthContext';
-import type { Estatus } from '../../types';
+import type { Clase, Estatus } from '../../types';
+import { api } from '../../lib/api';
 import { membresiasService } from './membresia.service';
 import type { OpcionMembresia, Membresia, MembresiaInput } from './types';
 
@@ -36,13 +37,14 @@ function rangoPrecios(opciones: OpcionMembresia[]): string {
 }
 
 // ───────────── Formulario ─────────────
-interface OpcionForm { id: string; entradas: string; ilimitado: boolean; vigenciaDias: string; costo: string }
+interface OpcionForm { id: string; entradas: string; ilimitado: boolean; vigenciaDias: string; costo: string; unidadDuracion: 'dias' | 'meses'; distribucion: 'compartida' | 'por_clase'; entradasPorClase: Record<string, string> }
 
 interface FormMembresia {
     nombre: string;
     descripcion: string;
     estatus: Estatus;
     accesos: string[];
+    clasesIds: string[];
     opciones: OpcionForm[];
     locker: boolean;
     regaderas: boolean;
@@ -56,10 +58,11 @@ interface FormMembresia {
 }
 
 let contadorOpciones = 0;
-const nuevaOpcion = (): OpcionForm => ({ id: `nueva-${++contadorOpciones}`, entradas: '', ilimitado: false, vigenciaDias: '30', costo: '' });
+const nuevaOpcion = (): OpcionForm => ({ id: `nueva-${++contadorOpciones}`, entradas: '', ilimitado: false, vigenciaDias: '', costo: '', unidadDuracion: 'dias', distribucion: 'compartida', entradasPorClase: {} });
 
 const FORM_VACIO = (): FormMembresia => ({
     nombre: '', descripcion: '', estatus: 'activo', accesos: [], opciones: [nuevaOpcion()],
+    clasesIds: [],
     locker: false, regaderas: false, preventas: false,
     descuentoActivo: false, descuentoPorcentaje: '', descuentoAplicaEn: '',
     kitActivo: false, kitProductos: [], kitCortesias: [],
@@ -70,11 +73,15 @@ const aForm = (p: Membresia): FormMembresia => ({
     descripcion: p.descripcion,
     estatus: p.estatus,
     accesos: [...p.accesos],
+    clasesIds: [...(p.clasesIds ?? [])],
     opciones: p.opciones.map(o => ({
         id: o.id,
         entradas: o.entradas === null ? '' : String(o.entradas),
         ilimitado: o.entradas === null,
-        vigenciaDias: String(o.vigenciaDias),
+        vigenciaDias: String(o.duracion ?? o.vigenciaDias ?? ''),
+        unidadDuracion: o.unidadDuracion ?? 'dias',
+        distribucion: o.distribucion ?? 'compartida',
+        entradasPorClase: Object.fromEntries(Object.entries(o.entradasPorClase ?? {}).map(([id, cantidad]) => [id, String(cantidad)])),
         costo: o.costo === null ? '' : String(o.costo),
     })),
     locker: p.complementos.locker,
@@ -92,7 +99,7 @@ const aForm = (p: Membresia): FormMembresia => ({
 function aMembresia(f: FormMembresia): { ok: true; valor: MembresiaInput } | { ok: false; error: string } {
     const nombre = f.nombre.trim();
     if (!nombre) return { ok: false, error: 'El nombre de la membresía es obligatorio.' };
-    if (f.accesos.length === 0) return { ok: false, error: 'Elige al menos un área o clase de acceso.' };
+    if (f.clasesIds.length === 0) return { ok: false, error: 'Selecciona al menos una clase del catálogo.' };
     if (f.opciones.length === 0) return { ok: false, error: 'Agrega al menos una opción de entradas, vigencia y costo.' };
 
     const opciones: OpcionMembresia[] = [];
@@ -100,21 +107,32 @@ function aMembresia(f: FormMembresia): { ok: true; valor: MembresiaInput } | { o
     for (const [i, o] of f.opciones.entries()) {
         const n = i + 1;
         let entradas: number | null = null;
-        if (!o.ilimitado) {
-            entradas = Number(o.entradas);
+        const porClase = o.distribucion === 'por_clase';
+        const entradasPorClase: Record<string, number> = {};
+        if (porClase) {
+            for (const id of f.clasesIds) {
+                const cantidad = Number(o.entradasPorClase[id]);
+                if (!Number.isSafeInteger(cantidad) || cantidad < 1) return { ok: false, error: 'Indica entradas positivas para cada clase.' };
+                entradasPorClase[id] = cantidad;
+            }
+        }
+        if (!o.ilimitado || porClase) {
+            entradas = porClase ? Object.values(entradasPorClase).reduce((a, v) => a + v, 0) : Number(o.entradas);
             if (!Number.isInteger(entradas) || entradas < 1) return { ok: false, error: `Opción ${n}: indica cuántas entradas incluye o márcala como ilimitada.` };
         }
         const vigencia = Number(o.vigenciaDias);
         if (!Number.isInteger(vigencia) || vigencia < 1 || vigencia > 3650) return { ok: false, error: `Opción ${n}: los días de vigencia deben ser un entero entre 1 y 3650.` };
         let costo: number | null = null;
+        if (o.costo.trim() === '') return { ok: false, error: 'Indica el precio de cada opción.' };
+        if (o.unidadDuracion === 'meses' && vigencia > 120) return { ok: false, error: 'La duración máxima es de 120 meses.' };
         if (o.costo.trim() !== '') {
             costo = Number(o.costo);
             if (!Number.isFinite(costo) || costo < 0) return { ok: false, error: `Opción ${n}: el costo no es válido.` };
         }
-        const clave = String(entradas);
+        const clave = JSON.stringify([entradas, vigencia, o.unidadDuracion, o.distribucion, entradasPorClase, costo]);
         if (vistas.has(clave)) return { ok: false, error: `Hay dos opciones con ${textoEntradas(entradas).toLowerCase()}. Deja una sola.` };
         vistas.add(clave);
-        opciones.push({ id: o.id.startsWith('nueva-') ? `op-${Date.now()}-${i}` : o.id, entradas, vigenciaDias: vigencia, costo });
+        opciones.push({ id: o.id.startsWith('nueva-') ? `op-${Date.now()}-${i}` : o.id, entradas, ...(o.unidadDuracion === 'dias' ? { vigenciaDias: vigencia } : {}), duracion: vigencia, unidadDuracion: o.unidadDuracion, distribucion: o.distribucion, entradasPorClase, costo });
     }
 
     let descuento: MembresiaInput['complementos']['descuento'] = null;
@@ -138,6 +156,7 @@ function aMembresia(f: FormMembresia): { ok: true; valor: MembresiaInput } | { o
             descripcion: f.descripcion.trim(),
             estatus: f.estatus,
             accesos: f.accesos,
+            clasesIds: f.clasesIds,
             opciones,
             complementos: { locker: f.locker, regaderas: f.regaderas, preventas: f.preventas, descuento },
             kit,
@@ -258,15 +277,18 @@ function TarjetaMembresia({ p, puedeEditar, onEditar, onEstatus }: {
                     <thead>
                         <tr className="bg-[color:#F3F4F6] text-left text-[11px] uppercase tracking-wide text-[color:#6B7280]">
                             <th className="px-3 py-1.5 font-semibold">Núm. de entradas</th>
-                            <th className="px-3 py-1.5 font-semibold">Días de vigencia</th>
+                            <th className="px-3 py-1.5 font-semibold">Duración</th>
                             <th className="px-3 py-1.5 font-semibold text-right">Costo</th>
                         </tr>
                     </thead>
                     <tbody>
                         {p.opciones.map(o => (
                             <tr key={o.id} className="border-t border-[color:#E5E7EB]">
-                                <td className="px-3 py-1.5 font-semibold text-[color:#111827]">{textoEntradas(o.entradas)}</td>
-                                <td className="px-3 py-1.5 text-[color:#4B5563]">{textoVigencia(o.vigenciaDias)}</td>
+                                <td className="px-3 py-1.5 font-semibold text-[color:#111827]">
+                                    {textoEntradas(o.entradas)}
+                                    {o.distribucion === 'por_clase' && <div className="text-xs font-normal">{Object.entries(o.entradasPorClase ?? {}).map(([id, cantidad]) => `${p.accesos[p.clasesIds?.indexOf(id) ?? -1] ?? 'Clase no disponible'}: ${cantidad}`).join(' · ')}</div>}
+                                </td>
+                                <td className="px-3 py-1.5 text-[color:#4B5563]">{o.unidadDuracion === 'meses' ? `${o.duracion} mes(es)` : textoVigencia(o.duracion ?? o.vigenciaDias ?? 0)}</td>
                                 <td className="px-3 py-1.5 text-right font-semibold">
                                     {o.costo === null
                                         ? <span className="text-[color:#92400E] bg-[color:#FFFBEB] rounded-full px-2 py-0.5 text-[11px]">Por definir</span>
@@ -319,8 +341,7 @@ export default function MembresiasPage() {
     const puedeEditar = user?.rol === 'administrador';
 
     const [membresias, setMembresias] = useState<Membresia[]>([]);
-    // Las sugerencias salen del catálogo guardado; no fijamos áreas en la interfaz.
-    const areasSugeridas = [...new Set(membresias.flatMap(m => m.accesos))];
+    const [clases, setClases] = useState<Clase[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
@@ -335,7 +356,9 @@ export default function MembresiasPage() {
         setLoading(true);
         setError(null);
         try {
-            setMembresias(await membresiasService.listar());
+            const [planes, catalogo] = await Promise.all([membresiasService.listar(), api.get<Clase[]>('/clases')]);
+            setClases(catalogo);
+            setMembresias(planes.map(plan => ({ ...plan, accesos: plan.clasesIds ? plan.clasesIds.map(id => catalogo.find(c => c.idClase === id)?.nombre ?? 'Clase no disponible') : plan.accesos })));
         } catch (err) {
             setError(err instanceof Error ? err.message : 'No se pudieron cargar las membresías.');
         } finally {
@@ -458,16 +481,24 @@ export default function MembresiasPage() {
                     </section>
 
                     <section className="border-t border-[color:#E5E7EB] pt-5">
-                        <ListaEtiquetas titulo="Áreas o clases de acceso *" ayuda="A qué espacios o clases da acceso esta membresía."
-                            items={form.accesos} onChange={accesos => setForm(f => ({ ...f, accesos }))}
-                            placeholder="Escribe un área" sugerencias={areasSugeridas} />
+                        <h4 className="text-sm font-semibold">Clases incluidas *</h4>
+                        <p className="text-xs text-gray-500">Selecciona clases del catálogo. Los planes antiguos necesitan esta vinculación antes de guardar una edición.</p>
+                        {clases.length === 0 && <p>No hay clases registradas. Crea las clases antes de crear una membresía.</p>}
+                        {clases.map(clase => <label key={clase.idClase} className="flex items-center gap-2 py-1 text-sm">
+                            <input type="checkbox" checked={form.clasesIds.includes(clase.idClase)} disabled={clase.estatus !== 'activo' && !form.clasesIds.includes(clase.idClase)}
+                                onChange={e => setForm(f => {
+                                    const clasesIds = e.target.checked ? [...f.clasesIds, clase.idClase] : f.clasesIds.filter(id => id !== clase.idClase);
+                                    return { ...f, clasesIds, accesos: clasesIds.map(id => clases.find(c => c.idClase === id)?.nombre ?? id) };
+                                })} />
+                            {clase.nombre}{clase.estatus !== 'activo' ? ' (inactiva)' : ''}
+                        </label>)}
                     </section>
 
                     <section className="border-t border-[color:#E5E7EB] pt-5 space-y-3">
                         <div className="flex items-start justify-between gap-3">
                             <div>
                                 <h4 className="text-sm font-semibold text-[color:#111827]">Entradas, vigencia y costo *</h4>
-                                <p className="text-xs text-[color:#6B7280]">Una membresía puede ofrecerse en varias presentaciones (por ejemplo 1, 6 o 12 entradas). Deja el costo vacío si aún no está definido.</p>
+                                <p className="text-xs text-[color:#6B7280]">Configura cada presentación con su precio y duración. Los meses se conservarán como meses calendario, no como 30 días.</p>
                             </div>
                             <button type="button" onClick={() => setForm(f => ({ ...f, opciones: [...f.opciones, nuevaOpcion()] }))}
                                 className="rx-btn rx-btn--accent rx-btn--sm">+ Agregar opción</button>
@@ -475,19 +506,32 @@ export default function MembresiasPage() {
                         <div className="space-y-2">
                             {form.opciones.map((o, i) => (
                                 <div key={o.id} className="grid grid-cols-12 gap-2 items-end bg-[color:#F3F4F6] rounded-2xl p-3">
+                                    <label className="col-span-12 text-xs">Distribución de entradas
+                                        <select value={o.distribucion} onChange={e => cambiarOpcion(o.id, { distribucion: e.target.value as OpcionForm['distribucion'], ilimitado: false })} className="block w-full p-2 rounded-lg border">
+                                            <option value="compartida">Bolsa compartida entre las clases incluidas</option>
+                                            <option value="por_clase">Cantidad diferente por clase</option>
+                                        </select>
+                                    </label>
+                                    {o.distribucion === 'por_clase' && form.clasesIds.map(id => <label key={id} className="col-span-6 text-xs">
+                                        {clases.find(c => c.idClase === id)?.nombre ?? 'Clase no disponible'}
+                                        <input type="number" min={1} step={1} value={o.entradasPorClase[id] ?? ''} onChange={e => cambiarOpcion(o.id, { entradasPorClase: { ...o.entradasPorClase, [id]: e.target.value } })} className="block w-full p-2 rounded-lg border" />
+                                    </label>)}
                                     <label className="col-span-3 block text-xs text-[color:#4B5563] space-y-1">
                                         <span>Núm. de entradas</span>
-                                        <input type="number" min={1} step={1} disabled={o.ilimitado} value={o.ilimitado ? '' : o.entradas}
+                                        <input type="number" min={1} step={1} disabled={o.ilimitado || o.distribucion === 'por_clase'} value={o.distribucion === 'por_clase' ? form.clasesIds.reduce((s, id) => s + Number(o.entradasPorClase[id] || 0), 0) : o.ilimitado ? '' : o.entradas}
                                             placeholder={o.ilimitado ? 'Ilimitado' : 'Ej. 12'}
                                             onChange={e => cambiarOpcion(o.id, { entradas: e.target.value })}
                                             className="w-full px-3 py-2 text-sm text-[color:#111827] border border-[color:#E5E7EB] rounded-lg bg-white disabled:bg-[#ECEDF0] focus:outline-none focus:ring-2 focus:ring-[color:#111827]" />
                                     </label>
                                     <label className="col-span-2 flex items-center gap-1.5 pb-2 text-xs font-semibold text-[color:#111827] cursor-pointer">
-                                        <input type="checkbox" checked={o.ilimitado} onChange={e => cambiarOpcion(o.id, { ilimitado: e.target.checked })} className="w-4 h-4 accent-[#16181D]" />
+                                        <input type="checkbox" disabled={o.distribucion === 'por_clase'} checked={o.ilimitado} onChange={e => cambiarOpcion(o.id, { ilimitado: e.target.checked })} className="w-4 h-4 accent-[#16181D]" />
                                         Ilimitado
                                     </label>
                                     <label className="col-span-3 block text-xs text-[color:#4B5563] space-y-1">
-                                        <span>Días de vigencia</span>
+                                        <span>Duración</span>
+                                        <select value={o.unidadDuracion} onChange={e => cambiarOpcion(o.id, { unidadDuracion: e.target.value as OpcionForm['unidadDuracion'] })} className="block w-full rounded-lg border p-1">
+                                            <option value="dias">Días</option><option value="meses">Meses</option>
+                                        </select>
                                         <input type="number" min={1} step={1} value={o.vigenciaDias} onChange={e => cambiarOpcion(o.id, { vigenciaDias: e.target.value })}
                                             className="w-full px-3 py-2 text-sm text-[color:#111827] border border-[color:#E5E7EB] rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[color:#111827]" />
                                     </label>

@@ -14,8 +14,10 @@ interface ReservaCobro {
   type: 'cliente' | 'visitante';
   class: string;
   time: string;
-  status: 'pendiente' | 'pagado' | 'asistido' | 'cancelado';
+  status: 'pendiente' | 'pagado' | 'asistido' | 'cancelado' | 'no_asistio';
   capacityStatus: 'confirmada' | 'espera';
+  codigo?: string;
+  reagendada?: boolean;
   horarioId?: string;
   price: number;
   // Fecha del horario reservado (YYYY-MM-DD). Viene vacia en los registros
@@ -31,6 +33,7 @@ const filterTabs: { value: FilterEstatus; label: string }[] = [
   { value: 'pagado', label: 'Pagadas' },
   { value: 'asistido', label: 'Asistidas' },
   { value: 'cancelado', label: 'Canceladas' },
+  { value: 'no_asistio', label: 'No asistió' },
   { value: 'espera', label: 'Lista de espera' },
 ];
 
@@ -41,6 +44,7 @@ const estatusBadge: Record<ReservaCobro['status'], { variant: 'confirmada' | 'pe
   pagado: { variant: 'confirmada', label: 'Pagada' },
   asistido: { variant: 'confirmada', label: 'Asistió' },
   cancelado: { variant: 'cancelada', label: 'Cancelada' },
+  no_asistio: { variant: 'cancelada', label: 'No asistió' },
 };
 
 export function ReservacionesPage() {
@@ -137,7 +141,7 @@ export function ReservacionesPage() {
               key: 'status', header: 'Estatus',
               render: row => {
                 const r = row as unknown as ReservaCobro;
-                const badge = estatusBadge[r.status];
+                const badge = estatusBadge[r.status] ?? { variant: 'pendiente' as const, label: r.status };
                 return <Badge variant={badge.variant} label={badge.label} />;
               }
             },

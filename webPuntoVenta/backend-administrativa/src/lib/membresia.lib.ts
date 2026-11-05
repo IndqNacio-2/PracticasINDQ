@@ -1,12 +1,13 @@
 import { Types } from 'mongoose';
 import { Membresia } from '../models/Membresia/membresia.model';
 
-export interface OpcionMembresia { id: string; entradas: number | null; vigenciaDias: number; costo: number | null }
+export interface OpcionMembresia { id: string; entradas: number | null; vigenciaDias?: number; costo: number | null; duracion?: number; unidadDuracion?: 'dias' | 'meses'; distribucion?: 'compartida' | 'por_clase'; entradasPorClase?: Record<string, number> }
 export interface MembresiaDatos {
     nombre: string;
     descripcion: string;
     estatus: 'activo' | 'inactivo';
     accesos: string[];
+    clasesIds?: string[];
     opciones: OpcionMembresia[];
     complementos: {
         locker: boolean;
@@ -47,8 +48,16 @@ export function validarMembresia(b: any): Resultado {
     const estatus = b.estatus ?? 'activo';
     if (estatus !== 'activo' && estatus !== 'inactivo') return { ok: false, error: 'Estatus inválido' };
 
-    const accesos = listaTextos(b.accesos);
-    if (!accesos || accesos.length === 0) return { ok: false, error: 'Elige al menos un área o clase de acceso' };
+    const modular = b.clasesIds !== undefined;
+    let clasesIds: string[] | undefined;
+    if (modular) {
+        if (!Array.isArray(b.clasesIds) || !b.clasesIds.length || !b.clasesIds.every((id: unknown) => typeof id === 'string' && /^[a-f0-9]{24}$/.test(id))) {
+            return { ok: false, error: 'Selecciona al menos una clase válida del catálogo' };
+        }
+        clasesIds = [...new Set<string>(b.clasesIds)];
+    }
+    const accesos = listaTextos(b.accesos) ?? [];
+    if (!modular && accesos.length === 0) return { ok: false, error: 'Elige al menos un área o clase de acceso' };
 
     if (!Array.isArray(b.opciones) || b.opciones.length === 0) {
         return { ok: false, error: 'Agrega al menos una opción de entradas, vigencia y costo' };
@@ -63,15 +72,35 @@ export function validarMembresia(b: any): Resultado {
         if (entradas !== null && (!Number.isInteger(entradas) || entradas < 1)) {
             return { ok: false, error: `Opción ${n}: las entradas deben ser un entero mayor a 0 (o ilimitado)` };
         }
-        const vigenciaDias = Number(o?.vigenciaDias);
-        if (!Number.isInteger(vigenciaDias) || vigenciaDias < 1 || vigenciaDias > 3650) {
+        const vigenciaDias = modular ? (o.unidadDuracion === 'dias' ? o.duracion : undefined) : Number(o?.vigenciaDias);
+        if (!modular && (!Number.isInteger(vigenciaDias) || vigenciaDias! < 1 || vigenciaDias! > 3650)) {
             return { ok: false, error: `Opción ${n}: los días de vigencia deben ser un entero entre 1 y 3650` };
         }
         const costo = o?.costo === null || o?.costo === undefined || o?.costo === '' ? null : Number(o.costo);
         if (costo !== null && (!Number.isFinite(costo) || costo < 0)) {
             return { ok: false, error: `Opción ${n}: el costo no es válido` };
         }
-        const clave = String(entradas);
+        let configuracion: Partial<OpcionMembresia> = {};
+        if (modular) {
+            const { duracion, unidadDuracion, distribucion } = o;
+            if (!Number.isInteger(duracion) || duracion < 1 || duracion > (unidadDuracion === 'meses' ? 120 : 3650) || !['dias', 'meses'].includes(unidadDuracion)) {
+                return { ok: false, error: `Opción ${n}: duración inválida` };
+            }
+            if (!['compartida', 'por_clase'].includes(distribucion) || costo === null) return { ok: false, error: `Opción ${n}: indica distribución y precio` };
+            const entradasPorClase: Record<string, number> = {};
+            if (distribucion === 'por_clase') {
+                if (entradas === null || !o.entradasPorClase || typeof o.entradasPorClase !== 'object' || Array.isArray(o.entradasPorClase)) return { ok: false, error: 'La distribución por clase requiere cantidades limitadas' };
+                if (Object.keys(o.entradasPorClase).some(id => !clasesIds!.includes(id))) return { ok: false, error: 'Hay cantidades para clases no incluidas' };
+                for (const id of clasesIds!) {
+                    const cantidad = o.entradasPorClase[id];
+                    if (!Number.isSafeInteger(cantidad) || cantidad < 1) return { ok: false, error: 'Indica entradas positivas para cada clase' };
+                    entradasPorClase[id] = cantidad;
+                }
+                if (Object.values(entradasPorClase).reduce((a, v) => a + v, 0) !== entradas) return { ok: false, error: 'El total no coincide con las entradas por clase' };
+            }
+            configuracion = { duracion, unidadDuracion, distribucion, entradasPorClase };
+        }
+        const clave = modular ? JSON.stringify([entradas, configuracion, costo]) : String(entradas);
         if (vistas.has(clave)) return { ok: false, error: 'Hay dos opciones con el mismo número de entradas' };
         vistas.add(clave);
 
@@ -79,7 +108,7 @@ export function validarMembresia(b: any): Resultado {
         let id = esTexto(o?.id) && o.id.trim() && !o.id.startsWith('nueva-') ? o.id.trim() : '';
         if (!id || idsUsados.has(id)) id = `op-${new Types.ObjectId().toString()}`;
         idsUsados.add(id);
-        opciones.push({ id, entradas, vigenciaDias, costo: costo === null ? null : Math.round(costo * 100) / 100 });
+        opciones.push({ ...configuracion, id, entradas, ...(vigenciaDias === undefined ? {} : { vigenciaDias }), costo: costo === null ? null : Math.round(costo * 100) / 100 });
     }
 
     const c = b.complementos ?? {};
@@ -116,6 +145,7 @@ export function validarMembresia(b: any): Resultado {
             descripcion,
             estatus,
             accesos,
+            ...(clasesIds ? { clasesIds } : {}),
             opciones,
             complementos: { locker: !!c.locker, regaderas: !!c.regaderas, preventas: !!c.preventas, descuento },
             kit,

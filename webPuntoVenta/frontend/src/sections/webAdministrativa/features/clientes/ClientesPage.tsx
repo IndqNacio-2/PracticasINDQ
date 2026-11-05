@@ -63,10 +63,13 @@ export function ClientesPage() {
   const [form, setForm] = useState<SocioForm>(FORM_VACIO);
   const [formError, setFormError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
+  const [accionError, setAccionError] = useState<string | null>(null);
+  const [procesando, setProcesando] = useState<number | null>(null);
+  const [actualizando, setActualizando] = useState(false);
 
   // Carga los socios registrados en el módulo de cobro.
   const cargar = useCallback(async () => {
-    setLoading(true);
+    setActualizando(true);
     setError(null);
     try {
       setClientes(await apiCobro.get<SocioCobro[]>('/clientes'));
@@ -74,6 +77,7 @@ export function ClientesPage() {
       setError(err instanceof Error ? err.message : 'No se pudieron cargar los clientes.');
     } finally {
       setLoading(false);
+      setActualizando(false);
     }
   }, []);
 
@@ -102,9 +106,10 @@ export function ClientesPage() {
     setModal(true);
   };
 
-  // Guarda un cliente nuevo o los cambios de uno existente. Al terminar, la
-  // lista se recarga del backend para mostrar lo que realmente quedó guardado.
+  // Usar la fila devuelta por PostgreSQL evita desmontar la tabla y perder
+  // su búsqueda/página. No se actualiza la UI si el servidor rechaza el cambio.
   const save = async () => {
+    if (guardando) return;
     setFormError(null);
     if (form.nombre.trim().length < 3) {
       setFormError('El nombre del cliente es obligatorio (mínimo 3 letras).');
@@ -114,7 +119,7 @@ export function ClientesPage() {
     try {
       const cuerpo = {
         nombre: form.nombre.trim(),
-        correo: form.correo.trim() || undefined,
+        correo: form.correo.trim(),
         telefono: form.telefono.trim(),
         membresia: form.membresia,
         activo: form.activo,
@@ -122,12 +127,14 @@ export function ClientesPage() {
         vigencia_hasta: form.vigencia_hasta || null,
       };
       if (editando) {
-        await apiCobro.patch(`/clientes/${editando.id}`, cuerpo);
+        const { cliente } = await apiCobro.patch<{ cliente: SocioCobro }>(`/clientes/${editando.id}`, cuerpo);
+        setClientes(lista => lista.map(s => s.id === cliente.id ? cliente : s));
       } else {
-        await apiCobro.post('/clientes', cuerpo);
+        const { cliente } = await apiCobro.post<{ cliente: SocioCobro }>('/clientes', cuerpo);
+        setClientes(lista => [...lista, cliente]);
       }
+      setAccionError(null);
       setModal(false);
-      await cargar();
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'No se pudo guardar el cliente.');
     } finally {
@@ -136,27 +143,37 @@ export function ClientesPage() {
   };
 
   const toggleEstatus = async (s: SocioCobro) => {
+    if (procesando !== null) return;
+    setAccionError(null);
+    setProcesando(s.id);
     try {
-      await apiCobro.patch(`/clientes/${s.id}`, { activo: !(s.activo !== false) });
-      await cargar();
+      const { cliente } = await apiCobro.patch<{ cliente: SocioCobro }>(`/clientes/${s.id}`, { activo: s.activo === false });
+      setClientes(lista => lista.map(c => c.id === cliente.id ? cliente : c));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo cambiar el estatus.');
+      setAccionError(err instanceof Error ? err.message : 'No se pudo cambiar el estatus.');
+    } finally {
+      setProcesando(null);
     }
   };
 
   // Borrar es definitivo en la base de datos. Si el socio tiene reservaciones
   // o pagos, el backend lo rechaza (409) para no dejar historial huérfano.
   const eliminar = async (s: SocioCobro) => {
+    if (procesando !== null) return;
     const confirmado = window.confirm(`¿Eliminar a ${s.nombre}? Esta acción no se puede deshacer.`);
     if (!confirmado) return;
+    setAccionError(null);
+    setProcesando(s.id);
     try {
       await apiCobro.del(`/clientes/${s.id}`);
-      await cargar();
+      setClientes(lista => lista.filter(c => c.id !== s.id));
     } catch (err) {
       const mensaje = err instanceof ApiError && err.status === 409
-        ? 'No se puede eliminar: el cliente tiene reservaciones o pagos registrados.'
+        ? 'No se puede eliminar: el cliente tiene historial asociado. Usa Desactivar para darlo de baja sin borrar su historial.'
         : err instanceof Error ? err.message : 'No se pudo eliminar el cliente.';
-      setError(mensaje);
+      setAccionError(mensaje);
+    } finally {
+      setProcesando(null);
     }
   };
 
@@ -170,9 +187,9 @@ export function ClientesPage() {
           <p className="text-gray-500 text-sm mt-0.5">{activos} {activos === 1 ? 'cliente activo' : 'clientes activos'} · {clientes.length} {clientes.length === 1 ? 'cliente en total' : 'clientes en total'}</p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => void cargar()} disabled={loading}
+          <button onClick={() => void cargar()} disabled={loading || actualizando || procesando !== null || guardando}
             className="rx-btn rx-btn--outline">
-            <svg className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+            <svg className={`w-4 h-4 ${actualizando ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
             Actualizar
           </button>
           <button onClick={abrirNuevo}
@@ -183,10 +200,15 @@ export function ClientesPage() {
         </div>
       </div>
 
-      <DataState loading={loading} error={error} empty={clientes.length === 0}
-        emptyMessage="No hay clientes registrados" onRetry={() => void cargar()}>
+      {(accionError || (!loading && error)) && (
+        <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          {accionError || error}
+        </div>
+      )}
+      <DataState loading={loading}>
         <DataTable
           data={clientes as unknown as Record<string, unknown>[]}
+          emptyMessage="No hay clientes que mostrar"
           columns={[
             {
               key: 'nombre', header: 'Cliente',
@@ -232,19 +254,19 @@ export function ClientesPage() {
           ]}
           actions={row => {
             const s = row as unknown as SocioCobro;
-            const est = estatusDe(s);
+            const activoManual = s.activo !== false;
             return (
               <div className="flex items-center gap-2 justify-end">
-                <button onClick={() => abrirEditar(s)} className="rx-icon-btn" title="Editar">
+                <button type="button" disabled={procesando !== null || actualizando} onClick={() => abrirEditar(s)} className="rx-icon-btn" title="Editar">
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                 </button>
-                <button onClick={() => void toggleEstatus(s)} className={`rx-icon-btn ${est === 'activo' ? 'rx-btn--danger' : 'rx-btn--dark'}`} title={est === 'activo' ? 'Desactivar' : 'Activar'}>
-                  {est === 'activo'
+                <button type="button" disabled={procesando !== null || actualizando} onClick={() => void toggleEstatus(s)} className={`rx-icon-btn ${activoManual ? 'rx-btn--danger' : 'rx-btn--dark'}`} title={activoManual ? 'Desactivar (dar de baja)' : 'Activar (no renueva la membresía)'}>
+                  {activoManual
                     ? <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
                     : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                   }
                 </button>
-                <button onClick={() => void eliminar(s)} className="rx-icon-btn rx-btn--danger" title="Eliminar">
+                <button type="button" disabled={procesando !== null || actualizando} onClick={() => void eliminar(s)} className="rx-icon-btn rx-btn--danger" title="Eliminar definitivamente">
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                 </button>
               </div>
@@ -253,7 +275,7 @@ export function ClientesPage() {
         />
         </DataState>
 
-      <Modal open={modal} onClose={() => setModal(false)} title={editando ? 'Editar cliente' : 'Nuevo cliente'}>
+      <Modal open={modal} onClose={() => { if (!guardando) setModal(false); }} title={editando ? 'Editar cliente' : 'Nuevo cliente'}>
         <div className="grid grid-cols-2 gap-4">
           <InputField label="Nombre completo" required value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))} className="col-span-2" placeholder="Ej. Juan Perez" />
           <InputField label="Correo" type="email" value={form.correo} onChange={e => setForm(f => ({ ...f, correo: e.target.value }))} className="col-span-2" placeholder="Opcional, debe ser unico" />
@@ -262,9 +284,12 @@ export function ClientesPage() {
           <InputField label="Vigencia de membresia" type="date" value={form.vigencia_hasta} onChange={e => setForm(f => ({ ...f, vigencia_hasta: e.target.value }))} />
           <SelectField label="Estatus" value={form.activo ? 'activo' : 'inactivo'} onChange={e => setForm(f => ({ ...f, activo: e.target.value === 'activo' }))} options={[{ value: 'activo', label: 'Activo' }, { value: 'inactivo', label: 'Inactivo' }]} />
         </div>
+        {form.vigencia_hasta && form.vigencia_hasta < hoyLocal() && (
+          <p className="text-xs text-amber-700 mt-3">La membresía está vencida. Activar al cliente no renueva su vigencia; seguirá apareciendo inactivo hasta actualizar la fecha.</p>
+        )}
         {formError && <p className="text-xs text-red-500 mt-3">{formError}</p>}
         <div className="flex gap-3 mt-6 pt-4 border-t border-gray-100">
-          <button onClick={() => setModal(false)} className="rx-btn rx-btn--outline flex-1">Cancelar</button>
+          <button disabled={guardando} onClick={() => setModal(false)} className="rx-btn rx-btn--outline flex-1">Cancelar</button>
           <button onClick={() => void save()} disabled={guardando} className="rx-btn rx-btn--dark flex-1">
             {guardando ? 'Guardando...' : editando ? 'Guardar cambios' : 'Registrar cliente'}
           </button>

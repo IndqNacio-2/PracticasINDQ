@@ -6,6 +6,42 @@ import { once } from 'node:events';
 import membresiasRoutes from './src/routes/membresia.routes';
 import { CATALOGO_INICIAL, validarMembresia, sembrarMembresias } from './src/lib/membresia.lib';
 import { Membresia } from './src/models/Membresia/membresia.model';
+import { Clase } from './src/models/Clases/clases';
+
+const planModular = {
+  nombre: 'Plan personalizado', clasesIds: ['507f1f77bcf86cd799439012'], accesos: ['Clase de prueba'],
+  opciones: [{ id: 'mensual', entradas: 12, duracion: 1, unidadDuracion: 'meses', distribucion: 'compartida', costo: 500 }],
+};
+
+test('planes modulares: clases por ID, meses reales, precio y distribución', () => {
+  const valido = validarMembresia(planModular);
+  assert.equal(valido.ok, true);
+  if (valido.ok) {
+    assert.equal(valido.valor.opciones[0].unidadDuracion, 'meses');
+    assert.equal(valido.valor.opciones[0].vigenciaDias, undefined);
+  }
+  const opcion = planModular.opciones[0];
+  for (const cambios of [{ clasesIds: [] }, { clasesIds: ['nombre'] },
+    { opciones: [{ ...opcion, duracion: 0 }] }, { opciones: [{ ...opcion, costo: null }] },
+    { opciones: [{ ...opcion, unidadDuracion: 'semanas' }] },
+    { opciones: [{ ...opcion, distribucion: 'por_clase', entradasPorClase: {} }] }]) {
+    assert.equal(validarMembresia({ ...planModular, ...cambios }).ok, false);
+  }
+  assert.equal(validarMembresia({ ...planModular, opciones: [{ ...opcion, distribucion: 'por_clase', entradasPorClase: { [planModular.clasesIds[0]]: 12 } }] }).ok, true);
+});
+
+test('esquema conserva duración y cantidades por clase al serializar sin BD', async () => {
+  const entrada = validarMembresia({ ...planModular, opciones: [{ ...planModular.opciones[0], distribucion: 'por_clase', entradasPorClase: { [planModular.clasesIds[0]]: 12 } }] });
+  assert.equal(entrada.ok, true);
+  if (!entrada.ok) return;
+  const documento = new Membresia({ ...entrada.valor, nombreClave: 'plan personalizado' });
+  await documento.validate();
+  const json = JSON.parse(JSON.stringify(documento));
+  assert.deepEqual(json.clasesIds, planModular.clasesIds);
+  assert.deepEqual(json.opciones[0].entradasPorClase, { [planModular.clasesIds[0]]: 12 });
+  assert.equal(json.opciones[0].duracion, 1);
+  assert.equal(json.opciones[0].vigenciaDias, undefined);
+});
 
 test('catálogo de Alexis y validaciones sin conexión a datos', () => {
   assert.equal(CATALOGO_INICIAL.length, 5);
@@ -68,6 +104,7 @@ test('rutas: sesión, roles, listado y rechazos antes de consultar datos', async
 });
 
 test('CRUD HTTP con persistencia simulada: crear, editar, baja lógica y duplicado', async (t) => {
+  t.mock.method(Clase, 'countDocuments', async () => 1);
   const secretoAnterior = process.env.JWT_SECRET;
   process.env.JWT_SECRET = 'secreto-exclusivo-pruebas-crud';
   t.after(() => { if (secretoAnterior === undefined) delete process.env.JWT_SECRET; else process.env.JWT_SECRET = secretoAnterior; });
@@ -93,9 +130,13 @@ test('CRUD HTTP con persistencia simulada: crear, editar, baja lógica y duplica
   t.after(() => new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())));
   const url = `http://127.0.0.1:${(server.address() as { port: number }).port}/api/membresias`;
   const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt.sign({ rol: 'administrador' }, process.env.JWT_SECRET!, { subject: id })}` };
-  const crear = await fetch(url, { method: 'POST', headers, body: JSON.stringify(CATALOGO_INICIAL[0]) });
+  assert.equal((await fetch(url, { method: 'POST', headers, body: JSON.stringify(CATALOGO_INICIAL[0]) })).status, 400);
+  const crear = await fetch(url, { method: 'POST', headers, body: JSON.stringify(planModular) });
   assert.equal(crear.status, 201);
   assert.equal((await crear.json()).idMembresia, id);
+  t.mock.method(Clase, 'countDocuments', async () => 0);
+  assert.equal((await fetch(url, { method: 'POST', headers, body: JSON.stringify(planModular) })).status, 400);
+  t.mock.method(Clase, 'countDocuments', async () => 1);
   assert.equal((await fetch(`${url}/${id}`, { headers })).status, 200);
   const opcionesOriginales = structuredClone(datos.opciones);
   const baja = await fetch(`${url}/${id}`, { method: 'PATCH', headers, body: JSON.stringify({ estatus: 'inactivo' }) });
@@ -106,7 +147,7 @@ test('CRUD HTTP con persistencia simulada: crear, editar, baja lógica y duplica
   assert.equal(editar.status, 200);
   assert.equal((await editar.json()).nombre, 'Nombre actualizado');
   duplicado = true;
-  assert.equal((await fetch(url, { method: 'POST', headers, body: JSON.stringify(CATALOGO_INICIAL[0]) })).status, 409);
+  assert.equal((await fetch(url, { method: 'POST', headers, body: JSON.stringify(planModular) })).status, 409);
   duplicado = false;
   const antes = structuredClone(datos);
   assert.equal((await fetch(`${url}/${id}`, { method: 'PATCH', headers, body: JSON.stringify({ opciones: [] }) })).status, 400);

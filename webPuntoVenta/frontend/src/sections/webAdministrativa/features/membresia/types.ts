@@ -5,7 +5,11 @@ export interface OpcionMembresia {
     id: string;
     /** Número de accesos; null = ilimitado */
     entradas: number | null;
-    vigenciaDias: number;
+    vigenciaDias?: number;
+    duracion?: number;
+    unidadDuracion?: 'dias' | 'meses';
+    distribucion?: 'compartida' | 'por_clase';
+    entradasPorClase?: Record<string, number>;
     /** null = costo por definir */
     costo: number | null;
 }
@@ -32,6 +36,7 @@ export interface Membresia {
     estatus: Estatus;
     /** Áreas o clases a las que da acceso (lista) */
     accesos: string[];
+    clasesIds?: string[];
     opciones: OpcionMembresia[];
     complementos: Complementos;
     kit: KitBienvenida | null;

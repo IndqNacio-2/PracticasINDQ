@@ -1,4 +1,4 @@
-import { useState, ReactNode } from 'react';
+import { useEffect, useState, ReactNode } from 'react';
 import { Icon } from './Icon';
 
 interface Column<T> {
@@ -30,7 +30,11 @@ export function DataTable<T extends Record<string, unknown>>({
     : data;
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
+  const currentPage = Math.min(page, totalPages);
+  // Al borrar el último registro de una página, pasar a la última válida,
+  // sin reiniciar a la primera ni borrar la búsqueda.
+  useEffect(() => { setPage(p => Math.min(p, totalPages)); }, [totalPages]);
+  const paginated = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   return (
     <div className="space-y-3">
@@ -85,28 +89,30 @@ export function DataTable<T extends Record<string, unknown>>({
 
       {totalPages > 1 && (
         <div className="flex items-center justify-between text-sm text-gray-500">
-          <span>{filtered.length} registros · Página {page} de {totalPages}</span>
+          <span>{filtered.length} registros · Página {currentPage} de {totalPages}</span>
           <div className="flex gap-1">
             <button
               onClick={() => setPage(p => Math.max(1, p - 1))}
-              disabled={page === 1}
+              type="button"
+              disabled={currentPage === 1}
               aria-label="Página anterior"
               className="rx-btn rx-btn--outline rx-btn--sm"
             >
               <Icon name="chevron_left" size={18} weight={500} />
             </button>
             {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-              const p = Math.max(1, Math.min(totalPages - 4, page - 2)) + i;
+              const p = Math.max(1, Math.min(totalPages - 4, currentPage - 2)) + i;
               return (
-                <button key={p} onClick={() => setPage(p)}
-                  className={`rx-tab ${p === page ? 'rx-tab--active' : ''}`}>
+                <button type="button" key={p} onClick={() => setPage(p)}
+                  className={`rx-tab ${p === currentPage ? 'rx-tab--active' : ''}`}>
                   {p}
                 </button>
               );
             })}
             <button
               onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-              disabled={page === totalPages}
+              type="button"
+              disabled={currentPage === totalPages}
               aria-label="Página siguiente"
               className="rx-btn rx-btn--outline rx-btn--sm"
             >

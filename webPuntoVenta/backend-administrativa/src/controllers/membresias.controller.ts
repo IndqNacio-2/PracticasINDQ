@@ -2,6 +2,11 @@ import type { Request, Response } from 'express';
 import { isValidObjectId } from 'mongoose';
 import { Membresia } from '../models/Membresia/membresia.model';
 import { claveNombre, validarMembresia } from '../lib/membresia.lib';
+import { Clase } from '../models/Clases/clases';
+
+async function clasesValidas(ids?: string[]) {
+  return !ids || await Clase.countDocuments({ _id: { $in: ids } }) === ids.length;
+}
 
 async function nombreRepetido(nombre: string, excluirId?: string) {
   return !!(await Membresia.exists({
@@ -37,9 +42,11 @@ export async function consultarMembresia(req: Request, res: Response) {
 }
 
 export async function crearMembresia(req: Request, res: Response) {
+  if (!Array.isArray(req.body?.clasesIds)) return res.status(400).json({ message: 'Selecciona las clases del catálogo para crear una membresía.' });
   const resultado = validarMembresia(req.body);
   if (!resultado.ok) return res.status(400).json({ message: resultado.error });
   try {
+    if (!await clasesValidas(resultado.valor.clasesIds)) return res.status(400).json({ message: 'Una de las clases seleccionadas ya no existe.' });
     if (await nombreRepetido(resultado.valor.nombre)) {
       return res.status(409).json({ message: 'Ya existe una membresía con ese nombre.' });
     }
@@ -59,6 +66,8 @@ export async function actualizarMembresia(req: Request, res: Response) {
     if (!actual) return res.status(404).json({ message: 'Membresía no encontrada.' });
     const resultado = validarMembresia({ ...actual.toJSON(), ...req.body });
     if (!resultado.ok) return res.status(400).json({ message: resultado.error });
+    if (actual.toJSON().clasesIds && !resultado.valor.clasesIds) return res.status(400).json({ message: 'No se pueden quitar los vínculos con las clases.' });
+    if (!await clasesValidas(resultado.valor.clasesIds)) return res.status(400).json({ message: 'Una de las clases seleccionadas ya no existe.' });
     if (await nombreRepetido(resultado.valor.nombre, id)) {
       return res.status(409).json({ message: 'Ya existe una membresía con ese nombre.' });
     }

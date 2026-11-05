@@ -6,7 +6,11 @@ const opcionSchema = new Schema(
     {
         id: { type: String, required: true },
         entradas: { type: Number, default: null },
-        vigenciaDias: { type: Number, required: true },
+        vigenciaDias: { type: Number },
+        duracion: { type: Number },
+        unidadDuracion: { type: String, enum: ['dias', 'meses'] },
+        distribucion: { type: String, enum: ['compartida', 'por_clase'] },
+        entradasPorClase: { type: Map, of: Number },
         costo: { type: Number, default: null },
     },
     { _id: false }
@@ -20,6 +24,7 @@ const membresiaSchema = new Schema(
         descripcion: { type: String, default: '' },
         estatus: { type: String, enum: ['activo', 'inactivo'], default: 'activo' },
         accesos: { type: [String], default: [] },
+        clasesIds: { type: [String], default: undefined },
         opciones: { type: [opcionSchema], default: [] },
         complementos: {
             locker: { type: Boolean, default: false },
