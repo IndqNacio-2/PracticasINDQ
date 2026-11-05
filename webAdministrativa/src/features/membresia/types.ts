@@ -1,6 +1,7 @@
 import type { Estatus } from '../../types';
 
-
+// Una presentación de la membresía: cuántas entradas incluye, cuántos días dura y cuánto cuesta.
+// Ejemplo: Reset room 12 entradas, 16 días de vigencia.
 export interface OpcionMembresia {
     id: string;
     /** Número de accesos; null = ilimitado */
