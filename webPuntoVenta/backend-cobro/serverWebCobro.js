@@ -766,19 +766,83 @@ const normalizarIdentificador = (valor) => {
   return null;
 };
 
+// Minutos desde la hora de inicio (requerimientos, punto 3.6.1): a partir de
+// `retardo` cuenta como retardo y a partir de `falta`, como inasistencia.
+const REGLAS_PUNTUALIDAD = {
+  entrenador: { retardo: 1, falta: 5 },
+  recepcion: { retardo: 1, falta: 30 },
+};
+
+// "Recepción" -> "recepcion" y "Coach" -> "entrenador", para buscar su regla.
+const normalizarRol = (rol) => {
+  const limpio = String(rol ?? '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  return limpio === 'coach' ? 'entrenador' : limpio;
+};
+
+const reglaDeRol = (rol) => REGLAS_PUNTUALIDAD[normalizarRol(rol)] ?? { retardo: 1, falta: 5 };
+
+// Inicio y fin de HOY en la hora local del servidor. No se usa CURRENT_DATE
+// porque PostgreSQL corre en UTC dentro de Docker: en Mexico su fecha cambia a
+// las 6 pm y la salida de la tarde pareceria de otro dia.
+const rangoDeHoy = () => {
+  const inicio = new Date();
+  inicio.setHours(0, 0, 0, 0);
+  const fin = new Date(inicio);
+  fin.setDate(fin.getDate() + 1);
+  return [inicio, fin];
+};
+
+// Primer turno activo del empleado hoy, con su hora de inicio como fecha local.
+const getTurnoHoy = async (codigo) => {
+  const turno = (
+    await pool.query(
+      `SELECT rol, to_char(hora_inicio, 'HH24:MI') AS hora
+         FROM webcobro.turnos
+        WHERE codigo = $1 AND activo AND dia_semana = $2
+        ORDER BY hora_inicio
+        LIMIT 1`,
+      [codigo, new Date().getDay()],
+    )
+  ).rows[0];
+  if (!turno) return null;
+
+  const [hh, mm] = turno.hora.split(':').map(Number);
+  const horaInicio = new Date();
+  horaInicio.setHours(hh, mm, 0, 0);
+  return { rol: turno.rol, horaInicio };
+};
+
+// Estado de una entrada segun los minutos de retraso contra el inicio del turno.
+const clasificarAsistencia = (ahora, turno) => {
+  if (!turno) return 'sin_turno';
+  const regla = reglaDeRol(turno.rol);
+  const minutosTarde = (ahora.getTime() - turno.horaInicio.getTime()) / 60000;
+  if (minutosTarde >= regla.falta) return 'inasistencia';
+  if (minutosTarde >= regla.retardo) return 'retardo';
+  return 'puntual';
+};
+
 // Consulta la ultima marca de HOY del empleado para saber si le toca
 // registrar entrada o salida. Se decide por dia: si hoy ya marco entrada
 // le toca salida; si no ha marcado hoy su primera marca es entrada (asi
 // quien no cerro la jornada ayer no empieza el dia pidiendo salida).
+// Las inasistencias que registra el sistema no cuentan como marca: quien llega
+// tarde todavia debe poder registrar su entrada.
 const proximaMarca = async (codigo) => {
+  const [inicioHoy, finHoy] = rangoDeHoy();
   const ultimaHoy = (
     await pool.query(
       `SELECT tipo, creado_en
          FROM webcobro.asistencias
-        WHERE codigo = $1 AND creado_en::date = CURRENT_DATE
+        WHERE codigo = $1 AND NOT automatica
+          AND creado_en >= $2 AND creado_en < $3
         ORDER BY creado_en DESC, id DESC
         LIMIT 1`,
-      [codigo],
+      [codigo, inicioHoy, finHoy],
     )
   ).rows[0];
   return {
@@ -798,7 +862,7 @@ app.get('/api/asistencia/historial/:identificador', async (req, res) => {
 
   try {
     const registros = await pool.query(
-      `SELECT id, codigo, nombre,estado, tipo, creado_en
+      `SELECT id, codigo, nombre, estado, tipo, automatica, creado_en
          FROM webcobro.asistencias
         WHERE codigo = $1
         ORDER BY creado_en DESC, id DESC
@@ -813,6 +877,7 @@ app.get('/api/asistencia/historial/:identificador', async (req, res) => {
         nombre: r.nombre,
         tipo: r.tipo,
          estado: r.estado, 
+        automatica: r.automatica,
         fecha: new Date(r.creado_en).toISOString(),
         ts: new Date(r.creado_en).getTime(),
       })),
@@ -851,11 +916,12 @@ app.get('/api/asistencia/empleado/:codigo', async (req, res) => {
     if (!persona) return res.status(404).json({ error: `Código ${codigo} no registrado` });
 
     const estadoDia = await proximaMarca(codigo);
+    const turnoHoy = esEmpleado ? await getTurnoHoy(codigo) : null;
     const ultimo = (
       await pool.query(
         `SELECT tipo, creado_en
            FROM webcobro.asistencias
-          WHERE codigo = $1
+          WHERE codigo = $1 AND NOT automatica
           ORDER BY creado_en DESC, id DESC
           LIMIT 1`,
         [codigo],
@@ -901,7 +967,7 @@ app.post('/api/asistencia/marcar', async (req, res) => {
   const ultimo = (
     await pool.query(
       `SELECT tipo, creado_en FROM webcobro.asistencias
-        WHERE codigo = $1 ORDER BY creado_en DESC, id DESC LIMIT 1`,
+        WHERE codigo = $1 AND NOT automatica ORDER BY creado_en DESC, id DESC LIMIT 1`,
       [codigo],
     )
   ).rows[0];
@@ -914,9 +980,11 @@ app.post('/api/asistencia/marcar', async (req, res) => {
   const estadoDia = await proximaMarca(codigo);
   const tipo = estadoDia.siguienteTipo;
 
-  // Solo la ENTRADA del personal se clasifica; la salida y los socios van null.
-  const turno = tipo === 'entrada' && esEmpleado ? await getTurnoHoy(codigo) : null;
-  const estado = tipo === 'entrada' && esEmpleado ? clasificarAsistencia(new Date(), turno) : null;
+  // Solo la primera ENTRADA del dia del personal se clasifica; la salida, los
+  // regresos del mismo dia (por ejemplo, de comer) y los socios van null.
+  const evaluar = tipo === 'entrada' && esEmpleado && !estadoDia.marcoHoy;
+  const turno = evaluar ? await getTurnoHoy(codigo) : null;
+  const estado = evaluar ? clasificarAsistencia(new Date(), turno) : null;
 
   const registro = (
     await pool.query(
@@ -946,33 +1014,33 @@ setInterval(async () => {
       `SELECT DISTINCT t.codigo, e.nombre, t.rol, to_char(min(t.hora_inicio),'HH24:MI') AS hora
          FROM webcobro.turnos t
          JOIN webcobro.empleados e ON e.codigo = t.codigo
-        WHERE t.activo AND t.dia_semana = EXTRACT(DOW FROM CURRENT_DATE)::int
+        WHERE t.activo AND t.dia_semana = $1
         GROUP BY t.codigo, e.nombre, t.rol`,
+      [new Date().getDay()],
     );
 
     const ahora = new Date();
+    const [inicioHoy, finHoy] = rangoDeHoy();
     for (const t of rows) {
-      const regla = REGLAS_PUNTUALIDAD[normalizarRol(t.rol)] ?? { retardo: 1, falta: 5 };
+      const regla = reglaDeRol(t.rol);
       const [hh, mm] = t.hora.split(':').map(Number);
       const vence = new Date(); vence.setHours(hh, mm, 0, 0); vence.setMinutes(vence.getMinutes() + regla.falta);
       if (ahora < vence) continue;
 
+      // Tambien encuentra la inasistencia automatica de hoy: no se repite.
       const yaMarco = (
         await pool.query(
           `SELECT 1 FROM webcobro.asistencias
-            WHERE codigo = $1 AND tipo = 'entrada' AND creado_en::date = CURRENT_DATE LIMIT 1`,
-          [t.codigo],
+            WHERE codigo = $1 AND tipo = 'entrada'
+              AND creado_en >= $2 AND creado_en < $3 LIMIT 1`,
+          [t.codigo, inicioHoy, finHoy],
         )
       ).rows[0];
       if (yaMarco) continue;
 
       await pool.query(
-        `INSERT INTO webcobro.asistencias (codigo, nombre, tipo, estado)
-         SELECT $1, $2, 'entrada', 'inasistencia'
-          WHERE NOT EXISTS (
-            SELECT 1 FROM webcobro.asistencias
-             WHERE codigo = $1 AND estado = 'inasistencia' AND creado_en::date = CURRENT_DATE
-          )`,
+        `INSERT INTO webcobro.asistencias (codigo, nombre, tipo, estado, automatica)
+         VALUES ($1, $2, 'entrada', 'inasistencia', TRUE)`,
         [t.codigo, t.nombre],
       );
     }

@@ -39,6 +39,23 @@ ON CONFLICT (codigo) DO UPDATE SET
     nombre = EXCLUDED.nombre,
     rol    = EXCLUDED.rol;
 
+-- Turnos de ejemplo para probar retardos e inasistencias en el checador.
+-- dia_semana: 0 = domingo ... 6 = sábado.
+INSERT INTO webcobro.turnos (codigo, rol, dia_semana, hora_inicio) VALUES
+    ('EMP-101', 'entrenador', 1, '07:00'),
+    ('EMP-101', 'entrenador', 2, '07:00'),
+    ('EMP-101', 'entrenador', 3, '07:00'),
+    ('EMP-101', 'entrenador', 4, '07:00'),
+    ('EMP-101', 'entrenador', 5, '07:00'),
+    ('EMP-102', 'recepción', 0, '09:00'),
+    ('EMP-102', 'recepción', 1, '06:00'),
+    ('EMP-102', 'recepción', 2, '06:00'),
+    ('EMP-102', 'recepción', 3, '06:00'),
+    ('EMP-102', 'recepción', 4, '06:00'),
+    ('EMP-102', 'recepción', 5, '06:00'),
+    ('EMP-102', 'recepción', 6, '08:00')
+ON CONFLICT (codigo, dia_semana, hora_inicio) DO NOTHING;
+
 -- Las tablas pagos y asistencias empiezan vacías: se llenan con el uso.
 
 -- Ajusta las secuencias para que los registros nuevos continúen la
