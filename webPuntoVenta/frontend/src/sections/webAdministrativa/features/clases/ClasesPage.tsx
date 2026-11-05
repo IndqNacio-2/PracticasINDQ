@@ -4,20 +4,15 @@ import { Modal } from '../../components/Modal';
 import { InputField, SelectField, TextareaField } from '../../components/FormField';
 import { DataState } from '../../components/DataState';
 import { api } from '../../lib/api';
-import type { Clase, Usuario, Estatus } from '../../types';
+import type { Clase, Estatus } from '../../types';
 
 const COLORS = ['#4B5563', '#111827', '#F3F4F6', '#6B7280'];
 
-const EMPTY_FORM = { nombre: '', descripcion: '', capacidad: '12', precio: '0', color: '#4B5563', estatus: 'activo' as Estatus, entrenadorId: '' };
+const EMPTY_FORM = { nombre: '', descripcion: '', capacidad: '12', precio: '0', color: '#4B5563', estatus: 'activo' as Estatus };
 
 export function ClasesPage() {
-  /*
-   * Las clases y los entrenadores viven en MongoDB (backend-administrativa).
-   * El formulario del entrenador se llena con los usuarios reales de rol
-   * "entrenador".
-   */
+  // El catalogo define la clase; los entrenadores se asignan por sesion.
   const [clases, setClases] = useState<Clase[]>([]);
-  const [entrenadores, setEntrenadores] = useState<Usuario[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -26,17 +21,13 @@ export function ClasesPage() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
-  // Trae las clases del catálogo y, en paralelo, los entrenadores activos.
+  // Trae las clases del catalogo.
   const cargar = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [cs, ents] = await Promise.all([
-        api.get<Clase[]>('/clases'),
-        api.get<Usuario[]>('/usuarios'),
-      ]);
+      const cs = await api.get<Clase[]>('/clases');
       setClases(cs);
-      setEntrenadores(ents.filter(u => u.rol === 'entrenador' && u.estatus === 'activo'));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudieron cargar las clases.');
     } finally {
@@ -52,7 +43,7 @@ export function ClasesPage() {
     setModal({ open: true });
   };
   const openEdit = (c: Clase) => {
-    setForm({ nombre: c.nombre, descripcion: c.descripcion, capacidad: String(c.capacidad), precio: String(c.precio ?? 0), color: c.color, estatus: c.estatus, entrenadorId: c.entrenadorId ?? '' });
+    setForm({ nombre: c.nombre, descripcion: c.descripcion, capacidad: String(c.capacidad), precio: String(c.precio ?? 0), color: c.color, estatus: c.estatus });
     setFormError(null);
     setModal({ open: true, editing: c });
   };
@@ -78,7 +69,6 @@ export function ClasesPage() {
       precio,
       color: form.color,
       estatus: form.estatus,
-      entrenadorId: form.entrenadorId,
     };
 
     try {
@@ -133,7 +123,6 @@ export function ClasesPage() {
       >
         <div className="rx-class-grid">
           {clases.map(clase => {
-            const entrenador = entrenadores.find(u => u.idUsuario === clase.entrenadorId);
           return (
             <article key={clase.idClase} className={`rx-class-card ${clase.estatus === 'inactivo' ? 'rx-card--muted' : ''}`}>
               <div className="h-1.5" style={{ backgroundColor: clase.color }} />
@@ -173,14 +162,7 @@ export function ClasesPage() {
                 </div>
 
                 <div className="flex items-center justify-between text-sm mt-2">
-                  {entrenador ? (
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-5 h-5 rounded-full bg-[#F3F4F6] flex items-center justify-center text-[#6B7280] text-xs font-bold">{entrenador.nombre[0]}</div>
-                      <span className="text-gray-500 text-xs">{entrenador.nombre} {entrenador.apellidos}</span>
-                    </div>
-                  ) : (
-                    <span className="text-gray-500">Precio</span>
-                  )}
+                  <span className="text-gray-500">Precio</span>
                   <span className="font-semibold text-[#6B7280]">${clase.precio ?? 0}</span>
                 </div>
               </div>
@@ -198,10 +180,7 @@ export function ClasesPage() {
             <InputField label="Capacidad" required type="number" min="1" value={form.capacidad} onChange={e => setForm(f => ({ ...f, capacidad: e.target.value }))} />
             <InputField label="Precio" required type="number" min="0" step="0.01" value={form.precio} onChange={e => setForm(f => ({ ...f, precio: e.target.value }))} />
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <SelectField label="Entrenador" value={form.entrenadorId} onChange={e => setForm(f => ({ ...f, entrenadorId: e.target.value }))}
-              options={entrenadores.map(e => ({ value: e.idUsuario, label: `${e.nombre} ${e.apellidos}` }))} />
-          </div>
+          <p className="text-sm text-gray-500">El entrenador se selecciona en la programacion semanal o en cada sesion.</p>
           <SelectField label="Estatus" value={form.estatus} onChange={e => setForm(f => ({ ...f, estatus: e.target.value as Estatus }))}
             options={[{ value: 'activo', label: 'Activo' }, { value: 'inactivo', label: 'Inactivo' }]} />
           <div>

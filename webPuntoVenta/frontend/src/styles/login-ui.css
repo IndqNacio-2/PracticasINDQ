@@ -1,0 +1,126 @@
+/* Acceso compartido: reutiliza la identidad rx sin alterar otros módulos. */
+@layer components {
+  .rx-login {
+    min-height: 100vh;
+    min-height: 100dvh;
+    display: flex;
+    color: var(--rx-ink);
+    background: var(--rx-page);
+    font-family: var(--rx-font);
+  }
+
+  .rx-login-shell {
+    width: 100%;
+    min-height: 100vh;
+    min-height: 100dvh;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    overflow: hidden;
+    background: var(--rx-surface);
+  }
+
+  .rx-login-brand {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: 32px;
+    padding: clamp(32px, 5vw, 80px);
+    color: var(--rx-surface);
+    background: var(--rx-dark);
+  }
+
+  .rx-login-logo { width: 260px; }
+  .rx-login-access {
+    display: inline-flex;
+    margin-top: 24px;
+    padding: 6px 10px;
+    color: var(--rx-accent);
+    background: var(--rx-dark-secondary);
+    border-radius: var(--rx-radius-small);
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .rx-login-accent {
+    display: block;
+    width: 40px;
+    height: 5px;
+    margin-bottom: 24px;
+    background: var(--rx-accent);
+    border-radius: var(--rx-radius-small);
+  }
+
+  .rx-login-welcome h1 {
+    margin: 0;
+    font-family: var(--rx-font);
+    font-size: clamp(32px, 4vw, 60px);
+    font-weight: 800;
+    line-height: 1.2;
+    letter-spacing: -0.035em;
+  }
+  .rx-login-welcome h1 span { display: block; color: var(--rx-accent); }
+  .rx-login-welcome p {
+    max-width: 420px;
+    margin: 20px 0 0;
+    color: var(--rx-line-strong);
+    font-size: 14px;
+    line-height: 1.8;
+  }
+
+  .rx-login-content {
+    width: 100%;
+    max-width: 520px;
+    min-width: 0;
+    align-self: start;
+    justify-self: center;
+    padding: clamp(32px, 5vw, 80px) 40px;
+  }
+  .rx-login-heading { margin-bottom: 32px; }
+  .rx-login-heading > .rx-label { margin: 0 0 12px; }
+  .rx-login-heading h2 {
+    margin: 0;
+    font-family: var(--rx-font);
+    font-size: 28px;
+    font-weight: 800;
+    line-height: 1.25;
+    letter-spacing: -0.03em;
+  }
+  .rx-login-description { margin: 12px 0 0; color: var(--rx-ink-secondary); font-size: 14px; line-height: 1.6; }
+  .rx-login-form { display: flex; flex-direction: column; gap: 22px; }
+  .rx-login .rx-input { min-height: 48px; background: var(--rx-surface-soft); font-size: 16px; }
+  .rx-login .rx-input::placeholder { color: var(--rx-ink-secondary); }
+  .rx-login .rx-input:focus { background: var(--rx-surface); }
+  .rx-login .rx-input:focus-visible,
+  .rx-login .rx-btn:focus-visible { outline: 3px solid var(--rx-accent); outline-offset: 3px; }
+  .rx-login-submit { width: 100%; min-height: 48px; margin-top: 4px; }
+  .rx-login-error {
+    padding: 12px 14px;
+    color: var(--rx-danger-ink);
+    background: var(--rx-danger-bg);
+    border-radius: var(--rx-radius-medium);
+    font-size: 14px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (max-width: 760px) {
+  .rx-login-shell { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr; }
+  .rx-login-brand { gap: 28px; padding: 28px; }
+  .rx-login-logo { width: 200px; }
+  .rx-login-access { margin-top: 16px; }
+  .rx-login-accent { margin-bottom: 16px; }
+  .rx-login-welcome h1 { font-size: 28px; }
+  .rx-login-welcome h1 span { display: inline; }
+  .rx-login-welcome p { max-width: none; margin-top: 12px; }
+  .rx-login-content { padding: 32px 28px; }
+}
+
+@media (max-width: 380px) {
+  .rx-login-brand, .rx-login-content { padding: 24px 20px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rx-login .rx-input, .rx-login .rx-btn { transition: none; }
+}

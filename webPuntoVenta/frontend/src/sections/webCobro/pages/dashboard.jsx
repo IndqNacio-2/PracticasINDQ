@@ -4,6 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import MaterialIcon from '../../../components/MaterialIcon';
 import BrandLogo from '../../../components/BrandLogo';
 import { LOGIN_PATH } from '../../../auth/session';
+import MembresiasRecepcion, { membresiasRequest, SaldosMembresias } from './MembresiasRecepcion';
+import { EVENTO_CAMBIO_APLICACION, CLAVE_CAMBIO_APLICACION } from '../../../services/cambiosAplicacion';
 
 /*
  * Diseño: sistema visual compartido rx- (src/styles/pos-ui.css), el mismo que
@@ -86,9 +88,9 @@ const FILTROS_ESTADO = [
   {
     key: 'por_cobrar',
     etiqueta: 'Por cobrar',
-    coincide: r => (r.status === 'pendiente' || r.status === 'asistido') && r.capacityStatus !== 'espera',
+    coincide: r => r.paymentStatus !== 'pagado' && (r.status === 'pendiente' || r.status === 'asistido') && r.capacityStatus !== 'espera',
   },
-  { key: 'pagado', etiqueta: 'Pagadas', coincide: r => r.status === 'pagado' },
+  { key: 'pagado', etiqueta: 'Pagadas', coincide: r => r.paymentStatus === 'pagado' },
   { key: 'asistido', etiqueta: 'Asistieron', coincide: r => r.status === 'asistido' },
   { key: 'reagendada', etiqueta: 'Reagendadas', coincide: r => r.reagendada === true },
   { key: 'no_asistio', etiqueta: 'No asistió', coincide: r => r.status === 'no_asistio' },
@@ -169,6 +171,20 @@ export default function Dashboard() {
   const [fechaReserva, setFechaReserva] = useState(hoyISO());
   const [tipoReserva, setTipoReserva] = useState('cliente');
   const [selectedClient, setSelectedClient] = useState(null);
+  const [verMembresias, setVerMembresias] = useState(false);
+  const [comprasSocio, setComprasSocio] = useState([]);
+  const [saldoError, setSaldoError] = useState('');
+  const [saldoCargando, setSaldoCargando] = useState(false);
+  useEffect(() => {
+    let vigente = true;
+    setComprasSocio([]); setSaldoError('');
+    if (!selectedClient) { setSaldoCargando(false); return; }
+    setSaldoCargando(true);
+    membresiasRequest(`/clientes/${selectedClient.id}/membresias`).then(datos => { if (vigente) setComprasSocio(datos); })
+      .catch(e => { if (vigente) setSaldoError(e.message); })
+      .finally(() => { if (vigente) setSaldoCargando(false); });
+    return () => { vigente = false; };
+  }, [selectedClient, reservations]);
   const [showClientList, setShowClientList] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [selectedReservationForPayment, setSelectedReservationForPayment] = useState(null);
@@ -204,10 +220,9 @@ export default function Dashboard() {
   const [horarioReagendarId, setHorarioReagendarId] = useState('');
   const [reagendando, setReagendando] = useState(false);
   const [buscandoCodigo, setBuscandoCodigo] = useState(false);
-  // Presentación: pestaña de estado activa, menú lateral y botón Actualizar.
+  // Presentación: pestaña de estado activa y menú lateral.
   const [filtroEstado, setFiltroEstado] = useState('todas');
   const [menuColapsado, setMenuColapsado] = useState(false);
-  const [actualizando, setActualizando] = useState(false);
   // pide los KPIs al backend unificado (vite los reenvia al gateway).
   const cargarKpis = async () => {
     try {
@@ -371,15 +386,61 @@ export default function Dashboard() {
     return activas;
   };
 
-  // Refresco automático cada minuto (reservas de la app e inasistencias).
+  // Refresco automático: conserva filtros y formularios; nunca recarga la página.
   useEffect(() => {
-    const timer = setInterval(() => {
-      recargarReservas().catch(() => undefined);
-      cargarKpis();
-    }, 60 * 1000);
-    return () => clearInterval(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (isModalOpen || isPaymentModalOpen || verMembresias || reservaAReagendar || ticket || buscandoCodigo) return;
+    const controller = new AbortController();
+    let consultando = false;
+    let cambioPendiente = false;
+    const actualizar = async () => {
+      if (document.visibilityState === 'hidden' || !navigator.onLine || controller.signal.aborted) return;
+      if (consultando) { cambioPendiente = true; return; }
+      consultando = true;
+      const consultar = async (url, aplicar) => {
+        try {
+          const respuesta = await fetch(url, { signal: controller.signal, cache: 'no-store' });
+          if (!respuesta.ok) throw new Error(`HTTP ${respuesta.status}`);
+          const datos = await respuesta.json();
+          if (!controller.signal.aborted) aplicar(datos);
+        } catch (error) {
+          // Mantener los últimos datos válidos si falla la conexión.
+          if (!controller.signal.aborted) console.warn('No se pudo actualizar Recepción:', error);
+        }
+      };
+      try {
+        await Promise.all([
+          consultar(`${API}/api/reservas`, datos => setReservations((Array.isArray(datos) ? datos : []).filter(r => r.status !== 'cancelado'))),
+          consultar(`${API}/api/kpis`, setKpis),
+          consultar(`${API}/api/clientes`, datos => setClientes(Array.isArray(datos) ? datos : [])),
+          consultar('/admin/api/clases', datos => setClases((Array.isArray(datos) ? datos : []).filter(c => c.estatus !== 'inactivo'))),
+          consultar(`/admin/api/horarios?fecha=${encodeURIComponent(fechaReserva)}&estatus=activo`, datos => setHorarios(Array.isArray(datos) ? datos : [])),
+        ]);
+      } finally {
+        consultando = false;
+        if (cambioPendiente && !controller.signal.aborted) {
+          cambioPendiente = false;
+          void actualizar();
+        }
+      }
+    };
+    const cambioEnOtraPestana = event => {
+      if (event.key === CLAVE_CAMBIO_APLICACION) void actualizar();
+    };
+    void actualizar();
+    window.addEventListener(EVENTO_CAMBIO_APLICACION, actualizar);
+    window.addEventListener('storage', cambioEnOtraPestana);
+    window.addEventListener('focus', actualizar);
+    window.addEventListener('online', actualizar);
+    document.addEventListener('visibilitychange', actualizar);
+    return () => {
+      controller.abort();
+      window.removeEventListener(EVENTO_CAMBIO_APLICACION, actualizar);
+      window.removeEventListener('storage', cambioEnOtraPestana);
+      window.removeEventListener('focus', actualizar);
+      window.removeEventListener('online', actualizar);
+      document.removeEventListener('visibilitychange', actualizar);
+    };
+  }, [isModalOpen, isPaymentModalOpen, verMembresias, reservaAReagendar, ticket, buscandoCodigo, fechaReserva]);
 
   // ========== FUNCIONES DE VALIDACIÓN ==========
 
@@ -396,7 +457,7 @@ export default function Dashboard() {
         r.fecha === fecha &&
         r.time === hora &&
         r.capacityStatus !== 'espera' &&
-        r.status !== 'cancelado'
+        !ESTADOS_INACTIVOS.includes(r.status)
     ).length;
 
   /*
@@ -412,14 +473,14 @@ export default function Dashboard() {
 
   // ========== HELPERS DE VALIDACIÓN DE MEMBRESÍA / DUPLICADOS / HORARIO ==========
 
-  const esPremium = (socio) => socio?.membresia === 'Premium';
+  const esPremium = (socio) => !socio?.tieneCompras && socio?.membresia === 'Premium';
 
   // El socio puede reservar como "cliente" solo si está activo y su membresía
   // no está vencida (vigencia_hasta null = no expira).
   const membresiaVigente = (socio) => {
     if (!socio) return false;
     if (socio.activo === false) return false;
-    if (socio.vigencia_hasta && socio.vigencia_hasta < hoyISO()) return false;
+    if (!socio.tieneCompras && socio.vigencia_hasta && socio.vigencia_hasta < hoyISO()) return false;
     return true;
   };
 
@@ -432,6 +493,9 @@ export default function Dashboard() {
    */
   const precioDeClase = (clase, socio = selectedClient) => {
     if (!clase) return 0;
+    if (tipoReserva === 'cliente' && socio?.id === selectedClient?.id && comprasSocio.some(c =>
+      c.fechaInicio <= fechaReserva && c.fechaFin >= fechaReserva && c.clasesIds.includes(clase.idClase)
+      && c.saldos.some(s => (!s.claseId || s.claseId === clase.idClase) && (s.disponibles === null || s.disponibles > 0)))) return 0;
     if (tipoReserva === 'cliente' && socio && esPremium(socio) && membresiaVigente(socio)) {
       return 0;
     }
@@ -510,6 +574,7 @@ export default function Dashboard() {
     try {
       const reservation = reservations.find(r => r.id === id);
       if (!reservation) throw new Error('La reservación no existe.');
+      if (reservation.paymentStatus !== 'pagado') throw new Error('Primero registra el pago o la cobertura de la reserva.');
       if (reservation.status === 'asistido') throw new Error('Este cliente ya tiene asistencia confirmada.');
       if (reservation.capacityStatus === 'espera') throw new Error('El cliente sigue en lista de espera.');
 
@@ -525,7 +590,7 @@ export default function Dashboard() {
       }
 
       setReservations(prev => prev.map(res =>
-        res.id === id ? { ...res, status: 'asistido' } : res
+        res.id === id ? { ...res, status: 'asistido', attendanceStatus: 'asistido' } : res
       ));
       // Si estaba pendiente ya no cuenta como cliente esperado en el KPI.
       await cargarKpis();
@@ -544,7 +609,7 @@ export default function Dashboard() {
       showNotification('No se encontró la reservación.', 'error');
       return;
     }
-    if (reservation.status === 'pagado') {
+    if (reservation.paymentStatus === 'pagado') {
       showNotification('Esta clase ya fue cobrada.', 'error');
       return;
     }
@@ -743,7 +808,7 @@ export default function Dashboard() {
               ? prev.map(r => (r.id === encontrada.id ? encontrada : r))
               : [...prev, encontrada];
           });
-          if (encontrada.status === 'pagado') {
+          if (encontrada.paymentStatus === 'pagado') {
             showNotification(`La reservación ${encontrada.codigo} de ${encontrada.client} ya está pagada.`, 'success');
             return;
           }
@@ -761,7 +826,7 @@ export default function Dashboard() {
       const nombre = termino.toLowerCase();
       const delCliente = lista.filter(r => r.client.toLowerCase().includes(nombre));
       const porCobrar = delCliente.filter(
-        r => (r.status === 'pendiente' || r.status === 'asistido') && r.capacityStatus !== 'espera'
+        r => r.paymentStatus !== 'pagado' && (r.status === 'pendiente' || r.status === 'asistido') && r.capacityStatus !== 'espera'
       );
       if (delCliente.length === 0) {
         throw new Error(`No hay reservaciones con el nombre o código "${termino}".`);
@@ -856,6 +921,7 @@ export default function Dashboard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           client: nombreLimpio,
+          clienteId: tipoReserva === 'cliente' ? selectedClient?.id : null,
           type: tipoReserva,
           class: horarioSel.nombreClase,
           time: horarioSel.horaInicio,
@@ -891,23 +957,10 @@ export default function Dashboard() {
     window.location.assign(LOGIN_PATH);
   };
 
-  // Botón "Actualizar": trae las reservas nuevas (p. ej. de la app) y los KPIs.
-  const handleActualizar = async () => {
-    setActualizando(true);
-    try {
-      await Promise.all([recargarReservas(), cargarKpis()]);
-      showNotification('Reservaciones actualizadas.', 'info');
-    } catch (error) {
-      showNotification(error.message, 'error');
-    } finally {
-      setActualizando(false);
-    }
-  };
-
   // ========== CÁLCULOS DE RESUMEN Y FILTRADO ==========
 
   const totalPending = reservations.filter(r => r.status === 'pendiente').length;
-  const totalPaid = reservations.filter(r => r.status === 'pagado').reduce((sum, r) => sum + r.price, 0);
+  const totalPaid = reservations.filter(r => r.paymentStatus === 'pagado').reduce((sum, r) => sum + r.price, 0);
 
   /*
    * Valores derivados del modal de cobro: se calculan con el monto real de la
@@ -970,9 +1023,12 @@ export default function Dashboard() {
       <p><strong>Folio:</strong> ${escapeHtml(ticket.folio)}</p>
       <p><strong>Fecha:</strong> ${escapeHtml(formatTicketDate(ticket.fecha))}</p>
       <p><strong>Cliente:</strong> ${escapeHtml(ticket.cliente)}</p>
+      ${ticket.contexto === 'membresia' ? `
+      <p><strong>Membresía:</strong> ${escapeHtml(ticket.membresia)}</p>
+      <p><strong>Vigencia:</strong> ${escapeHtml(ticket.fechaInicio)} al ${escapeHtml(ticket.fechaFin)}</p>` : `
       <p><strong>Reserva:</strong> #${escapeHtml(ticket.reservaId)}</p>
       <p><strong>Clase:</strong> ${escapeHtml(ticket.clase)}</p>
-      <p><strong>Horario:</strong> ${escapeHtml(ticket.fechaClase)} ${escapeHtml(ticket.horaClase)}</p>
+      <p><strong>Horario:</strong> ${escapeHtml(ticket.fechaClase)} ${escapeHtml(ticket.horaClase)}</p>`}
       <p><strong>Atendió:</strong> ${escapeHtml(ticket.usuario || 'Recepción')}</p>
       <div class="line"></div>${items}<div class="line"></div>
       <div class="row total"><span>TOTAL</span><span>${escapeHtml(formatMoney(ticket.total))}</span></div>
@@ -1139,14 +1195,9 @@ export default function Dashboard() {
                 <p className="rx-page-subtitle">{fechaDeHoyLarga()}</p>
               </div>
               <div className="rx-page-actions">
-                <button
-                  type="button"
-                  onClick={handleActualizar}
-                  disabled={actualizando}
-                  className="rx-btn rx-btn--outline"
-                >
-                  <MaterialIcon name="refresh" className="text-lg" />
-                  {actualizando ? 'Actualizando…' : 'Actualizar'}
+                <button type="button" onClick={() => setVerMembresias(true)} className="rx-btn rx-btn--outline">
+                  <MaterialIcon name="sell" className="text-lg" filled />
+                  Vender membresía
                 </button>
                 <button type="button" onClick={openModal} className="rx-btn rx-btn--accent">
                   <MaterialIcon name="add" className="text-lg" />
@@ -1156,6 +1207,13 @@ export default function Dashboard() {
             </header>
 
             <div className="rx-page-content">
+              {verMembresias && <MembresiasRecepcion clientes={clientes} clases={clases} onClose={() => setVerMembresias(false)} onTicket={nuevoTicket => { setVerMembresias(false); setTicket(nuevoTicket); }}
+                onVenta={() => {
+                  cargarKpis();
+                  fetch(`${API}/api/clientes`).then(r => { if (!r.ok) throw Error('No se pudieron actualizar los clientes.'); return r.json(); })
+                    .then(datos => { setClientes(datos); setSelectedClient(null); })
+                    .catch(e => showNotification(e.message, 'error'));
+                }} />}
 
               {/* ========== TARJETAS KPI ========== */}
               <div className="rx-grid-kpi rx-admin-kpi-grid" aria-live="polite">
@@ -1276,8 +1334,8 @@ export default function Dashboard() {
                         {reservasVisibles.map((res) => {
                           const badge = ESTADO_BADGE[res.status] ?? ESTADO_BADGE.pendiente;
                           const enEspera = res.capacityStatus === 'espera';
-                          const cobrable = (res.status === 'pendiente' || res.status === 'asistido') && !enEspera;
-                          const puedeConfirmar = res.status === 'pendiente' && !enEspera;
+                          const cobrable = res.paymentStatus !== 'pagado' && (res.status === 'pendiente' || res.status === 'asistido') && !enEspera;
+                          const puedeConfirmar = res.paymentStatus === 'pagado' && (res.status === 'pendiente' || res.status === 'pagado') && res.fecha === hoyISO() && !enEspera;
                           // Solo las pendientes o pagadas se pueden reagendar o cancelar.
                           const vigente = res.status === 'pendiente' || res.status === 'pagado';
                           const colorClase = clases.find(c => c.nombre === res.class)?.color;
@@ -1328,9 +1386,13 @@ export default function Dashboard() {
                                   )}
                                 </span>
                               </td>
-                              <td className="rx-cell-strong rx-table-number">{formatMoney(res.price)}</td>
+                              <td className="rx-cell-strong rx-table-number">
+                                {formatMoney(res.price)}
+                                {res.membresiaCompraId && <span className="rx-cell-caption">Cubierta por membresía · compra #{res.membresiaCompraId}</span>}
+                              </td>
                               <td>
                                 <span className={`rx-badge rx-badge--${badge.tono}`}>{badge.etiqueta}</span>
+                                <span className="rx-cell-caption">{res.paymentStatus === 'pagado' ? 'Pago registrado' : 'Pago pendiente'} · {res.attendanceStatus === 'asistido' ? 'Asistió' : res.attendanceStatus === 'no_asistio' ? 'No asistió' : 'Asistencia pendiente'}</span>
                               </td>
                               <td>
                                 <span className={`rx-badge ${enEspera ? 'rx-badge--special' : 'rx-badge--neutral'}`}>
@@ -1503,7 +1565,7 @@ export default function Dashboard() {
                       value={newReservation.client}
                       onChange={(e) => {
                         const val = e.target.value;
-                        const match = clientes.find(c => String(c.id) === val || c.nombre === val);
+                        const match = clientes.find(c => String(c.id) === val);
                         if (match) {
                           setSelectedClient(match);
                           // El precio depende de la clase ya elegida y de si el
@@ -1543,8 +1605,8 @@ export default function Dashboard() {
                             <span>
                               {c.nombre} <span className="rx-cell-subtle">#{c.id}</span>
                             </span>
-                            <span className={`rx-badge ${c.membresia === 'Premium' ? 'rx-badge--accent' : 'rx-badge--neutral'}`}>
-                              {c.membresia}
+                            <span className={`rx-badge ${c.tieneCompras ? 'rx-badge--accent' : 'rx-badge--neutral'}`}>
+                              {c.membresiasCompradas?.map(compra => compra.nombre).join(' · ') || 'Sin membresías compradas'}
                             </span>
                           </li>
                         ))}
@@ -1556,9 +1618,12 @@ export default function Dashboard() {
                   </div>
 
                   {selectedClient && (
-                    <span className="rx-help-text">
-                      {selectedClient.nombre} · Membresía {selectedClient.membresia}
-                    </span>
+                    <div className="rx-stack">
+                      <span className="rx-help-text">{selectedClient.nombre} · {selectedClient.tieneCompras ? 'Membresías compradas' : 'Sin membresías compradas'}</span>
+                      {saldoCargando ? <p role="status">Consultando cobertura…</p> : <SaldosMembresias compras={comprasSocio} clases={clases} />}
+                      {saldoError && <p className="rx-error-text" role="alert">{saldoError}</p>}
+                      <span className="rx-help-text">El servidor valida la cobertura al guardar. Sin saldo o fuera de las clases incluidas se cobra la tarifa individual.</span>
+                    </div>
                   )}
                   {/* Aviso cuando el socio no puede reservar como socio. */}
                   {selectedClient && !membresiaVigente(selectedClient) && (
@@ -1683,7 +1748,7 @@ export default function Dashboard() {
               {/* PRECIO (lo vuelve a calcular el servidor al guardar) */}
               <div className="rx-context-card rx-summary-row">
                 <span>Precio</span>
-                <strong className="rx-summary-total-value">{formatMoney(newReservation.price || 0)}</strong>
+                <strong className="rx-summary-total-value">{formatMoney(precioDeClase(claseSelModal))}</strong>
               </div>
             </form>
 
@@ -2049,9 +2114,14 @@ export default function Dashboard() {
                 <div className="rx-receipt-section">
                   <p><span className="rx-receipt-label">Fecha:</span> {formatTicketDate(ticket.fecha)}</p>
                   <p><span className="rx-receipt-label">Cliente:</span> {ticket.cliente}</p>
-                  <p><span className="rx-receipt-label">Reserva:</span> #{ticket.reservaId}</p>
-                  <p><span className="rx-receipt-label">Clase:</span> {ticket.clase}</p>
-                  <p><span className="rx-receipt-label">Horario:</span> {ticket.fechaClase} {ticket.horaClase}</p>
+                  {ticket.contexto === 'membresia' ? <>
+                    <p><span className="rx-receipt-label">Membresía:</span> {ticket.membresia}</p>
+                    <p><span className="rx-receipt-label">Vigencia:</span> {ticket.fechaInicio} al {ticket.fechaFin}</p>
+                  </> : <>
+                    <p><span className="rx-receipt-label">Reserva:</span> #{ticket.reservaId}</p>
+                    <p><span className="rx-receipt-label">Clase:</span> {ticket.clase}</p>
+                    <p><span className="rx-receipt-label">Horario:</span> {ticket.fechaClase} {ticket.horaClase}</p>
+                  </>}
                   <p><span className="rx-receipt-label">Atendió:</span> {ticket.usuario || 'Recepción'}</p>
                 </div>
                 <div className="rx-receipt-section">

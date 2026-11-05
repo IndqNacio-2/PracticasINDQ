@@ -59,47 +59,40 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#111827] px-4 py-8 flex items-center justify-center">
-      <div className="w-full max-w-5xl overflow-hidden rounded-3xl bg-white shadow-2xl lg:grid lg:grid-cols-[1.05fr_0.95fr]">
-        <section className="hidden bg-gradient-to-br from-[#111827] via-[#1f2937] to-[#374151] p-12 text-white lg:flex lg:flex-col lg:justify-between">
-          <div>
-            <BrandLogo className="w-full max-w-sm" />
-            <p className="mt-5 text-sm text-gray-300">Acceso del personal</p>
+    <main className="rx-login">
+      <div className="rx-login-shell">
+        <section className="rx-login-brand" aria-labelledby="login-welcome">
+          <div className="rx-login-brand-header">
+            <BrandLogo className="rx-login-logo" />
+            <span className="rx-login-access">Acceso del personal</span>
           </div>
 
-          <div>
-            <p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-gray-400">
-              Un solo acceso
-            </p>
-            <h1 className="text-4xl font-bold leading-tight">
-              Entra directamente al módulo que te corresponde.
+          <div className="rx-login-welcome">
+            <span className="rx-login-accent" aria-hidden="true" />
+            <h1 id="login-welcome">
+              Bienvenido a <span>NUUCLEO</span>
             </h1>
-            <p className="mt-5 max-w-md text-base leading-7 text-gray-300">
-              El sistema identifica tu rol y abre automáticamente Administración,
-              Cobro o Punto de Venta.
+            <p>
+              Gestiona clases, reservaciones, asistencias y ventas en un solo lugar.
             </p>
           </div>
 
-          <p className="text-sm text-gray-400">Sistema de reservación de clases</p>
         </section>
 
-        <section className="p-7 sm:p-10 lg:p-12">
-          <div className="mb-8 rounded-2xl bg-[#111827] p-5 lg:hidden">
-            <BrandLogo className="mx-auto w-full max-w-xs" />
-          </div>
-          <div className="mb-8">
-            <p className="mb-2 text-sm font-semibold uppercase tracking-[0.16em] text-gray-500">
-              Bienvenido
+        <section className="rx-login-content" aria-labelledby="login-title">
+          <div className="rx-login-heading">
+            <p className="rx-label">
+              Comienza tu jornada
             </p>
-            <h2 className="text-3xl font-bold text-gray-900">Iniciar sesión</h2>
-            <p className="mt-2 text-sm text-gray-500">
+            <h2 id="login-title">Iniciar sesión</h2>
+            <p className="rx-login-description">
               Ingresa tus credenciales para continuar.
             </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <label className="block text-sm font-semibold text-gray-700">
-              Correo electrónico
+          <form onSubmit={handleSubmit} className="rx-login-form" aria-busy={loading}>
+            <label className="rx-field">
+              <span className="rx-label">Correo electrónico</span>
               <input
                 type="email"
                 required
@@ -107,12 +100,12 @@ export default function LoginPage() {
                 value={correo}
                 onChange={(event) => setCorreo(event.target.value)}
                 placeholder="Tu correo electrónico"
-                className="mt-2 h-12 w-full rounded-xl border border-gray-200 px-4 text-sm text-gray-900 outline-none focus:border-gray-500 focus:ring-4 focus:ring-gray-100"
+                className="rx-input"
               />
             </label>
 
-            <label className="block text-sm font-semibold text-gray-700">
-              Contraseña
+            <label className="rx-field">
+              <span className="rx-label">Contraseña</span>
               <input
                 type="password"
                 required
@@ -120,12 +113,12 @@ export default function LoginPage() {
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 placeholder="••••••••"
-                className="mt-2 h-12 w-full rounded-xl border border-gray-200 px-4 text-sm text-gray-900 outline-none focus:border-gray-500 focus:ring-4 focus:ring-gray-100"
+                className="rx-input"
               />
             </label>
 
             {error && (
-              <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              <div className="rx-login-error" role="alert">
                 {error}
               </div>
             )}
@@ -133,13 +126,13 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="flex h-12 w-full items-center justify-center rounded-xl bg-[#111827] px-5 text-sm font-bold text-white hover:bg-[#374151] disabled:opacity-60"
+              className="rx-btn rx-btn--accent rx-login-submit"
             >
               {loading ? "Verificando..." : "Ingresar al sistema"}
             </button>
           </form>
         </section>
       </div>
-    </div>
+    </main>
   )
 }

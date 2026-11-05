@@ -10,6 +10,29 @@ import {
 } from '../lib/validacion';
 import { mantenerHorizonteSesiones } from '../services/mantener-horizonte-sesiones';
 import { errorIntervaloHorario, nombreCompletoUsuario } from '../services/validacion-horarios';
+import { obtenerDetalleReservas, reservasDeHorario, ocupacionReal } from '../services/reservas-protegidas';
+
+async function conOcupacionReal(horarios: any[]) {
+    const reservas = await obtenerDetalleReservas();
+    return horarios.map(horario => {
+        const datos = horario.toJSON();
+        const ocupados = ocupacionReal(reservasDeHorario(reservas, datos));
+        return { ...datos, capacidadDisponible: Math.max(0, datos.capacidadTotal - ocupados) };
+    });
+}
+
+async function errorCambioConReservas(horario: any, cambios: Record<string, unknown>) {
+    const reservas = reservasDeHorario(await obtenerDetalleReservas(), horario.toJSON());
+    if (!reservas.length) return null;
+    const identidad = ['idClase', 'nombreClase', 'fecha', 'horaInicio', 'horaFin', 'estatus'];
+    if (identidad.some(campo => cambios[campo] !== undefined && cambios[campo] !== horario[campo])) {
+        return 'La sesion tiene historial de reservas: no se puede cambiar clase, fecha, horas ni estatus. Crea otra sesion y gestiona las reservas en recepcion.';
+    }
+    if (cambios.capacidadTotal !== undefined && Number(cambios.capacidadTotal) < horario.capacidadTotal) {
+        return 'No se puede reducir la capacidad de una sesion con historial de reservas.';
+    }
+    return null;
+}
 
 
 /*
@@ -67,7 +90,7 @@ export const listarHorarios = async (req: Request, res: Response) => {
     if (estatus) filtro.estatus = estatus;
 
     const horarios = await Horario.find(filtro).sort({ fecha: 1, horaInicio: 1 });
-    res.json(horarios);
+    res.json(await conOcupacionReal(horarios));
 };
 
 export const listarHorariosReservables = async (req: Request, res: Response) => {
@@ -84,7 +107,7 @@ export const listarHorariosReservables = async (req: Request, res: Response) => 
     if (fecha) filtro.fecha = fecha;
 
     const horarios = await Horario.find(filtro).sort({ fecha: 1, horaInicio: 1 });
-    res.json(horarios);
+    res.json(await conOcupacionReal(horarios));
 };
 
 export const crearHorario = async (req: Request, res: Response) => {
@@ -226,6 +249,8 @@ export const editarHorario = async (req: Request, res: Response) => {
 
     const existentes = await Horario.findById(req.params.id);
     if (!existentes) return res.status(404).json({ error: 'Horario no encontrado' });
+    const errorReservas = await errorCambioConReservas(existentes, req.body);
+    if (errorReservas) return res.status(409).json({ error: errorReservas });
 
     // Solo se admiten las columnas del horario: asi el navegador no puede
     // pisar campos que son del servidor (por ejemplo _id o capacidadDisponible).
@@ -305,7 +330,7 @@ export const editarHorario = async (req: Request, res: Response) => {
 
     // La capacidad no puede bajar de los lugares ya ocupados: si se reduce por
     // debajo, el horario quedaria con mas reservas que plazas.
-    const ocupados = Math.max(0, existentes.capacidadTotal - existentes.capacidadDisponible);
+    const ocupados = ocupacionReal(reservasDeHorario(await obtenerDetalleReservas(), existentes.toJSON()));
     if (capacidadFinal < ocupados) {
         return res.status(409).json({
             error: `La capacidad no puede ser menor que los ${ocupados} lugares ya reservados.`,
@@ -354,6 +379,8 @@ export const editarHorario = async (req: Request, res: Response) => {
     }
     cambios.idClase = idClaseFinal;
     cambios.nombreClase = claseRef.nombre;
+    const errorCambiosResueltos = await errorCambioConReservas(existentes, cambios);
+    if (errorCambiosResueltos) return res.status(409).json({ error: errorCambiosResueltos });
     cambios.entrenadorId = entrenadorFinal;
     cambios.nombreEntrenador = nombreEntrenadorFinal;
     if (cambios.salon !== undefined) cambios.salon = String(cambios.salon).trim();
@@ -386,6 +413,8 @@ export const editarExcepcionHorario = async (req: Request, res: Response) => {
 
     const existente: any = await Horario.findById(req.params.id);
     if (!existente) return res.status(404).json({ error: 'Horario no encontrado.' });
+    const errorReservas = await errorCambioConReservas(existente, req.body);
+    if (errorReservas) return res.status(409).json({ error: errorReservas });
     if (existente.origen !== 'plantilla' || !existente.idPlantilla) {
         return res.status(409).json({ error: 'Solo las sesiones generadas por una programacion semanal pueden marcarse como excepcion.' });
     }
@@ -470,7 +499,11 @@ export const eliminarHorario = async (req: Request, res: Response) => {
         return res.status(400).json({ error: 'El identificador del horario no es valido.' });
     }
 
-    const eliminado = await Horario.findByIdAndDelete(req.params.id);
-    if (!eliminado) return res.status(404).json({ error: 'Horario no encontrado' });
+    const existente = await Horario.findById(req.params.id);
+    if (!existente) return res.status(404).json({ error: 'Horario no encontrado' });
+    if (reservasDeHorario(await obtenerDetalleReservas(), existente.toJSON()).length) {
+        return res.status(409).json({ error: 'No se puede eliminar una sesion con historial de reservas.' });
+    }
+    await Horario.findByIdAndDelete(req.params.id);
     res.json({ mensaje: 'Horario eliminado' });
 };

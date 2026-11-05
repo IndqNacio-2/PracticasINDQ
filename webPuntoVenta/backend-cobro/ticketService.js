@@ -19,7 +19,7 @@ function crearContenidoTicket(pago) {
   const fecha = new Date(pago.fecha);
   const lineas = [
     'NUUCLEO',
-    pago.contexto === 'pos' ? 'VENTA DE MOSTRADOR' : 'COBRO DE SERVICIOS',
+    pago.contexto === 'pos' ? 'VENTA DE MOSTRADOR' : pago.contexto === 'membresia' ? 'VENTA DE MEMBRESIA' : 'COBRO DE SERVICIOS',
     '='.repeat(ANCHO),
     fila('Folio:', pago.folio),
     fila('Fecha:', Number.isNaN(fecha.getTime()) ? '-' : fecha.toLocaleString('es-MX', { hour12: false })),
@@ -29,6 +29,8 @@ function crearContenidoTicket(pago) {
   const reserva = pago.codigo_reserva ?? pago.reservaId;
   if (reserva != null) lineas.push(fila('Reserva:', reserva));
   if (pago.fechaClase) lineas.push(fila('Clase:', `${pago.fechaClase} ${pago.horaClase || ''}`));
+  if (pago.fechaInicio) lineas.push(fila('Inicio:', pago.fechaInicio));
+  if (pago.fechaFin) lineas.push(fila('Vigencia hasta:', pago.fechaFin));
   lineas.push('-'.repeat(ANCHO));
   for (const item of pago.items || []) {
     const cantidad = Number(item.cantidad ?? 1);

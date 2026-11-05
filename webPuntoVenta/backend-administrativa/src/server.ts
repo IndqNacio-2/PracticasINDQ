@@ -23,6 +23,8 @@ const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
 app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:5173' }));
+// Límite ampliado exclusivamente para usuarios con foto reducida.
+app.use('/api/usuarios', express.json({ limit: '256kb' }));
 app.use(express.json());
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));

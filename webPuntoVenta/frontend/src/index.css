@@ -9,6 +9,7 @@
 /* Importo una sola vez el sistema visual compartido del Punto de Venta. */
 @import './styles/pos-ui.css';
 @import './styles/admin-buttons.css';
+@import './styles/login-ui.css';
 
 /* ---- Sección webCobro (trabajo de un compañero) ----
    Colores personalizados que su proyecto definía en tailwind.config.js.

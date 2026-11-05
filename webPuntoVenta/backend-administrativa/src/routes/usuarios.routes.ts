@@ -2,6 +2,7 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { Usuario } from '../models/Usuarios/usuarios';
 import { requireAuth, requireRole } from '../middleware/auth';
+import { validarFoto } from '../lib/foto-usuario';
 
 const router = Router();
 
@@ -21,6 +22,10 @@ router.get('/', async (_req, res) => {
 
 // POST /api/usuarios
 router.post('/', soloAdministrador, async (req, res) => {
+    if (req.body.foto !== undefined) {
+        const error = validarFoto(req.body.foto);
+        if (error) return res.status(400).json({ error });
+    }
     const { nombre, apellidos, correo, rol, codigoAcceso, password } = req.body;
     if (!nombre || !apellidos || !correo || !rol || !codigoAcceso || !password) {
         return res.status(400).json({ error: 'Nombre, apellidos, correo, código de acceso, rol y contraseña son obligatorios' });
@@ -39,6 +44,10 @@ router.post('/', soloAdministrador, async (req, res) => {
 
 // PATCH /api/usuarios/:id  (editar, cambiar contraseña y togglear estatus)
 router.patch('/:id', soloAdministrador, async (req, res) => {
+    if (req.body.foto !== undefined) {
+        const error = validarFoto(req.body.foto);
+        if (error) return res.status(400).json({ error });
+    }
     if (req.body.correo) {
         const enUso = await Usuario.findOne({ correo: req.body.correo.toLowerCase(), _id: { $ne: req.params.id } });
         if (enUso) return res.status(409).json({ error: 'Ese correo ya está en uso por otro usuario' });

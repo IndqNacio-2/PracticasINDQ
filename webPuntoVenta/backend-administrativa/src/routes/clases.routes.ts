@@ -11,6 +11,9 @@ router.get('/', async (_req, res) => {
 
 // POST /api/clases
 router.post('/', async (req, res) => {
+    if (req.body.entrenadorId !== undefined) {
+        return res.status(400).json({ error: 'El entrenador se asigna en la programacion semanal o en la sesion, no en el catalogo de clases.' });
+    }
     const { nombre, capacidad } = req.body;
     if (!nombre || !capacidad) {
         return res.status(400).json({ error: 'Nombre y capacidad son obligatorios' });
@@ -25,6 +28,9 @@ router.post('/', async (req, res) => {
 
 // PATCH /api/clases/:id  (editar y también togglear estatus)
 router.patch('/:id', async (req, res) => {
+    if (req.body.entrenadorId !== undefined) {
+        return res.status(400).json({ error: 'El entrenador se asigna en la programacion semanal o en la sesion, no en el catalogo de clases.' });
+    }
     const clase = await Clase.findByIdAndUpdate(req.params.id, req.body, { new: true });
     if (!clase) return res.status(404).json({ error: 'Clase no encontrada' });
     res.json(clase);

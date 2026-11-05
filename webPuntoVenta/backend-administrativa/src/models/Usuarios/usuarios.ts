@@ -11,6 +11,7 @@ const usuarioSchema = new Schema(
         apellidos: { type: String, required: true },
         correo: { type: String, required: true, unique: true, lowercase: true, trim: true },
         telefono: { type: String, default: '' },
+        foto: { type: String, default: '' },
         codigoAcceso: { type: String, required: true, unique: true },
         rol: { type: String, enum: ['administrador', 'entrenador', 'recepcion', 'vendedor'], required: true },
         estatus: { type: String, enum: ['activo', 'inactivo'], default: 'activo' },

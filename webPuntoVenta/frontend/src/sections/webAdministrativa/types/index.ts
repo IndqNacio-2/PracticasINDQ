@@ -12,6 +12,7 @@ export interface Usuario {
   estatus: Estatus;
   rol: UserRole;
   avatar?: string;
+  foto?: string;
   fechaCreacion: string;
 }
 

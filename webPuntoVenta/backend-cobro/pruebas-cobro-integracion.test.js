@@ -10,7 +10,7 @@ function preparar(estadoCupo = 'confirmada', impresion = Promise.resolve(false),
   const rutas = new Map();
   const consultas = [];
   const impresiones = [];
-  const reserva = { id: 1, cliente: 'Socio', tipo: 'cliente', clase: 'Yoga', hora: '12:00', fecha: '2026-11-04', estado, estado_cupo: estadoCupo, precio: 180 };
+  const reserva = { id: 1, cliente: 'Socio', cliente_id: 2, tipo: 'cliente', clase: 'Yoga', hora: '12:00', fecha: '2026-11-04', estado, estado_pago: 'pendiente', estado_cupo: estadoCupo, precio: 180 };
   const conexion = {
     async query(sql, parametros) {
       consultas.push({ sql, parametros });
@@ -39,6 +39,8 @@ function preparar(estadoCupo = 'confirmada', impresion = Promise.resolve(false),
       if (nombre === 'express') return express;
       if (nombre === 'cors') return () => () => {};
       if (nombre === 'pg') return { Pool: PoolSimulado };
+      if (nombre === './reservasFlujo') return require('./reservasFlujo');
+      if (nombre === './membresiasService') return { registrarRutas() {} };
       if (nombre === './asistenciaService') return { montarAsistencia() { return {}; } };
       if (nombre === './ticketService') return { imprimirTicket(ticket) {
         assert.ok(consultas.some(q => q.sql === 'COMMIT'));
@@ -152,7 +154,7 @@ test('reglas de Carlos: cancelación de 24 horas, espera y una sola reagenda', (
   assert.match(reglas({ ...reserva, fecha: '2026-11-04', time: '11:00' }, ahora).motivoNoReagendar, /comenzó/);
 });
 
-test('revisión de inasistencias solo actualiza pendientes confirmadas con fecha', async () => {
+test('revisión de inasistencias actualiza pendientes y pagadas confirmadas con fecha', async () => {
   const prueba = preparar();
   let consulta;
   const cantidad = await prueba.marcarInasistencias({ async query(sql, parametros) {
@@ -160,7 +162,7 @@ test('revisión de inasistencias solo actualiza pendientes confirmadas con fecha
     return { rowCount: 2 };
   } });
   assert.equal(cantidad, 2);
-  assert.match(consulta.sql, /estado = 'pendiente'/);
+  assert.match(consulta.sql, /estado IN \('pendiente', 'pagado'\)/);
   assert.match(consulta.sql, /estado_cupo = 'confirmada'/);
   assert.match(consulta.sql, /fecha <> ''/);
   assert.match(consulta.sql, /SET estado = 'no_asistio'/);

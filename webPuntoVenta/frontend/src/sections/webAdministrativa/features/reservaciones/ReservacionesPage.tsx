@@ -11,6 +11,9 @@ import { apiCobro } from '../../lib/api';
 interface ReservaCobro {
   id: number;
   client: string;
+  clienteId: number | null;
+  paymentStatus: 'pendiente' | 'pagado';
+  attendanceStatus: 'pendiente' | 'asistido' | 'no_asistio';
   type: 'cliente' | 'visitante';
   class: string;
   time: string;
@@ -74,8 +77,8 @@ export function ReservacionesPage() {
     ? reservaciones
     : filter === 'espera'
       ? reservaciones.filter(r => r.capacityStatus === 'espera' && r.status !== 'cancelado')
-      : reservaciones.filter(r => r.status === filter);
-  const pendientes = reservaciones.filter(r => r.status === 'pendiente' && r.capacityStatus === 'confirmada').length;
+      : reservaciones.filter(r => filter === 'pagado' ? r.paymentStatus === 'pagado' : r.status === filter);
+  const pendientes = reservaciones.filter(r => r.paymentStatus === 'pendiente' && r.status === 'pendiente' && r.capacityStatus === 'confirmada').length;
   const enEspera = reservaciones.filter(r => r.capacityStatus === 'espera' && r.status !== 'cancelado').length;
 
   return (
@@ -117,7 +120,7 @@ export function ReservacionesPage() {
                 const r = row as unknown as ReservaCobro;
                 return (
                   <div className="flex items-center gap-2">
-                    <p className="font-medium text-gray-800">{r.client}</p>
+                    <p className="font-medium text-gray-800">{r.client} {r.clienteId ? `#${r.clienteId}` : ''}</p>
                     <Badge variant="cliente" label={r.type === 'visitante' ? 'Visitante' : 'Socio'} />
                   </div>
                 );
@@ -142,7 +145,9 @@ export function ReservacionesPage() {
               render: row => {
                 const r = row as unknown as ReservaCobro;
                 const badge = estatusBadge[r.status] ?? { variant: 'pendiente' as const, label: r.status };
-                return <Badge variant={badge.variant} label={badge.label} />;
+                return <div className="space-y-1"><Badge variant={badge.variant} label={badge.label} />
+                  <p className="text-xs text-gray-500">{r.paymentStatus === 'pagado' ? 'Pago registrado' : 'Pago pendiente'} · {r.attendanceStatus === 'pendiente' ? 'Asistencia pendiente' : r.attendanceStatus === 'asistido' ? 'Asistio' : 'No asistio'}</p>
+                </div>;
               }
             },
             {

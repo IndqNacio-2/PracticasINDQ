@@ -1,13 +1,6 @@
 import BrandLogo from '../../../components/BrandLogo';
 import { useState, useEffect, useRef } from 'react';
-import {
-  CheckCircle,
-  User,
-  AlertTriangle,
-  LogIn,
-  LogOut,
-  History,
-} from 'lucide-react';
+import MaterialIcon from '../../../components/MaterialIcon';
 
 // Formatos aceptados: EMP-101, CLI-3 o el ID numérico de un socio.
 const listoBuscar = (codigo) =>
@@ -23,19 +16,19 @@ const normalizar = (codigo) =>
 const ETIQUETAS_ESTADO = {
   puntual: {
     texto: 'Puntual',
-    clases: 'bg-emerald-100 text-emerald-700',
+    clases: 'rx-badge--success',
   },
   retardo: {
     texto: 'Retardo',
-    clases: 'bg-amber-100 text-amber-700',
+    clases: 'rx-badge--warning',
   },
   inasistencia: {
     texto: 'Inasistencia',
-    clases: 'bg-red-100 text-red-700',
+    clases: 'rx-badge--danger',
   },
   sin_turno: {
     texto: 'Sin turno asignado',
-    clases: 'bg-slate-100 text-slate-600',
+    clases: 'rx-badge--neutral',
   },
 };
 
@@ -69,6 +62,31 @@ const formatearHora = (valor) => {
     hour: '2-digit',
     minute: '2-digit',
   });
+};
+
+// Iniciales para el avatar: "Ana García" -> "AG".
+const iniciales = (nombre = '') =>
+  nombre
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((parte) => parte[0] || '')
+    .join('')
+    .toUpperCase() || '?';
+
+// Ícono de una marca: la entrada resalta en verde y la salida queda neutra. Las
+// inasistencias que registra el sistema llevan otro ícono porque nadie marcó.
+const IconoMarca = ({ tipo, automatica = false }) => {
+  const esEntrada = tipo === 'entrada' && !automatica;
+  const icono = automatica ? 'person_off' : esEntrada ? 'login' : 'logout';
+
+  return (
+    <span
+      className={`rx-admin-list-icon ${esEntrada ? 'rx-kiosk-entry-icon' : ''}`}
+    >
+      <MaterialIcon name={icono} className="text-xl" />
+    </span>
+  );
 };
 
 const Attendance = () => {
@@ -248,7 +266,7 @@ const Attendance = () => {
         tipo: data.tipo,
         estado: data.estado || null,
         msg:
-          `${data.tipo === 'entrada' ? '🟢 Entrada' : '🔴 Salida'} registrada correctamente` +
+          `${data.tipo === 'entrada' ? 'Entrada' : 'Salida'} registrada correctamente` +
           (etiquetaEstado ? ` · ${etiquetaEstado}` : ''),
       });
     } catch (error) {
@@ -297,110 +315,75 @@ const Attendance = () => {
   });
 
   return (
-    <div className="min-h-screen w-full bg-slate-900 flex items-center justify-center p-4 font-sans">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden">
-        <div className="bg-[#111827] p-5 text-white flex flex-wrap items-center justify-between gap-4">
-          <div className="text-left">
-            <BrandLogo className="w-44 sm:w-60" />
-            <h1 className="mt-3 text-sm font-medium text-gray-300">Checador de asistencia</h1>
-          </div>
-
-          <div className="text-right shrink-0">
-            <div className="text-2xl font-bold tabular-nums">
-              {horaFormateada}
-            </div>
-            <div className="text-xs opacity-90 capitalize">
-              {fechaFormateada}
+    <div className="rx-kiosk">
+      <main className="rx-kiosk-card">
+        <header className="rx-kiosk-header">
+          <div className="rx-kiosk-brand">
+            <BrandLogo variant="symbol" className="rx-brand-symbol" />
+            <div className="rx-brand-content">
+              <h1 className="rx-brand-title">Nuucleo</h1>
+              <p className="rx-brand-subtitle">Checador de asistencia</p>
             </div>
           </div>
-        </div>
 
-        <div className="p-8">
-          <div className="flex flex-col gap-4">
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                <User className="text-slate-400" size={24} />
-              </div>
-
-              <input
-                type="text"
-                value={codigo}
-                onChange={(e) => {
-                  setCodigo(e.target.value);
-                  setResultado(null);
-                }}
-                placeholder="Escanea o captura tu código (EMP-101 o ID del socio)"
-                className="w-full pl-12 pr-4 py-4 text-xl border-2 border-slate-200 rounded-xl
-                           focus:outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/20
-                           transition-all text-center tracking-[0.3em] uppercase placeholder:tracking-normal"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && codigo.trim()) {
-                    buscar(
-                      codigo.trim().toUpperCase(),
-                      ++busqRef.current
-                    );
-                  }
-                }}
-                autoFocus
-              />
-            </div>
-
-            {cargando && !listoParaMarcar && (
-              <div className="py-3 text-center text-sm text-slate-400 animate-pulse">
-                Buscando código...
-              </div>
-            )}
+          <div className="rx-kiosk-clock">
+            <p className="rx-kiosk-time">{horaFormateada}</p>
+            <p className="rx-kiosk-date">{fechaFormateada}</p>
           </div>
+        </header>
+
+        <div className="rx-kiosk-body">
+          <div className="rx-search">
+            <MaterialIcon name="person" className="rx-search-icon text-2xl" />
+            <input
+              type="text"
+              value={codigo}
+              onChange={(e) => {
+                setCodigo(e.target.value);
+                setResultado(null);
+              }}
+              placeholder="Escanea o captura tu código (EMP-101 o ID del socio)"
+              aria-label="Código de empleado o ID del socio"
+              autoComplete="off"
+              className="rx-input rx-input--kiosk"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && codigo.trim()) {
+                  buscar(
+                    codigo.trim().toUpperCase(),
+                    ++busqRef.current
+                  );
+                }
+              }}
+              autoFocus
+            />
+          </div>
+
+          {cargando && !listoParaMarcar && (
+            <p className="rx-kiosk-loading animate-pulse" role="status">
+              Buscando código...
+            </p>
+          )}
 
           {resultado && (
             <div
-              className={`mt-6 p-4 rounded-xl flex items-start gap-3 ${
-                resultado.exitoso
-                  ? 'bg-emerald-50 border border-emerald-200'
-                  : 'bg-red-50 border border-red-200'
+              className={`rx-alert ${
+                resultado.exitoso ? 'rx-alert--success' : 'rx-alert--danger'
               }`}
+              role={resultado.exitoso ? 'status' : 'alert'}
             >
-              {resultado.exitoso ? (
-                <CheckCircle
-                  className="text-emerald-500 shrink-0 mt-0.5"
-                  size={24}
-                />
-              ) : (
-                <AlertTriangle
-                  className="text-red-500 shrink-0 mt-0.5"
-                  size={24}
-                />
-              )}
+              <MaterialIcon
+                name={resultado.exitoso ? 'check_circle' : 'warning'}
+                className="flex-shrink-0 text-2xl"
+                filled
+              />
 
               <div>
-                <p
-                  className={`font-semibold ${
-                    resultado.exitoso
-                      ? 'text-emerald-800'
-                      : 'text-red-800'
-                  }`}
-                >
-                  {resultado.msg}
-                </p>
-
-                {resultado.tipo && (
-                  <p
-                    className={`text-sm mt-1 ${
-                      resultado.tipo === 'entrada'
-                        ? 'text-emerald-700'
-                        : 'text-red-700'
-                    }`}
-                  >
-                    {resultado.tipo === 'entrada'
-                      ? '🟢 Entrada'
-                      : '🔴 Salida'}
-                  </p>
-                )}
+                <p className="rx-alert-title">{resultado.msg}</p>
 
                 {resultado.estado &&
                   ETIQUETAS_ESTADO[resultado.estado] && (
                     <span
-                      className={`inline-block mt-2 text-xs font-semibold px-3 py-1 rounded-full ${
+                      className={`rx-badge ${
                         ETIQUETAS_ESTADO[resultado.estado].clases
                       }`}
                     >
@@ -412,37 +395,39 @@ const Attendance = () => {
           )}
 
           {empleado && (
-            <div className="mt-6 bg-emerald-50 border-2 border-emerald-200 rounded-xl p-4">
-              <div className="flex items-start justify-between gap-3 flex-wrap">
-                <div>
-                  <p className="text-xs text-slate-500 uppercase font-semibold">
-                    Usuario encontrado
-                  </p>
+            <section className="rx-admin-card" aria-label="Usuario encontrado">
+              <div className="rx-admin-card-header rx-kiosk-person-header">
+                <div className="rx-table-product">
+                  <span className="rx-kiosk-avatar">
+                    {iniciales(empleado.nombre)}
+                  </span>
 
-                  <p className="text-2xl font-bold text-slate-800">
-                    {empleado.nombre}
-                  </p>
+                  <div>
+                    <span className="rx-label">Usuario encontrado</span>
 
-                  <p className="text-sm text-slate-600 mt-1">
-                    {empleado.tipo === 'cliente'
-                      ? `Membresía: ${empleado.membresia}`
-                      : `${empleado.rol || 'Empleado'} · ${empleado.codigo}`}
-                  </p>
+                    <p className="rx-kiosk-person-name">{empleado.nombre}</p>
 
-                  {empleado.horaInicio && (
-                    <p className="text-xs text-slate-500 mt-1">
-                      Inicio de turno: {formatearHora(empleado.horaInicio)}
+                    <p className="rx-page-subtitle">
+                      {empleado.tipo === 'cliente'
+                        ? `Membresía: ${empleado.membresia}`
+                        : `${empleado.rol || 'Empleado'} · ${empleado.codigo}`}
                     </p>
-                  )}
+
+                    {empleado.horaInicio && (
+                      <p className="rx-page-subtitle">
+                        Inicio de turno: {formatearHora(empleado.horaInicio)}
+                      </p>
+                    )}
+                  </div>
                 </div>
 
                 <span
-                  className={`text-xs font-semibold px-3 py-1 rounded-full ${
+                  className={`rx-badge ${
                     empleado.siguienteTipo === 'salida'
-                      ? 'bg-amber-100 text-amber-700'
+                      ? 'rx-badge--warning'
                       : empleado.marcoHoy
-                        ? 'bg-emerald-100 text-emerald-700'
-                        : 'bg-slate-200 text-slate-600'
+                        ? 'rx-badge--success'
+                        : 'rx-badge--neutral'
                   }`}
                 >
                   {empleado.siguienteTipo === 'salida'
@@ -454,26 +439,19 @@ const Attendance = () => {
               </div>
 
               {empleado.ultimoRegistro && (
-                <div className="mt-4 p-3 bg-white rounded-lg border border-slate-200 flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-slate-500 uppercase mb-1">
-                      Último registro
-                    </p>
+                <div className="rx-admin-list-item">
+                  <IconoMarca tipo={empleado.ultimoRegistro} />
 
-                    <span
-                      className={`font-semibold ${
-                        empleado.ultimoRegistro === 'entrada'
-                          ? 'text-emerald-600'
-                          : 'text-red-600'
-                      }`}
-                    >
+                  <span className="rx-admin-list-copy">
+                    <span>Último registro</span>
+                    <strong>
                       {empleado.ultimoRegistro === 'entrada'
-                        ? '🟢 ENTRADA'
-                        : '🔴 SALIDA'}
-                    </span>
-                  </div>
+                        ? 'Entrada'
+                        : 'Salida'}
+                    </strong>
+                  </span>
 
-                  <span className="text-sm text-slate-600 tabular-nums">
+                  <span className="rx-kiosk-timestamp">
                     {formatearFecha(empleado.timestamp)}
                   </span>
                 </div>
@@ -481,115 +459,99 @@ const Attendance = () => {
 
               {listoParaMarcar && (
                 <button
+                  type="button"
                   onClick={marcar}
                   disabled={marcando}
-                  className={`mt-4 w-full py-3 rounded-lg text-white font-semibold transition-all
-                    active:scale-[0.98] flex items-center justify-center gap-2
-                    disabled:opacity-60 disabled:cursor-not-allowed ${
-                      empleado.siguienteTipo === 'entrada'
-                        ? 'bg-emerald-500 hover:bg-emerald-600'
-                        : 'bg-red-500 hover:bg-red-600'
-                    }`}
+                  className={`rx-btn rx-btn--large rx-btn--block rx-kiosk-mark ${
+                    empleado.siguienteTipo === 'entrada'
+                      ? 'rx-btn--accent'
+                      : 'rx-btn--dark'
+                  }`}
                 >
                   {empleado.siguienteTipo === 'entrada' ? (
                     <>
-                      <LogIn size={18} />
-                      {marcando ? 'REGISTRANDO...' : 'MARCAR ENTRADA'}
+                      <MaterialIcon name="login" className="text-xl" />
+                      {marcando ? 'Registrando...' : 'Marcar entrada'}
                     </>
                   ) : (
                     <>
-                      <LogOut size={18} />
-                      {marcando ? 'REGISTRANDO...' : 'MARCAR SALIDA'}
+                      <MaterialIcon name="logout" className="text-xl" />
+                      {marcando ? 'Registrando...' : 'Marcar salida'}
                     </>
                   )}
                 </button>
               )}
-            </div>
+            </section>
           )}
 
-          {empleado && historial.length > 0 && (
-            <div className="mt-6 pt-6 border-t border-slate-100">
-              <h3 className="text-sm text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-2">
-                <History size={14} />
-                Últimos registros de {empleado.nombre}
-              </h3>
+          {empleado && (
+            <section className="rx-admin-card">
+              <div className="rx-admin-card-header">
+                <h2 className="rx-admin-card-title">
+                  Últimos registros de {empleado.nombre}
+                </h2>
 
-              <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                {historial.map((reg) => (
-                  <div
-                    key={reg._id || `${reg.codigo}-${reg.ts || reg.fecha}`}
-                    className="flex items-center justify-between gap-3 py-2 px-3 bg-slate-50 rounded-lg"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div
-                        className={`w-2 h-2 rounded-full ${
-                          reg.tipo === 'entrada'
-                            ? 'bg-emerald-500'
-                            : 'bg-red-500'
-                        }`}
-                      />
-
-                      <div>
-                        <span className="text-sm font-medium text-slate-700">
-                          {reg.nombre || reg.codigo}
-                        </span>
-
-                        {reg.estado && ETIQUETAS_ESTADO[reg.estado] && (
-                          <span
-                            className={`ml-2 text-xs font-semibold px-2 py-0.5 rounded-full ${
-                              ETIQUETAS_ESTADO[reg.estado].clases
-                            }`}
-                          >
-                            {ETIQUETAS_ESTADO[reg.estado].texto}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-4 text-sm text-slate-500">
-                      <span
-                        className={`font-semibold ${
-                          reg.tipo === 'entrada'
-                            ? 'text-emerald-600'
-                            : 'text-red-600'
-                        }`}
-                      >
-                        {reg.automatica ? 'SIN MARCA' : reg.tipo === 'entrada' ? 'ENTRADA' : 'SALIDA'}
-                      </span>
-
-                      <span className="tabular-nums">
-                        {formatearFecha(reg.fecha || reg.ts)}
-                      </span>
-                    </div>
-                  </div>
-                ))}
+                {historial.length > 0 && (
+                  <span className="rx-admin-count">{historial.length}</span>
+                )}
               </div>
-            </div>
-          )}
 
-          {empleado && historial.length === 0 && (
-            <div className="mt-6 pt-6 border-t border-slate-100 text-center">
-              <p className="text-sm text-slate-500">
-                Sin registros previos para {empleado.codigo}
-              </p>
-            </div>
+              {historial.length > 0 ? (
+                <div className="rx-admin-list rx-kiosk-history">
+                  {historial.map((reg) => (
+                    <div
+                      key={reg._id || `${reg.codigo}-${reg.ts || reg.fecha}`}
+                      className="rx-admin-list-item"
+                    >
+                      <IconoMarca tipo={reg.tipo} automatica={reg.automatica} />
+
+                      <span className="rx-admin-list-copy">
+                        <strong>
+                          {reg.automatica
+                            ? 'Sin entrada registrada'
+                            : reg.tipo === 'entrada'
+                              ? 'Entrada'
+                              : 'Salida'}
+                        </strong>
+                        <span>{formatearFecha(reg.fecha || reg.ts)}</span>
+                      </span>
+
+                      {reg.estado && ETIQUETAS_ESTADO[reg.estado] && (
+                        <span
+                          className={`rx-badge ${
+                            ETIQUETAS_ESTADO[reg.estado].clases
+                          }`}
+                        >
+                          {ETIQUETAS_ESTADO[reg.estado].texto}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="rx-admin-empty">
+                  <MaterialIcon name="inbox" className="text-2xl" />
+                  <p>Sin registros previos para {empleado.codigo}</p>
+                </div>
+              )}
+            </section>
           )}
 
           {empleado && (
             <button
+              type="button"
               onClick={limpiar}
-              className="mt-6 w-full py-2 text-sm text-slate-500 hover:text-slate-700
-                         border border-slate-200 hover:border-slate-300 rounded-lg transition-all"
+              className="rx-btn rx-btn--outline rx-btn--block"
             >
               Atender otro código
             </button>
           )}
         </div>
 
-        <div className="bg-slate-50 p-3 text-center text-xs text-slate-400">
+        <footer className="rx-kiosk-footer">
           NUUCLEO — Sistema de Gestión • Módulo de Asistencia
-        </div>
-      </div>
+        </footer>
+      </main>
     </div>
   );
 };

@@ -1,4 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { UsuarioAvatar } from '../../components/UsuarioAvatar';
+import { Icon } from '../../components/Icon';
+import { reducirFoto } from '../../lib/fotoUsuario';
 import { Badge } from '../../components/Badge';
 import { DataTable } from '../../components/DataTable';
 import { Modal } from '../../components/Modal';
@@ -38,9 +41,10 @@ interface UsuarioForm {
   rol: PlatformRole | '';
   estatus: Estatus;
   password: string;
+  foto: string;
 }
 
-const EMPTY_FORM: UsuarioForm = { nombre: '', apellidos: '', correo: '', telefono: '', codigoAcceso: '', rol: '', estatus: 'activo', password: '' };
+const EMPTY_FORM: UsuarioForm = { nombre: '', apellidos: '', correo: '', telefono: '', codigoAcceso: '', rol: '', estatus: 'activo', password: '', foto: '' };
 
 export function UsuariosPage() {
   // Solo el administrador puede crear o editar usuarios.
@@ -55,6 +59,32 @@ export function UsuariosPage() {
   const [form, setForm] = useState<UsuarioForm>(EMPTY_FORM);
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [procesandoFoto, setProcesandoFoto] = useState(false);
+  const lecturaFoto = useRef(0);
+  const inputFoto = useRef<HTMLInputElement>(null);
+  useEffect(() => () => { lecturaFoto.current += 1; }, []);
+
+  const cerrarModal = () => {
+    if (saving) return;
+    lecturaFoto.current += 1;
+    setProcesandoFoto(false);
+    setModal({ open: false });
+  };
+
+  const seleccionarFoto = async (archivo?: File) => {
+    if (!archivo) return;
+    const lectura = ++lecturaFoto.current;
+    setProcesandoFoto(true);
+    setFormError(null);
+    try {
+      const foto = await reducirFoto(archivo);
+      if (lectura === lecturaFoto.current) setForm(f => ({ ...f, foto }));
+    } catch (e) {
+      if (lectura === lecturaFoto.current) setFormError(e instanceof Error ? e.message : 'No se pudo leer la foto.');
+    } finally {
+      if (lectura === lecturaFoto.current) setProcesandoFoto(false);
+    }
+  };
   const [confirmToggle, setConfirmToggle] = useState<Usuario | null>(null);
 
   // Carga los usuarios reales desde el backend (MongoDB).
@@ -81,7 +111,7 @@ export function UsuariosPage() {
     setModal({ open: true });
   };
   const openEdit = (u: Usuario) => {
-    setForm({ nombre: u.nombre, apellidos: u.apellidos, correo: u.correo, telefono: u.telefono, codigoAcceso: u.codigoAcceso, rol: u.rol as PlatformRole, estatus: u.estatus, password: '' });
+    setForm({ nombre: u.nombre, apellidos: u.apellidos, correo: u.correo, telefono: u.telefono, codigoAcceso: u.codigoAcceso, rol: u.rol as PlatformRole, estatus: u.estatus, password: '', foto: u.foto || '' });
     setFormError(null);
     setModal({ open: true, editing: u });
   };
@@ -89,6 +119,7 @@ export function UsuariosPage() {
   // Crea (POST) o actualiza (PATCH) en el backend. La contraseña solo se envía
   // cuando se escribió una (al crear es obligatoria; al editar es opcional).
   const save = async () => {
+    if (saving || procesandoFoto) return;
     if (!form.nombre || !form.apellidos || !form.correo || !form.rol || !form.codigoAcceso) {
       setFormError('Nombre, apellidos, correo, código de acceso y rol son obligatorios.');
       return;
@@ -105,6 +136,7 @@ export function UsuariosPage() {
         const body: Record<string, unknown> = {
           nombre: form.nombre, apellidos: form.apellidos, correo: form.correo,
           telefono: form.telefono, codigoAcceso: form.codigoAcceso, rol: form.rol, estatus: form.estatus,
+          foto: form.foto,
         };
         // Solo manda password si el usuario escribió una nueva.
         if (form.password) body.password = form.password;
@@ -174,9 +206,7 @@ export function UsuariosPage() {
               const u = row as unknown as Usuario;
               return (
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-[#F3F4F6] flex items-center justify-center text-[#6B7280] text-xs font-bold flex-shrink-0">
-                    {u.nombre[0]}{u.apellidos[0]}
-                  </div>
+                  <UsuarioAvatar foto={u.foto} nombre={u.nombre} apellidos={u.apellidos} className="w-8 h-8 rounded-full bg-[#F3F4F6] text-[#6B7280] text-xs font-bold" />
                   <div>
                     <p className="font-medium text-gray-800">{u.nombre} {u.apellidos}</p>
                     <p className="text-xs text-gray-400">{u.correo}</p>
@@ -218,8 +248,25 @@ export function UsuariosPage() {
       />
       </DataState>
 
-      <Modal open={modal.open} onClose={() => setModal({ open: false })} title={modal.editing ? 'Editar usuario' : 'Nuevo usuario'}>
+      <Modal open={modal.open} onClose={cerrarModal} title={modal.editing ? 'Editar usuario' : 'Nuevo usuario'}>
         <div className="grid grid-cols-2 gap-4">
+          <div className="col-span-2 flex flex-wrap items-center gap-4 rounded-xl border border-gray-100 p-4">
+            <UsuarioAvatar foto={form.foto} nombre={form.nombre} apellidos={form.apellidos} className="w-16 h-16 rounded-full bg-gray-100 text-gray-500 text-lg font-bold" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-gray-800">Foto de perfil</p>
+              <p className="text-xs text-gray-500 mt-1">Opcional · JPG, PNG o WEBP · máximo 10 MB. Se reduce automáticamente.</p>
+              <input ref={inputFoto} aria-label="Seleccionar foto de perfil" type="file" accept="image/jpeg,image/png,image/webp" disabled={saving || procesandoFoto}
+                className="hidden"
+                onChange={e => { const archivo = e.currentTarget.files?.[0]; e.currentTarget.value = ''; void seleccionarFoto(archivo); }} />
+              <button type="button" disabled={saving || procesandoFoto} className="rx-btn rx-btn--outline mt-3"
+                onClick={() => inputFoto.current?.click()}>
+                <Icon name="photo_camera" size={20} />
+                {procesandoFoto ? 'Procesando foto...' : form.foto ? 'Cambiar foto' : 'Agregar foto'}
+              </button>
+              {procesandoFoto && <p role="status" className="mt-2 text-xs text-gray-500">Procesando foto...</p>}
+              {form.foto && <button type="button" disabled={saving || procesandoFoto} className="rx-btn rx-btn--outline mt-2" onClick={() => setForm(f => ({ ...f, foto: '' }))}>Quitar foto</button>}
+            </div>
+          </div>
           <InputField label="Nombre" required value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))} />
           <InputField label="Apellidos" required value={form.apellidos} onChange={e => setForm(f => ({ ...f, apellidos: e.target.value }))} />
           <InputField label="Correo electrónico" required type="email" value={form.correo} onChange={e => setForm(f => ({ ...f, correo: e.target.value }))} className="col-span-2" />
@@ -238,10 +285,10 @@ export function UsuariosPage() {
             className="col-span-2"
           />
         </div>
-        {formError && <p className="mt-3 text-sm text-red-500">{formError}</p>}
+        {formError && <p role="alert" className="mt-3 text-sm text-red-500">{formError}</p>}
         <div className="flex gap-3 mt-6 pt-4 border-t border-gray-100">
-          <button onClick={() => setModal({ open: false })} disabled={saving} className="rx-btn rx-btn--outline flex-1">Cancelar</button>
-          <button onClick={save} disabled={saving} className="rx-btn rx-btn--dark flex-1">
+          <button onClick={cerrarModal} disabled={saving} className="rx-btn rx-btn--outline flex-1">Cancelar</button>
+          <button onClick={save} disabled={saving || procesandoFoto} className="rx-btn rx-btn--dark flex-1">
             {saving && <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" /></svg>}
             {saving ? 'Guardando...' : modal.editing ? 'Guardar cambios' : 'Crear usuario'}
           </button>

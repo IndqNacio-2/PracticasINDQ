@@ -1,4 +1,22 @@
 /* Mantengo aquí la identidad visual del Punto de Venta. */
+@layer components {
+  .rx-membership-fields { min-width: 0; margin: 0; padding: 0; border: 0; }
+  .rx-suggestion[aria-selected="true"] { background: var(--rx-surface-soft); outline: 1px solid var(--rx-line-strong); }
+  .rx-memberships.rx-card, .rx-memberships .rx-card {
+    padding: 18px;
+    color: var(--rx-ink);
+    background: var(--rx-surface);
+    border: 1px solid var(--rx-line);
+    border-radius: var(--rx-radius-extra-large);
+  }
+  .rx-memberships.rx-stack, .rx-memberships .rx-stack { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+  .rx-memberships > form { margin-block: 20px; }
+  .rx-memberships > .rx-section-title { margin: 0 0 12px; }
+  .rx-memberships .rx-card-text, .rx-memberships > .rx-card-text { margin: 8px 0; color: var(--rx-ink-secondary); font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
+  .rx-memberships fieldset { border: 0; padding: 0; }
+  .rx-memberships fieldset:disabled { opacity: 0.65; }
+  .rx-memberships .rx-btn { white-space: normal; }
+}
 :root {
   --rx-page: #f5f4f0;
   --rx-surface: #ffffff;
@@ -379,6 +397,45 @@
   .rx-toast--error .rx-toast-icon { color: #ff8c8c; }
   .rx-toast--warning .rx-toast-icon { color: #fcefb4; }
   .rx-toast--info .rx-toast-icon { color: #9bc5ff; }
+
+  /* Alertas con icono (guía de diseño, secciones 17 y 31). */
+  .rx-kiosk .rx-alert { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; color: var(--rx-ink-secondary); background: var(--rx-surface-soft); border-radius: var(--rx-radius-medium); font-size: 14px; line-height: 1.45; }
+  .rx-kiosk .rx-alert--success { color: var(--rx-success-ink); background: var(--rx-success-bg); }
+  .rx-kiosk .rx-alert--danger { color: var(--rx-danger-ink); background: var(--rx-danger-bg); }
+  .rx-kiosk .rx-alert-title { margin: 0; font-weight: 700; }
+  .rx-kiosk .rx-alert .rx-badge { margin-top: 6px; }
+  .rx-kiosk .rx-alert .rx-badge--success { background: var(--rx-surface); }
+
+  /* Checador de asistencia: kiosco de pantalla completa, sin menú ni sesión. */
+  .rx-kiosk { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px; color: var(--rx-ink); background: var(--rx-page); font-family: var(--rx-font); }
+  .rx-kiosk-card { width: 100%; max-width: 672px; overflow: hidden; background: var(--rx-surface); border: 1px solid var(--rx-line); border-radius: var(--rx-radius-extra-large); }
+  .rx-kiosk-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 16px; padding: 18px 24px; background: var(--rx-dark); }
+  .rx-kiosk-brand { min-width: 0; display: flex; align-items: center; gap: 12px; }
+  .rx-kiosk-header .rx-brand-title { font-size: 18px; }
+  .rx-kiosk-header .rx-brand-subtitle { font-size: 12px; }
+  .rx-kiosk-clock { margin-left: auto; text-align: right; }
+  .rx-kiosk-time { margin: 0; color: #fff; font-size: 26px; font-weight: 800; line-height: 1.15; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+  .rx-kiosk-date { margin: 2px 0 0; color: #a8adb7; font-size: 12px; text-transform: capitalize; }
+  .rx-kiosk-body { display: flex; flex-direction: column; gap: 16px; padding: 24px; }
+  .rx-kiosk-body > .rx-search { margin-bottom: 0; }
+  .rx-input--kiosk { min-height: 56px; font-size: 20px; font-weight: 700; letter-spacing: 0.3em; text-align: center; text-transform: uppercase; }
+  .rx-input--kiosk::placeholder { font-size: 14px; font-weight: 400; letter-spacing: normal; text-transform: none; }
+  .rx-kiosk-loading { margin: 0; color: var(--rx-ink-secondary); font-size: 13px; text-align: center; }
+  .rx-kiosk-person-header { flex-wrap: wrap; }
+  .rx-kiosk-person-header .rx-badge { white-space: normal; }
+  .rx-kiosk-avatar { width: 46px; height: 46px; display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; color: var(--rx-accent); background: var(--rx-dark); border-radius: 50%; font-size: 15px; font-weight: 800; }
+  .rx-kiosk-person-name { margin: 2px 0 0; color: var(--rx-ink); font-size: 22px; font-weight: 800; line-height: 1.2; letter-spacing: -0.02em; }
+  .rx-kiosk-timestamp { flex-shrink: 0; color: var(--rx-ink-secondary); font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .rx-admin-list-icon.rx-kiosk-entry-icon { color: var(--rx-success-ink); background: var(--rx-success-bg); border-color: transparent; }
+  .rx-kiosk-mark { margin-top: 12px; }
+  .rx-kiosk-history { max-height: 240px; overflow-y: auto; padding-right: 4px; }
+  .rx-kiosk-footer { padding: 12px 16px; color: var(--rx-ink-secondary); background: var(--rx-surface-soft); border-top: 1px solid var(--rx-line); font-size: 12px; text-align: center; }
+
+  @media (max-width: 620px) {
+    .rx-kiosk { align-items: flex-start; padding: 12px; }
+    .rx-kiosk-header, .rx-kiosk-body { padding: 16px; }
+    .rx-input--kiosk { letter-spacing: 0.15em; }
+  }
 
   /* Páginas administrativas. */
   .rx-page { min-height: 100%; color: var(--rx-ink); background: var(--rx-page); font-family: var(--rx-font); }

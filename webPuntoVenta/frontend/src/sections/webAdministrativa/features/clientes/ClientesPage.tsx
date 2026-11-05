@@ -5,6 +5,7 @@ import { DataTable } from '../../components/DataTable';
 import { Modal } from '../../components/Modal';
 import { InputField, SelectField } from '../../components/FormField';
 import { apiCobro, ApiError } from '../../lib/api';
+import { MembresiasCliente, type MembresiaComprada } from './MembresiasCliente';
 
 // Un cliente tal como lo devuelve GET /cobro/api/clientes. Estos registros
 // viven en la tabla webcobro.clientes (PostgreSQL): son los mismos socios que
@@ -12,44 +13,29 @@ import { apiCobro, ApiError } from '../../lib/api';
 interface SocioCobro {
   id: number;
   nombre: string;
-  membresia: string;
+  membresiasCompradas?: MembresiaComprada[];
   telefono: string;
   correo: string | null;
   activo: boolean;
-  vigencia_hasta: string | null;
 }
 
 interface SocioForm {
   nombre: string;
   correo: string;
   telefono: string;
-  membresia: string;
   activo: boolean;
-  vigencia_hasta: string;
 }
 
 const FORM_VACIO: SocioForm = {
   nombre: '',
   correo: '',
   telefono: '',
-  membresia: 'Básica',
   activo: true,
-  vigencia_hasta: '',
 };
 
-// La vigencia se compara en fecha local (YYYY-MM-DD) para no depender de la
-// zona horaria del navegador.
-function hoyLocal(): string {
-  const d = new Date();
-  const mes = String(d.getMonth() + 1).padStart(2, '0');
-  const dia = String(d.getDate()).padStart(2, '0');
-  return `${d.getFullYear()}-${mes}-${dia}`;
-}
-
-// Estatus calculado igual que en cobro: inactivo manual o vigencia vencida.
+// La baja del cliente es independiente de las vigencias de sus compras.
 function estatusDe(s: SocioCobro): 'activo' | 'inactivo' {
   if (s.activo === false) return 'inactivo';
-  if (s.vigencia_hasta && s.vigencia_hasta < hoyLocal()) return 'inactivo';
   return 'activo';
 }
 
@@ -98,9 +84,7 @@ export function ClientesPage() {
       nombre: s.nombre,
       correo: s.correo ?? '',
       telefono: s.telefono ?? '',
-      membresia: s.membresia,
       activo: s.activo !== false,
-      vigencia_hasta: s.vigencia_hasta ?? '',
     });
     setFormError(null);
     setModal(true);
@@ -121,14 +105,11 @@ export function ClientesPage() {
         nombre: form.nombre.trim(),
         correo: form.correo.trim(),
         telefono: form.telefono.trim(),
-        membresia: form.membresia,
         activo: form.activo,
-        // '' = sin vencimiento (no expira).
-        vigencia_hasta: form.vigencia_hasta || null,
       };
       if (editando) {
         const { cliente } = await apiCobro.patch<{ cliente: SocioCobro }>(`/clientes/${editando.id}`, cuerpo);
-        setClientes(lista => lista.map(s => s.id === cliente.id ? cliente : s));
+        setClientes(lista => lista.map(s => s.id === cliente.id ? { ...s, ...cliente } : s));
       } else {
         const { cliente } = await apiCobro.post<{ cliente: SocioCobro }>('/clientes', cuerpo);
         setClientes(lista => [...lista, cliente]);
@@ -148,7 +129,7 @@ export function ClientesPage() {
     setProcesando(s.id);
     try {
       const { cliente } = await apiCobro.patch<{ cliente: SocioCobro }>(`/clientes/${s.id}`, { activo: s.activo === false });
-      setClientes(lista => lista.map(c => c.id === cliente.id ? cliente : c));
+      setClientes(lista => lista.map(c => c.id === cliente.id ? { ...c, ...cliente } : c));
     } catch (err) {
       setAccionError(err instanceof Error ? err.message : 'No se pudo cambiar el estatus.');
     } finally {
@@ -228,24 +209,8 @@ export function ClientesPage() {
             },
             { key: 'telefono', header: 'Telefono' },
             {
-              key: 'membresia', header: 'Membresia',
-              render: row => {
-                const s = row as unknown as SocioCobro;
-                const premium = s.membresia === 'Premium';
-                const cls = premium ? 'bg-emerald-50 text-emerald-700 ring-emerald-200' : 'bg-gray-100 text-gray-600 ring-gray-200';
-                return (
-                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ring-1 ${cls}`}>
-                    {s.membresia}
-                  </span>
-                );
-              }
-            },
-            {
-              key: 'vigencia_hasta', header: 'Vigencia',
-              render: row => {
-                const s = row as unknown as SocioCobro;
-                return <span className="text-gray-600">{s.vigencia_hasta || 'Sin vencimiento'}</span>;
-              }
+              key: 'membresiasCompradas', header: 'Membresías compradas',
+              render: row => <MembresiasCliente compras={(row as unknown as SocioCobro).membresiasCompradas} />
             },
             {
               key: 'activo', header: 'Estatus',
@@ -280,13 +245,9 @@ export function ClientesPage() {
           <InputField label="Nombre completo" required value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))} className="col-span-2" placeholder="Ej. Juan Perez" />
           <InputField label="Correo" type="email" value={form.correo} onChange={e => setForm(f => ({ ...f, correo: e.target.value }))} className="col-span-2" placeholder="Opcional, debe ser unico" />
           <InputField label="Telefono" value={form.telefono} onChange={e => setForm(f => ({ ...f, telefono: e.target.value }))} />
-          <SelectField label="Membresia" required value={form.membresia} onChange={e => setForm(f => ({ ...f, membresia: e.target.value }))} options={[{ value: 'Básica', label: 'Basica (paga tarifa)' }, { value: 'Premium', label: 'Premium (no paga)' }]} />
-          <InputField label="Vigencia de membresia" type="date" value={form.vigencia_hasta} onChange={e => setForm(f => ({ ...f, vigencia_hasta: e.target.value }))} />
+          <p className="col-span-2 text-sm text-gray-600">Las membresías se venden desde Recepción. Las compras y sus vigencias se consultan en la tabla de clientes y no se modifican desde este formulario.</p>
           <SelectField label="Estatus" value={form.activo ? 'activo' : 'inactivo'} onChange={e => setForm(f => ({ ...f, activo: e.target.value === 'activo' }))} options={[{ value: 'activo', label: 'Activo' }, { value: 'inactivo', label: 'Inactivo' }]} />
         </div>
-        {form.vigencia_hasta && form.vigencia_hasta < hoyLocal() && (
-          <p className="text-xs text-amber-700 mt-3">La membresía está vencida. Activar al cliente no renueva su vigencia; seguirá apareciendo inactivo hasta actualizar la fecha.</p>
-        )}
         {formError && <p className="text-xs text-red-500 mt-3">{formError}</p>}
         <div className="flex gap-3 mt-6 pt-4 border-t border-gray-100">
           <button disabled={guardando} onClick={() => setModal(false)} className="rx-btn rx-btn--outline flex-1">Cancelar</button>

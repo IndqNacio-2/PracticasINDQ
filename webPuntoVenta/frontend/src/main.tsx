@@ -5,6 +5,9 @@ import './index.css'
 import LoginPage from './auth/LoginPage'
 import ModuleGuard from './auth/ModuleGuard'
 import { LOGIN_PATH } from './auth/session'
+import { instalarAvisosDeCambios } from './services/cambiosAplicacion'
+
+instalarAvisosDeCambios()
 
 // Las tres secciones viven en la misma aplicación y comparten la sesión.
 //   /administrativa/login -> acceso único del personal
