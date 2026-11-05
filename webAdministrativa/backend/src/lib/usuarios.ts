@@ -8,9 +8,9 @@ export const ROLES_API: RolApi[] = ['administrador', 'entrenador', 'recepcion'];
 // Roles tal como se guardan en Postgres / viajan en el JWT (UserRole de types/roles.ts).
 // Si en tu tabla están en otro formato, cámbialo solo aquí.
 const ROL_DB: Record<RolApi, string> = {
-    administrador: 'Administrador',
-    entrenador: 'Entrenador',
-    recepcion: 'Recepción',
+    administrador: 'administrador',
+    entrenador: 'entrenador',
+    recepcion: 'recepcion',
 };
 
 const sinAcentos = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();

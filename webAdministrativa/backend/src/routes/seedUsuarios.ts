@@ -5,9 +5,9 @@ import { pool } from '../lib/post';
 // Es idempotente: se puede correr varias veces (npm run db:seed) sin duplicar nada.
 // Si la tabla ya existía, solo agrega las columnas que falten.
 const usuariosIniciales = [
-  { nombre: 'Administrador', apellidos: 'GymFit', correo: 'admin@gymfit.mx', rol: 'Administrador', password: 'admin123' },
-  { nombre: 'Entrenador', apellidos: 'GymFit', correo: 'entrenador@gymfit.mx', rol: 'Entrenador', password: 'entrenador123' },
-  { nombre: 'Recepción', apellidos: 'GymFit', correo: 'recepcion@gymfit.mx', rol: 'Recepción', password: 'recepcion123' },
+  { nombre: 'Administrador', apellidos: 'GymFit', correo: 'admin@gymfit.mx', rol: 'administrador', password: 'admin123' },
+  { nombre: 'Entrenador', apellidos: 'GymFit', correo: 'entrenador@gymfit.mx', rol: 'entrenador', password: 'entrenador123' },
+  { nombre: 'Recepción', apellidos: 'GymFit', correo: 'recepcion@gymfit.mx', rol: 'recepcion', password: 'recepcion123' },
 ];
 
 async function main() {
