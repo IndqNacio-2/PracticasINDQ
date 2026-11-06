@@ -14,6 +14,7 @@ import ventaRoutes from './routes/ventas.routes';
 import membresiaRoutes from './routes/membresia.routes';
 import { connectDB } from './lib/mongo';
 import { iniciarMantenimientoHorizonte } from './services/mantener-horizonte-sesiones';
+import { iniciarCumpleanos } from './services/cumpleanos.service';
 
 if (!process.env.JWT_SECRET) {
   throw new Error('Falta JWT_SECRET en el archivo .env');
@@ -24,7 +25,7 @@ const PORT = Number(process.env.PORT) || 3000;
 
 app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:5173' }));
 // Límite ampliado exclusivamente para usuarios con foto reducida.
-app.use('/api/usuarios', express.json({ limit: '256kb' }));
+app.use('/api/usuarios', express.json({ limit: '25mb' }));
 app.use(express.json());
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
@@ -48,6 +49,7 @@ export default app;
 connectDB()
   .then(() => {
     iniciarMantenimientoHorizonte();
+    iniciarCumpleanos();
     if (process.env.GATEWAY_MODE) {
       console.log('API administrativa conectada a MongoDB (gateway unificado)');
       return;
