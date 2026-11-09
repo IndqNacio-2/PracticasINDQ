@@ -34,7 +34,8 @@ export default defineConfig(({ mode }) => {
       port: parseInt(process.env.PORT || '8443'),
       strictPort: true,
       // Un solo puerto en el navegador: estas rutas de API se reenvían desde
-      // este mismo puerto (8443) al backend unificado que escucha en el 3000.
+      // este mismo puerto (8443) al backend unificado (gateway) que escucha
+      // en el 3000. Se levanta con `npm run dev:unified` en la carpeta backend.
       // Solo se proxya lo que empieza con /api para no interferir con las
       // rutas del frontend (/cobro y /administrativa siguen siendo pantallas).
       proxy: {
@@ -45,7 +46,7 @@ export default defineConfig(({ mode }) => {
       watch: {
         ignored: [
           '**/.figma/**',
-],
+        ],
       },
     },
     preview: {

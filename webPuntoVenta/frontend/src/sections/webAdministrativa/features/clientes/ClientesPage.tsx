@@ -3,62 +3,104 @@ import { Badge } from '../../components/Badge';
 import { DataState } from '../../components/DataState';
 import { DataTable } from '../../components/DataTable';
 import { Modal } from '../../components/Modal';
-import { InputField, SelectField } from '../../components/FormField';
-import { apiCobro, ApiError } from '../../lib/api';
+import { InputField } from '../../components/FormField';
+import { api } from '../../lib/api';
 import { MembresiasCliente, type MembresiaComprada } from './MembresiasCliente';
 
-// Un cliente tal como lo devuelve GET /cobro/api/clientes. Estos registros
-// viven en la tabla webcobro.clientes (PostgreSQL): son los mismos socios que
-// usa el módulo de Cobro (front desk) para reservar clases.
-interface SocioCobro {
-  id: number;
+// Un cliente tal como lo devuelve GET /admin/api/clientes (MongoDB).
+// Aquí viven los clientes de la app móvil y los que registra el staff, y de aquí
+// salen los correos de cumpleaños.
+interface ClienteMongo {
+  idUsuario: string;
   nombre: string;
-  membresiasCompradas?: MembresiaComprada[];
-  telefono: string;
-  correo: string | null;
-  activo: boolean;
+  apellidos: string;
+  correo: string;
+  telefono?: string;
+  codigoAcceso?: string;
+  estatus: 'activo' | 'inactivo';
+  // "AAAA-MM-DD"
+  fechaNacimiento?: string | null;
+  edad?: number | null;
+  membresia?: {
+    idMembresia: string;
+    tipo: string;
+    fechaInicio: string;
+    fechaFin: string;
+    estatus: string;
+  } | null;
 }
 
-interface SocioForm {
+interface ClienteForm {
   nombre: string;
+  apellidos: string;
   correo: string;
   telefono: string;
-  activo: boolean;
+  fechaNacimiento: string;
 }
 
-const FORM_VACIO: SocioForm = {
+const FORM_VACIO: ClienteForm = {
   nombre: '',
+  apellidos: '',
   correo: '',
   telefono: '',
-  activo: true,
+  fechaNacimiento: '',
 };
 
-// La baja del cliente es independiente de las vigencias de sus compras.
-function estatusDe(s: SocioCobro): 'activo' | 'inactivo' {
-  if (s.activo === false) return 'inactivo';
-  return 'activo';
+const REGEX_CORREO = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Fecha de hoy "AAAA-MM-DD" en la hora local del navegador.
+function hoyISO(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// Devuelve el mensaje de error o null si la fecha es válida.
+function errorFecha(valor: string): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(valor)) return 'La fecha de nacimiento es obligatoria.';
+  const [y, m, d] = valor.split('-').map(Number);
+  const f = new Date(y, m - 1, d);
+  if (f.getFullYear() !== y || f.getMonth() !== m - 1 || f.getDate() !== d) {
+    return 'La fecha de nacimiento no es válida.';
+  }
+  const hoy = hoyISO();
+  if (valor > hoy) return 'La fecha de nacimiento no puede ser futura.';
+  if (Number(hoy.slice(0, 4)) - y > 120) return 'La fecha de nacimiento no es válida.';
+  return null;
+}
+
+// "AAAA-MM-DD" -> "DD/MM/AAAA" sin pasar por Date (evita desfases de zona horaria).
+function formatearFecha(iso?: string | null): string {
+  if (!iso) return '';
+  const [y, m, d] = iso.slice(0, 10).split('-');
+  return y && m && d ? `${d}/${m}/${y}` : '';
+}
+
+// Adapta la membresía única del cliente al formato que muestra MembresiasCliente.
+function comprasDe(c: ClienteMongo): MembresiaComprada[] {
+  const m = c.membresia;
+  if (!m) return [];
+  return [{ id: m.idMembresia, nombre: `Membresía ${m.tipo}`, fechaInicio: m.fechaInicio, fechaFin: m.fechaFin }];
 }
 
 export function ClientesPage() {
-  const [clientes, setClientes] = useState<SocioCobro[]>([]);
+  const [clientes, setClientes] = useState<ClienteMongo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [modal, setModal] = useState(false);
-  // Socio en edición (null = registrando uno nuevo).
-  const [editando, setEditando] = useState<SocioCobro | null>(null);
-  const [form, setForm] = useState<SocioForm>(FORM_VACIO);
+  // Cliente en edición (null = registrando uno nuevo).
+  const [editando, setEditando] = useState<ClienteMongo | null>(null);
+  const [form, setForm] = useState<ClienteForm>(FORM_VACIO);
   const [formError, setFormError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
   const [accionError, setAccionError] = useState<string | null>(null);
-  const [procesando, setProcesando] = useState<number | null>(null);
+  const [procesando, setProcesando] = useState<string | null>(null);
   const [actualizando, setActualizando] = useState(false);
 
-  // Carga los socios registrados en el módulo de cobro.
   const cargar = useCallback(async () => {
     setActualizando(true);
     setError(null);
     try {
-      setClientes(await apiCobro.get<SocioCobro[]>('/clientes'));
+      setClientes(await api.get<ClienteMongo[]>('/clientes'));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudieron cargar los clientes.');
     } finally {
@@ -78,41 +120,61 @@ export function ClientesPage() {
     setModal(true);
   };
 
-  const abrirEditar = (s: SocioCobro) => {
-    setEditando(s);
+  const abrirEditar = (c: ClienteMongo) => {
+    setEditando(c);
     setForm({
-      nombre: s.nombre,
-      correo: s.correo ?? '',
-      telefono: s.telefono ?? '',
-      activo: s.activo !== false,
+      nombre: c.nombre,
+      apellidos: c.apellidos,
+      correo: c.correo ?? '',
+      telefono: c.telefono ?? '',
+      fechaNacimiento: c.fechaNacimiento ? c.fechaNacimiento.slice(0, 10) : '',
     });
     setFormError(null);
     setModal(true);
   };
 
-  // Usar la fila devuelta por PostgreSQL evita desmontar la tabla y perder
-  // su búsqueda/página. No se actualiza la UI si el servidor rechaza el cambio.
+  // Se usa la fila que devuelve el servidor para no perder la búsqueda/página de la tabla.
+  // La UI no cambia si el servidor rechaza el cambio.
   const save = async () => {
     if (guardando) return;
     setFormError(null);
-    if (form.nombre.trim().length < 3) {
-      setFormError('El nombre del cliente es obligatorio (mínimo 3 letras).');
+    if (form.nombre.trim().length < 2) {
+      setFormError('El nombre es obligatorio (mínimo 2 letras).');
+      return;
+    }
+    if (form.apellidos.trim().length < 2) {
+      setFormError('Los apellidos son obligatorios (mínimo 2 letras).');
+      return;
+    }
+    const correo = form.correo.trim().toLowerCase();
+    if (!correo) {
+      setFormError('El correo es obligatorio: ahí se enviará la felicitación de cumpleaños.');
+      return;
+    }
+    if (!REGEX_CORREO.test(correo)) {
+      setFormError('Escribe un correo válido.');
+      return;
+    }
+    const errFecha = errorFecha(form.fechaNacimiento);
+    if (errFecha) {
+      setFormError(errFecha);
       return;
     }
     setGuardando(true);
     try {
       const cuerpo = {
         nombre: form.nombre.trim(),
-        correo: form.correo.trim(),
+        apellidos: form.apellidos.trim(),
+        correo,
         telefono: form.telefono.trim(),
-        activo: form.activo,
+        fechaNacimiento: form.fechaNacimiento,
       };
       if (editando) {
-        const { cliente } = await apiCobro.patch<{ cliente: SocioCobro }>(`/clientes/${editando.id}`, cuerpo);
-        setClientes(lista => lista.map(s => s.id === cliente.id ? { ...s, ...cliente } : s));
+        const cliente = await api.patch<ClienteMongo>(`/clientes/${editando.idUsuario}`, cuerpo);
+        setClientes(lista => lista.map(c => c.idUsuario === cliente.idUsuario ? { ...c, ...cliente } : c));
       } else {
-        const { cliente } = await apiCobro.post<{ cliente: SocioCobro }>('/clientes', cuerpo);
-        setClientes(lista => [...lista, cliente]);
+        const cliente = await api.post<ClienteMongo>('/clientes', cuerpo);
+        setClientes(lista => [cliente, ...lista]);
       }
       setAccionError(null);
       setModal(false);
@@ -123,13 +185,16 @@ export function ClientesPage() {
     }
   };
 
-  const toggleEstatus = async (s: SocioCobro) => {
+  // Baja lógica: el cliente conserva su historial y se cierran sus sesiones en la app.
+  // Los clientes no se eliminan.
+  const toggleEstatus = async (c: ClienteMongo) => {
     if (procesando !== null) return;
     setAccionError(null);
-    setProcesando(s.id);
+    setProcesando(c.idUsuario);
     try {
-      const { cliente } = await apiCobro.patch<{ cliente: SocioCobro }>(`/clientes/${s.id}`, { activo: s.activo === false });
-      setClientes(lista => lista.map(c => c.id === cliente.id ? { ...c, ...cliente } : c));
+      const accion = c.estatus === 'activo' ? 'baja' : 'reactivar';
+      const cliente = await api.patch<ClienteMongo>(`/clientes/${c.idUsuario}/${accion}`);
+      setClientes(lista => lista.map(x => x.idUsuario === cliente.idUsuario ? { ...x, ...cliente } : x));
     } catch (err) {
       setAccionError(err instanceof Error ? err.message : 'No se pudo cambiar el estatus.');
     } finally {
@@ -137,28 +202,7 @@ export function ClientesPage() {
     }
   };
 
-  // Borrar es definitivo en la base de datos. Si el socio tiene reservaciones
-  // o pagos, el backend lo rechaza (409) para no dejar historial huérfano.
-  const eliminar = async (s: SocioCobro) => {
-    if (procesando !== null) return;
-    const confirmado = window.confirm(`¿Eliminar a ${s.nombre}? Esta acción no se puede deshacer.`);
-    if (!confirmado) return;
-    setAccionError(null);
-    setProcesando(s.id);
-    try {
-      await apiCobro.del(`/clientes/${s.id}`);
-      setClientes(lista => lista.filter(c => c.id !== s.id));
-    } catch (err) {
-      const mensaje = err instanceof ApiError && err.status === 409
-        ? 'No se puede eliminar: el cliente tiene historial asociado. Usa Desactivar para darlo de baja sin borrar su historial.'
-        : err instanceof Error ? err.message : 'No se pudo eliminar el cliente.';
-      setAccionError(mensaje);
-    } finally {
-      setProcesando(null);
-    }
-  };
-
-  const activos = clientes.filter(c => estatusDe(c) === 'activo').length;
+  const activos = clientes.filter(c => c.estatus === 'activo').length;
 
   return (
     <div className="space-y-5 max-w-7xl">
@@ -194,14 +238,14 @@ export function ClientesPage() {
             {
               key: 'nombre', header: 'Cliente',
               render: row => {
-                const s = row as unknown as SocioCobro;
-                const ini = s.nombre.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase();
+                const c = row as unknown as ClienteMongo;
+                const ini = `${c.nombre?.[0] ?? ''}${c.apellidos?.[0] ?? ''}`.toUpperCase();
                 return (
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-full bg-[#F3F4F6] flex items-center justify-center text-[#6B7280] text-xs font-bold">{ini}</div>
                     <div>
-                      <p className="font-medium text-gray-800">{s.nombre}</p>
-                      <p className="text-xs text-gray-400">{s.correo || 'Sin correo'}</p>
+                      <p className="font-medium text-gray-800">{c.nombre} {c.apellidos}</p>
+                      <p className="text-xs text-gray-400">{c.correo || 'Sin correo'}</p>
                     </div>
                   </div>
                 );
@@ -209,44 +253,57 @@ export function ClientesPage() {
             },
             { key: 'telefono', header: 'Telefono' },
             {
-              key: 'membresiasCompradas', header: 'Membresías compradas',
-              render: row => <MembresiasCliente compras={(row as unknown as SocioCobro).membresiasCompradas} />
+              key: 'fechaNacimiento', header: 'Cumpleaños',
+              render: row => {
+                const c = row as unknown as ClienteMongo;
+                const texto = formatearFecha(c.fechaNacimiento);
+                return texto
+                  ? (
+                    <div>
+                      <p className="text-gray-700">{texto}</p>
+                      {typeof c.edad === 'number' && <p className="text-xs text-gray-400">{c.edad} años</p>}
+                    </div>
+                  )
+                  : <span className="text-gray-400">Sin registrar</span>;
+              }
             },
             {
-              key: 'activo', header: 'Estatus',
-              render: row => <Badge variant={estatusDe(row as unknown as SocioCobro)} />
+              key: 'membresia', header: 'Membresías compradas',
+              render: row => <MembresiasCliente compras={comprasDe(row as unknown as ClienteMongo)} />
+            },
+            {
+              key: 'estatus', header: 'Estatus',
+              render: row => <Badge variant={(row as unknown as ClienteMongo).estatus} />
             },
           ]}
           actions={row => {
-            const s = row as unknown as SocioCobro;
-            const activoManual = s.activo !== false;
+            const c = row as unknown as ClienteMongo;
+            const activo = c.estatus === 'activo';
             return (
               <div className="flex items-center gap-2 justify-end">
-                <button type="button" disabled={procesando !== null || actualizando} onClick={() => abrirEditar(s)} className="rx-icon-btn" title="Editar">
+                <button type="button" disabled={procesando !== null || actualizando} onClick={() => abrirEditar(c)} className="rx-icon-btn" title="Editar">
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                 </button>
-                <button type="button" disabled={procesando !== null || actualizando} onClick={() => void toggleEstatus(s)} className={`rx-icon-btn ${activoManual ? 'rx-btn--danger' : 'rx-btn--dark'}`} title={activoManual ? 'Desactivar (dar de baja)' : 'Activar (no renueva la membresía)'}>
-                  {activoManual
+                <button type="button" disabled={procesando !== null || actualizando} onClick={() => void toggleEstatus(c)} className={`rx-icon-btn ${activo ? 'rx-btn--danger' : 'rx-btn--dark'}`} title={activo ? 'Dar de baja (conserva su historial)' : 'Reactivar'}>
+                  {activo
                     ? <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
                     : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                   }
-                </button>
-                <button type="button" disabled={procesando !== null || actualizando} onClick={() => void eliminar(s)} className="rx-icon-btn rx-btn--danger" title="Eliminar definitivamente">
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                 </button>
               </div>
             );
           }}
         />
-        </DataState>
+      </DataState>
 
       <Modal open={modal} onClose={() => { if (!guardando) setModal(false); }} title={editando ? 'Editar cliente' : 'Nuevo cliente'}>
         <div className="grid grid-cols-2 gap-4">
-          <InputField label="Nombre completo" required value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))} className="col-span-2" placeholder="Ej. Juan Perez" />
-          <InputField label="Correo" type="email" value={form.correo} onChange={e => setForm(f => ({ ...f, correo: e.target.value }))} className="col-span-2" placeholder="Opcional, debe ser unico" />
+          <InputField label="Nombre" required value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))} placeholder="Ej. Juan" />
+          <InputField label="Apellidos" required value={form.apellidos} onChange={e => setForm(f => ({ ...f, apellidos: e.target.value }))} placeholder="Ej. Perez Lopez" />
+          <InputField label="Correo" type="email" required value={form.correo} onChange={e => setForm(f => ({ ...f, correo: e.target.value }))} className="col-span-2" placeholder="Debe ser unico. Se usa para la felicitacion de cumpleaños" />
+          <InputField label="Fecha de nacimiento" type="date" required max={hoyISO()} value={form.fechaNacimiento} onChange={e => setForm(f => ({ ...f, fechaNacimiento: e.target.value }))} />
           <InputField label="Telefono" value={form.telefono} onChange={e => setForm(f => ({ ...f, telefono: e.target.value }))} />
-          <p className="col-span-2 text-sm text-gray-600">Las membresías se venden desde Recepción. Las compras y sus vigencias se consultan en la tabla de clientes y no se modifican desde este formulario.</p>
-          <SelectField label="Estatus" value={form.activo ? 'activo' : 'inactivo'} onChange={e => setForm(f => ({ ...f, activo: e.target.value === 'activo' }))} options={[{ value: 'activo', label: 'Activo' }, { value: 'inactivo', label: 'Inactivo' }]} />
+          <p className="col-span-2 text-sm text-gray-600">Para dar de baja o reactivar a un cliente usa el botón de la tabla. Las membresías se consultan en la tabla y no se modifican desde este formulario.</p>
         </div>
         {formError && <p className="text-xs text-red-500 mt-3">{formError}</p>}
         <div className="flex gap-3 mt-6 pt-4 border-t border-gray-100">
