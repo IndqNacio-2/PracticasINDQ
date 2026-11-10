@@ -2,6 +2,14 @@ export type UserRole = 'administrador' | 'entrenador' | 'recepcion' | 'vendedor'
 export type Estatus = 'activo' | 'inactivo';
 export type ReservaEstatus = 'confirmada' | 'pendiente' | 'cancelada';
 
+export interface Formacion {
+  nombre: string;
+  institucion?: string;
+  fecha?: string;
+  /** Documento adjunto en formato data URL (PDF o imagen). */
+  documento?: string;
+}
+
 export interface Usuario {
   idUsuario: string;
   nombre: string;
@@ -14,6 +22,10 @@ export interface Usuario {
   avatar?: string;
   foto?: string;
   fechaCreacion: string;
+  // Datos del coach (solo aplican cuando rol === 'entrenador')
+  resumen?: string;
+  capacitaciones?: Formacion[];
+  certificaciones?: Formacion[];
 }
 
 export interface PerfilSalud {

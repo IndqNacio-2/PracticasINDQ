@@ -12,6 +12,7 @@ import movimientoRoutes from './routes/movimientos.routes';
 import usuarioRoutes from './routes/usuarios.routes';
 import ventaRoutes from './routes/ventas.routes';
 import membresiaRoutes from './routes/membresia.routes';
+import reportesRoutes from './routes/reportes.routes';
 import { connectDB } from './lib/mongo';
 import { iniciarMantenimientoHorizonte } from './services/mantener-horizonte-sesiones';
 import { iniciarCumpleanos } from './services/cumpleanos.service';
@@ -40,6 +41,7 @@ app.use('/api/movimientos', movimientoRoutes);
 app.use('/api/usuarios', usuarioRoutes);
 app.use('/api/ventas', ventaRoutes);
 app.use('/api/membresias', membresiaRoutes);
+app.use('/api/reportes', reportesRoutes);
 
 // Exporta la app para que el gateway unificado pueda montarla bajo su prefijo
 // (/admin) en un solo puerto. Con GATEWAY_MODE no abre su propio puerto y un

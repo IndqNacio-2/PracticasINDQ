@@ -9,7 +9,7 @@ import { InputField, SelectField } from '../../components/FormField';
 import { DataState } from '../../components/DataState';
 import { api } from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
-import type { Usuario, Estatus } from '../../types';
+import type { Usuario, Estatus, Formacion } from '../../types';
 
 // Roles de PLATAFORMA (staff). "Cliente" no aplica aquí:
 // los clientes se gestionan en el módulo Clientes y no inician sesión en esta web.
@@ -31,6 +31,10 @@ const filterTabs: { value: FilterRole; label: string }[] = [
   { value: 'vendedor', label: 'Vendedor' },
 ];
 
+const MAX_RESUMEN = 1000;
+const MAX_DOC_BYTES = 1_000_000; // 1 MB por documento
+const TIPOS_DOC = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
+
 // Formulario: incluye password (solo al crear; al editar es opcional).
 interface UsuarioForm {
   nombre: string;
@@ -42,9 +46,120 @@ interface UsuarioForm {
   estatus: Estatus;
   password: string;
   foto: string;
+  // Datos del coach (solo se usan cuando rol === 'entrenador')
+  resumen: string;
+  capacitaciones: Formacion[];
+  certificaciones: Formacion[];
 }
 
-const EMPTY_FORM: UsuarioForm = { nombre: '', apellidos: '', correo: '', telefono: '', codigoAcceso: '', rol: '', estatus: 'activo', password: '', foto: '' };
+const EMPTY_FORM: UsuarioForm = {
+  nombre: '', apellidos: '', correo: '', telefono: '', codigoAcceso: '', rol: '', estatus: 'activo', password: '', foto: '',
+  resumen: '', capacitaciones: [], certificaciones: [],
+};
+
+const FORMACION_VACIA: Formacion = { nombre: '', institucion: '', fecha: '', documento: '' };
+
+const leerDocumento = (archivo: File): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const lector = new FileReader();
+    lector.onload = () => resolve(String(lector.result));
+    lector.onerror = () => reject(new Error('No se pudo leer el archivo.'));
+    lector.readAsDataURL(archivo);
+  });
+
+// Lista editable de capacitaciones o certificaciones.
+function FormacionEditor({ titulo, descripcion, items, onChange, onError, disabled }: {
+  titulo: string;
+  descripcion: string;
+  items: Formacion[];
+  onChange: (items: Formacion[]) => void;
+  onError: (mensaje: string | null) => void;
+  disabled: boolean;
+}) {
+  const actualizar = (i: number, cambios: Partial<Formacion>) =>
+    onChange(items.map((item, idx) => (idx === i ? { ...item, ...cambios } : item)));
+
+  const subirDocumento = async (i: number, archivo?: File) => {
+    if (!archivo) return;
+    if (!TIPOS_DOC.includes(archivo.type)) {
+      onError('El documento debe ser PDF, JPG, PNG o WEBP.');
+      return;
+    }
+    if (archivo.size > MAX_DOC_BYTES) {
+      onError('Cada documento debe pesar menos de 1 MB.');
+      return;
+    }
+    try {
+      onError(null);
+      actualizar(i, { documento: await leerDocumento(archivo) });
+    } catch (e) {
+      onError(e instanceof Error ? e.message : 'No se pudo leer el archivo.');
+    }
+  };
+
+  return (
+    <div className="col-span-2 space-y-3">
+      <div>
+        <p className="text-sm font-medium text-gray-800">{titulo}</p>
+        <p className="text-xs text-gray-500">{descripcion}</p>
+      </div>
+
+      {items.map((item, i) => (
+        <div key={i} className="rounded-xl border border-gray-100 p-3 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <InputField label="Nombre" required value={item.nombre} className="col-span-2"
+              onChange={e => actualizar(i, { nombre: e.target.value })} />
+            <InputField label="Institución" value={item.institucion ?? ''}
+              onChange={e => actualizar(i, { institucion: e.target.value })} />
+            <InputField label="Fecha" type="date" value={item.fecha ?? ''}
+              onChange={e => actualizar(i, { fecha: e.target.value })} />
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <label className={`rx-btn rx-btn--outline ${disabled ? 'opacity-50 pointer-events-none' : 'cursor-pointer'}`}>
+              {item.documento ? 'Cambiar documento' : 'Adjuntar documento'}
+              <input type="file" className="hidden" disabled={disabled}
+                accept="application/pdf,image/jpeg,image/png,image/webp"
+                onChange={e => { const archivo = e.currentTarget.files?.[0]; e.currentTarget.value = ''; void subirDocumento(i, archivo); }} />
+            </label>
+            {item.documento && (
+              <>
+                <span className="text-xs text-green-600">Documento adjunto</span>
+                <button type="button" disabled={disabled} className="rx-btn rx-btn--outline"
+                  onClick={() => actualizar(i, { documento: '' })}>Quitar documento</button>
+              </>
+            )}
+            <button type="button" disabled={disabled} className="rx-btn rx-btn--danger ml-auto"
+              onClick={() => onChange(items.filter((_, idx) => idx !== i))}>Eliminar</button>
+          </div>
+        </div>
+      ))}
+
+      <button type="button" disabled={disabled} className="rx-btn rx-btn--outline"
+        onClick={() => onChange([...items, { ...FORMACION_VACIA }])}>
+        + Agregar {titulo.toLowerCase().replace(/s$/, '')}
+      </button>
+    </div>
+  );
+}
+
+// Quita filas totalmente vacías y avisa si alguna tiene datos pero no nombre.
+function limpiarFormaciones(lista: Formacion[], etiqueta: string): { ok: true; valor: Formacion[] } | { ok: false; error: string } {
+  const valor: Formacion[] = [];
+  for (const f of lista) {
+    const nombre = f.nombre.trim();
+    const tieneOtros = Boolean(f.institucion?.trim() || f.fecha || f.documento);
+    if (!nombre && !tieneOtros) continue;
+    if (!nombre) return { ok: false, error: `${etiqueta}: cada elemento necesita un nombre.` };
+    valor.push({
+      nombre,
+      institucion: f.institucion?.trim() ?? '',
+      fecha: f.fecha ?? '',
+      documento: f.documento ?? '',
+    });
+  }
+  return { ok: true, valor };
+}
 
 export function UsuariosPage() {
   // Solo el administrador puede crear o editar usuarios.
@@ -111,10 +226,18 @@ export function UsuariosPage() {
     setModal({ open: true });
   };
   const openEdit = (u: Usuario) => {
-    setForm({ nombre: u.nombre, apellidos: u.apellidos, correo: u.correo, telefono: u.telefono, codigoAcceso: u.codigoAcceso, rol: u.rol as PlatformRole, estatus: u.estatus, password: '', foto: u.foto || '' });
+    setForm({
+      nombre: u.nombre, apellidos: u.apellidos, correo: u.correo, telefono: u.telefono, codigoAcceso: u.codigoAcceso,
+      rol: u.rol as PlatformRole, estatus: u.estatus, password: '', foto: u.foto || '',
+      resumen: u.resumen ?? '',
+      capacitaciones: u.capacitaciones ?? [],
+      certificaciones: u.certificaciones ?? [],
+    });
     setFormError(null);
     setModal({ open: true, editing: u });
   };
+
+  const esEntrenador = form.rol === 'entrenador';
 
   // Crea (POST) o actualiza (PATCH) en el backend. La contraseña solo se envía
   // cuando se escribió una (al crear es obligatoria; al editar es opcional).
@@ -129,20 +252,35 @@ export function UsuariosPage() {
       return;
     }
 
+    // Datos del coach: solo se envían si el rol es entrenador.
+    let perfil: Record<string, unknown> = {};
+    if (esEntrenador) {
+      if (form.resumen.length > MAX_RESUMEN) {
+        setFormError(`El resumen admite máximo ${MAX_RESUMEN} caracteres.`);
+        return;
+      }
+      const cap = limpiarFormaciones(form.capacitaciones, 'Capacitaciones');
+      if (!cap.ok) { setFormError(cap.error); return; }
+      const cert = limpiarFormaciones(form.certificaciones, 'Certificaciones');
+      if (!cert.ok) { setFormError(cert.error); return; }
+      perfil = { resumen: form.resumen.trim(), capacitaciones: cap.valor, certificaciones: cert.valor };
+    }
+
     setSaving(true);
     setFormError(null);
     try {
+      const base: Record<string, unknown> = {
+        nombre: form.nombre, apellidos: form.apellidos, correo: form.correo,
+        telefono: form.telefono, codigoAcceso: form.codigoAcceso, rol: form.rol, estatus: form.estatus,
+        foto: form.foto,
+        ...perfil,
+      };
       if (modal.editing) {
-        const body: Record<string, unknown> = {
-          nombre: form.nombre, apellidos: form.apellidos, correo: form.correo,
-          telefono: form.telefono, codigoAcceso: form.codigoAcceso, rol: form.rol, estatus: form.estatus,
-          foto: form.foto,
-        };
         // Solo manda password si el usuario escribió una nueva.
-        if (form.password) body.password = form.password;
-        await api.patch(`/usuarios/${modal.editing.idUsuario}`, body);
+        if (form.password) base.password = form.password;
+        await api.patch(`/usuarios/${modal.editing.idUsuario}`, base);
       } else {
-        await api.post('/usuarios', form);
+        await api.post('/usuarios', { ...base, password: form.password });
       }
       await cargar();
       setModal({ open: false });
@@ -199,53 +337,53 @@ export function UsuariosPage() {
         <DataTable
           data={filtered as unknown as Record<string, unknown>[]}
           searchKeys={['nombre', 'apellidos', 'correo'] as never[]}
-        columns={[
-          {
-            key: 'nombre', header: 'Usuario',
-            render: (row) => {
-              const u = row as unknown as Usuario;
-              return (
-                <div className="flex items-center gap-3">
-                  <UsuarioAvatar foto={u.foto} nombre={u.nombre} apellidos={u.apellidos} className="w-8 h-8 rounded-full bg-[#F3F4F6] text-[#6B7280] text-xs font-bold" />
-                  <div>
-                    <p className="font-medium text-gray-800">{u.nombre} {u.apellidos}</p>
-                    <p className="text-xs text-gray-400">{u.correo}</p>
+          columns={[
+            {
+              key: 'nombre', header: 'Usuario',
+              render: (row) => {
+                const u = row as unknown as Usuario;
+                return (
+                  <div className="flex items-center gap-3">
+                    <UsuarioAvatar foto={u.foto} nombre={u.nombre} apellidos={u.apellidos} className="w-8 h-8 rounded-full bg-[#F3F4F6] text-[#6B7280] text-xs font-bold" />
+                    <div>
+                      <p className="font-medium text-gray-800">{u.nombre} {u.apellidos}</p>
+                      <p className="text-xs text-gray-400">{u.correo}</p>
+                    </div>
                   </div>
-                </div>
-              );
-            }
-          },
-          { key: 'telefono', header: 'Teléfono' },
-          { key: 'codigoAcceso', header: 'Código' },
-          {
-            key: 'rol', header: 'Rol',
-            render: (row) => <Badge variant={(row as unknown as Usuario).rol} />
-          },
-          {
-            key: 'estatus', header: 'Estatus',
-            render: (row) => <Badge variant={(row as unknown as Usuario).estatus} />
-          },
-          { key: 'fechaCreacion', header: 'Fecha Alta' },
-        ]}
-        actions={(row) => {
-          const u = row as unknown as Usuario;
-          // Sin permiso (entrenador) no se muestran acciones de edición/baja.
-          if (!puedeGestionar) return <span className="text-gray-300 text-xs">Solo lectura</span>;
-          return (
-            <div className="flex items-center gap-2 justify-end">
-              <button onClick={() => openEdit(u)} className="rx-icon-btn" title="Editar">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-              </button>
-              <button onClick={() => setConfirmToggle(u)} className={`rx-icon-btn ${u.estatus === 'activo' ? 'rx-btn--danger' : 'rx-btn--dark'}`} title={u.estatus === 'activo' ? 'Dar de baja' : 'Reactivar'}>
-                {u.estatus === 'activo'
-                  ? <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
-                  : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                }
-              </button>
-            </div>
-          );
-        }}
-      />
+                );
+              }
+            },
+            { key: 'telefono', header: 'Teléfono' },
+            { key: 'codigoAcceso', header: 'Código' },
+            {
+              key: 'rol', header: 'Rol',
+              render: (row) => <Badge variant={(row as unknown as Usuario).rol} />
+            },
+            {
+              key: 'estatus', header: 'Estatus',
+              render: (row) => <Badge variant={(row as unknown as Usuario).estatus} />
+            },
+            { key: 'fechaCreacion', header: 'Fecha Alta' },
+          ]}
+          actions={(row) => {
+            const u = row as unknown as Usuario;
+            // Sin permiso (entrenador) no se muestran acciones de edición/baja.
+            if (!puedeGestionar) return <span className="text-gray-300 text-xs">Solo lectura</span>;
+            return (
+              <div className="flex items-center gap-2 justify-end">
+                <button onClick={() => openEdit(u)} className="rx-icon-btn" title="Editar">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                </button>
+                <button onClick={() => setConfirmToggle(u)} className={`rx-icon-btn ${u.estatus === 'activo' ? 'rx-btn--danger' : 'rx-btn--dark'}`} title={u.estatus === 'activo' ? 'Dar de baja' : 'Reactivar'}>
+                  {u.estatus === 'activo'
+                    ? <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
+                    : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                  }
+                </button>
+              </div>
+            );
+          }}
+        />
       </DataState>
 
       <Modal open={modal.open} onClose={cerrarModal} title={modal.editing ? 'Editar usuario' : 'Nuevo usuario'}>
@@ -284,6 +422,50 @@ export function UsuariosPage() {
             onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
             className="col-span-2"
           />
+
+          {/* Datos del coach: solo aparecen cuando el rol es Entrenador. Se muestran en la app móvil. */}
+          {esEntrenador && (
+            <>
+              <div className="col-span-2 border-t border-gray-100 pt-4">
+                <p className="text-base font-semibold text-gray-900">Datos del coach</p>
+                <p className="text-xs text-gray-500">Esta información se muestra en la aplicación móvil.</p>
+              </div>
+
+              <div className="col-span-2">
+                <label className="block text-sm font-medium text-gray-800 mb-1" htmlFor="resumen-coach">
+                  Resumen de formación o historia
+                </label>
+                <textarea
+                  id="resumen-coach"
+                  rows={4}
+                  maxLength={MAX_RESUMEN}
+                  disabled={saving}
+                  value={form.resumen}
+                  onChange={e => setForm(f => ({ ...f, resumen: e.target.value }))}
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
+                  placeholder="Cuenta brevemente su formación, trayectoria o historia como coach."
+                />
+                <p className="text-xs text-gray-400 text-right">{form.resumen.length}/{MAX_RESUMEN}</p>
+              </div>
+
+              <FormacionEditor
+                titulo="Capacitaciones"
+                descripcion="Cursos y talleres que ha tomado."
+                items={form.capacitaciones}
+                onChange={capacitaciones => setForm(f => ({ ...f, capacitaciones }))}
+                onError={setFormError}
+                disabled={saving}
+              />
+              <FormacionEditor
+                titulo="Certificaciones"
+                descripcion="Certificaciones oficiales que respaldan al coach."
+                items={form.certificaciones}
+                onChange={certificaciones => setForm(f => ({ ...f, certificaciones }))}
+                onError={setFormError}
+                disabled={saving}
+              />
+            </>
+          )}
         </div>
         {formError && <p role="alert" className="mt-3 text-sm text-red-500">{formError}</p>}
         <div className="flex gap-3 mt-6 pt-4 border-t border-gray-100">

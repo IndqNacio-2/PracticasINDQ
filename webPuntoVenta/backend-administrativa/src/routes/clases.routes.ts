@@ -1,134 +1,93 @@
-// clases.routes.ts
 import { Router } from 'express';
 import { isValidObjectId } from 'mongoose';
-import bcrypt from 'bcryptjs';
-import { ClienteModel as Cliente } from '../models/Clientes/clienteTipado';
-import { asyncHandler, manejarErrores } from '../lib/asynchandler';
-import { fechaISO, hoyEnZona } from '../lib/edad';
-import { crearClienteConCodigo, errorPassword, normalizarPerfil } from '../services/cliente.service';
+import { Clase } from '../models/Clases/clases';
+import { esEnteroPositivo, esTextoNoVacio } from '../lib/validacion';
 
-// Rutas de la plataforma web (staff). Móntalas detrás de tu middleware de autenticación de administrador.
+// Catálogo de clases (nombre, capacidad, precio, color). Los horarios y la
+// programación semanal toman de aquí el idClase, el nombre y la capacidad máxima.
 const router = Router();
 
+const COLOR_HEX = /^#[0-9a-fA-F]{6}$/;
+
 router.param('id', (_req, res, next, id) => {
-    if (!isValidObjectId(id)) return res.status(400).json({ error: 'ID de cliente inválido' });
+    if (!isValidObjectId(id)) return res.status(400).json({ error: 'El identificador de la clase no es valido.' });
     next();
 });
 
 const esObjeto = (v: unknown) => typeof v === 'object' && v !== null && !Array.isArray(v);
 
-// Consulta: ?estatus=activo|inactivo & ?q=texto (nombre, apellidos, correo, código)
-router.get('/', asyncHandler(async (req, res) => {
-    const filtro: Record<string, any> = {};
-    const { estatus, q } = req.query;
-    if (estatus === 'activo' || estatus === 'inactivo') filtro.estatus = estatus;
-    if (typeof q === 'string' && q.trim()) {
-        const rx = new RegExp(q.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-        filtro.$or = [{ nombre: rx }, { apellidos: rx }, { correo: rx }, { codigoAcceso: rx }];
-    }
-    const clientes = await Cliente.find(filtro).sort({ fechaRegistro: -1, fechaCreacion: -1 });
-    res.json(clientes);
-}));
-
-// Perfil completo (datos generales, salud, actividad y membresía).
-router.get('/:id', asyncHandler(async (req, res) => {
-    const cliente = await Cliente.findById(req.params.id);
-    if (!cliente) return res.status(404).json({ error: 'Cliente no encontrado' });
-    res.json(cliente);
-}));
-
-// Registro. La contraseña es opcional: solo sirve para que el cliente entre a la app móvil.
-router.post('/', asyncHandler(async (req, res) => {
-    const { error, datos: base } = normalizarPerfil(req.body, { parcial: false });
-    if (error) return res.status(400).json({ error });
-    const datos = base as Record<string, any>;
-
-    if (req.body.password !== undefined && req.body.password !== '') {
-        const errPass = errorPassword(req.body.password);
-        if (errPass) return res.status(400).json({ error: errPass });
-        datos.password = await bcrypt.hash(req.body.password, 10);
-    }
-
-    if (await Cliente.exists({ correo: datos.correo })) {
-        return res.status(409).json({ error: 'Ya existe un cliente registrado con ese correo' });
-    }
-
-    const nuevo = await crearClienteConCodigo(datos as any);
-    res.status(201).json(nuevo);
-}));
-
-// Edición de datos generales. No cambia el estatus: para eso están /baja y /reactivar.
-router.patch('/:id', asyncHandler(async (req, res) => {
-    const cliente = await Cliente.findById(req.params.id);
-    if (!cliente) return res.status(404).json({ error: 'Cliente no encontrado' });
-
-    const { error, datos: base } = normalizarPerfil(req.body, { parcial: true });
-    if (error) return res.status(400).json({ error });
-    const datos = base as Record<string, any>;
-
-    if (datos.correo && datos.correo !== cliente.correo) {
-        const enUso = await Cliente.exists({ correo: datos.correo, _id: { $ne: cliente._id } });
-        if (enUso) return res.status(409).json({ error: 'Ese correo ya está en uso por otro cliente' });
-    }
-
-    const cambiaPassword = req.body.password !== undefined && req.body.password !== '';
-    if (cambiaPassword) {
-        const errPass = errorPassword(req.body.password);
-        if (errPass) return res.status(400).json({ error: errPass });
-        datos.password = await bcrypt.hash(req.body.password, 10);
-    }
-
-    cliente.set(datos);
-    await cliente.save();
-    // Si el staff cambia la contraseña, se cierran las sesiones abiertas del cliente.
-    if (cambiaPassword) await Cliente.updateOne({ _id: cliente._id }, { $inc: { tokenVersion: 1 } });
-
-    res.json(cliente);
-}));
-
-// Baja lógica: el cliente conserva todo su historial y se cierran sus sesiones en la app.
-router.patch('/:id/baja', asyncHandler(async (req, res) => {
-    const cliente = await Cliente.findByIdAndUpdate(
-        req.params.id,
-        { estatus: 'inactivo', fechaBaja: fechaISO(hoyEnZona()), $inc: { tokenVersion: 1 } },
-        { new: true }
-    );
-    if (!cliente) return res.status(404).json({ error: 'Cliente no encontrado' });
-    res.json(cliente);
-}));
-
-router.patch('/:id/reactivar', asyncHandler(async (req, res) => {
-    const cliente = await Cliente.findByIdAndUpdate(
-        req.params.id,
-        { estatus: 'activo', fechaBaja: null },
-        { new: true }
-    );
-    if (!cliente) return res.status(404).json({ error: 'Cliente no encontrado' });
-    res.json(cliente);
-}));
-
-// Secciones del perfil completo.
-const actualizarSeccion = (campo: 'perfilSalud' | 'perfilActividad' | 'membresia') =>
-    asyncHandler(async (req, res) => {
-        if (!esObjeto(req.body)) return res.status(400).json({ error: 'Se esperaba un objeto JSON' });
-        const cliente = await Cliente.findByIdAndUpdate(
-            req.params.id,
-            { [campo]: req.body },
-            { new: true, runValidators: true }
-        );
-        if (!cliente) return res.status(404).json({ error: 'Cliente no encontrado' });
-        res.json(cliente);
-    });
-
-router.patch('/:id/salud', actualizarSeccion('perfilSalud'));
-router.patch('/:id/actividad', actualizarSeccion('perfilActividad'));
-router.patch('/:id/membresia', actualizarSeccion('membresia'));
-
-// Los clientes no se eliminan.
-router.delete('/:id', (_req, res) => {
-    res.status(405).json({ error: 'Los clientes no se eliminan. Usa PATCH /:id/baja para darlos de baja.' });
+// GET /api/clases?estatus=activo|inactivo
+router.get('/', async (req, res) => {
+    const filtro: any = {};
+    if (req.query.estatus === 'activo' || req.query.estatus === 'inactivo') filtro.estatus = req.query.estatus;
+    const clases: any[] = await Clase.find(filtro as any).sort({ nombre: 1 });
+    res.json(clases.map((c) => c.toJSON()));
 });
 
-router.use(manejarErrores);
+// GET /api/clases/:id
+router.get('/:id', async (req, res) => {
+    const clase: any = await Clase.findById(req.params.id);
+    if (!clase) return res.status(404).json({ error: 'Clase no encontrada' });
+    res.json(clase.toJSON());
+});
+
+// Valida los campos que vengan en el body. En modo parcial (PATCH) solo revisa los presentes.
+function normalizarClase(b: any, parcial: boolean): { error: string } | { datos: any } {
+    const datos: any = {};
+
+    if (!parcial || b.nombre !== undefined) {
+        if (!esTextoNoVacio(b.nombre)) return { error: 'El nombre de la clase es obligatorio.' };
+        datos.nombre = b.nombre.trim();
+    }
+    if (b.descripcion !== undefined) datos.descripcion = String(b.descripcion ?? '').trim();
+
+    if (!parcial || b.capacidad !== undefined) {
+        if (!esEnteroPositivo(b.capacidad)) return { error: 'La capacidad debe ser un numero entero mayor que 0.' };
+        datos.capacidad = Number(b.capacidad);
+    }
+    if (b.precio !== undefined) {
+        const precio = Number(b.precio);
+        if (!Number.isFinite(precio) || precio < 0) return { error: 'El precio no puede ser negativo.' };
+        datos.precio = precio;
+    }
+    if (b.color !== undefined) {
+        if (typeof b.color !== 'string' || !COLOR_HEX.test(b.color)) return { error: 'El color debe tener formato #RRGGBB.' };
+        datos.color = b.color;
+    }
+    if (b.estatus !== undefined) {
+        if (b.estatus !== 'activo' && b.estatus !== 'inactivo') return { error: "El estatus debe ser 'activo' o 'inactivo'." };
+        datos.estatus = b.estatus;
+    }
+    if (b.entrenadorId !== undefined) datos.entrenadorId = String(b.entrenadorId ?? '');
+
+    return { datos };
+}
+
+// POST /api/clases
+router.post('/', async (req, res) => {
+    if (!esObjeto(req.body)) return res.status(400).json({ error: 'El cuerpo de la peticion debe ser un objeto JSON.' });
+    const r = normalizarClase(req.body, false);
+    if ('error' in r) return res.status(400).json({ error: r.error });
+
+    const creada: any = await Clase.create(r.datos);
+    res.status(201).json(creada.toJSON());
+});
+
+// PATCH /api/clases/:id  (edición y baja/alta lógica con { estatus })
+router.patch('/:id', async (req, res) => {
+    if (!esObjeto(req.body)) return res.status(400).json({ error: 'El cuerpo de la peticion debe ser un objeto JSON.' });
+    const r = normalizarClase(req.body, true);
+    if ('error' in r) return res.status(400).json({ error: r.error });
+    if (Object.keys(r.datos).length === 0) return res.status(400).json({ error: 'No hay cambios que guardar.' });
+
+    const actualizada: any = await Clase.findByIdAndUpdate(req.params.id, { $set: r.datos }, { new: true, runValidators: true });
+    if (!actualizada) return res.status(404).json({ error: 'Clase no encontrada' });
+    res.json(actualizada.toJSON());
+});
+
+// Las clases no se eliminan: tienen horarios y reservaciones asociados.
+router.delete('/:id', (_req, res) => {
+    res.status(405).json({ error: 'Las clases no se eliminan. Usa PATCH /:id con { "estatus": "inactivo" }.' });
+});
 
 export default router;
