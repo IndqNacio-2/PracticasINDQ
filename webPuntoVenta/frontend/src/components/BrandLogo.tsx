@@ -3,7 +3,7 @@ interface BrandLogoProps {
   className?: string
 }
 
-/** Originales blancos de NUUCLEO: usar siempre sobre una superficie oscura. */
+/** Marca con símbolo negro sobre lima redondeado, igual en ambas variantes, y letras blancas. */
 export default function BrandLogo({ variant = "full", className = "" }: BrandLogoProps) {
   const symbol = variant === "symbol"
   return (
@@ -13,7 +13,7 @@ export default function BrandLogo({ variant = "full", className = "" }: BrandLog
       width={symbol ? 453 : 1507}
       height={322}
       draggable={false}
-      className={`block h-auto max-w-full object-contain ${className}`}
+      className={`rx-brand-image ${symbol ? "rx-brand-image--symbol" : "rx-brand-image--full"} block h-auto max-w-full object-contain ${className}`}
     />
   )
 }

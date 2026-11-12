@@ -1099,7 +1099,9 @@ export default function Dashboard() {
             </button>
           ) : (
             <>
-              <div className="rx-brand-content"><BrandLogo className="w-40" /><p className="rx-brand-subtitle">Recepción</p></div>
+              <div className="rx-brand-content">
+                <BrandLogo className="w-40" />
+              </div>
               <button
                 type="button"
                 onClick={() => setMenuColapsado(true)}
@@ -1134,6 +1136,17 @@ export default function Dashboard() {
               </>
             )}
           </NavLink>
+          <button
+            type="button"
+            onClick={() => setVerMembresias(true)}
+            aria-label="Vender paquetes"
+            aria-pressed={verMembresias}
+            title={menuColapsado ? 'Vender paquetes' : undefined}
+            className={`rx-nav-item ${menuColapsado ? 'rx-nav-item--collapsed' : ''} ${verMembresias ? 'rx-nav-item--active' : ''}`}
+          >
+            <MaterialIcon name="sell" className="flex-shrink-0 text-xl" filled />
+            {!menuColapsado && <span className="truncate">Vender paquetes</span>}
+          </button>
           {/* El checador es un kiosco aparte: se abre en otra pestaña. */}
           <Link
             to="/asistencia"
@@ -1195,10 +1208,6 @@ export default function Dashboard() {
                 <p className="rx-page-subtitle">{fechaDeHoyLarga()}</p>
               </div>
               <div className="rx-page-actions">
-                <button type="button" onClick={() => setVerMembresias(true)} className="rx-btn rx-btn--outline">
-                  <MaterialIcon name="sell" className="text-lg" filled />
-                  Vender membresía
-                </button>
                 <button type="button" onClick={openModal} className="rx-btn rx-btn--accent">
                   <MaterialIcon name="add" className="text-lg" />
                   Nueva reservación
