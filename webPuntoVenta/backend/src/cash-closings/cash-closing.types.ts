@@ -8,6 +8,7 @@
 
 export interface CashClosingRecord {
   folio: string;
+  closedAt: string;
   date: string;
   time: string;
   salesCount: number;
@@ -89,9 +90,9 @@ export function validateCashClosingInput(body: unknown): {
     });
   }
 
-  // Usuario que realiza el corte: todavia no hay inicio de sesion.
+  // Usuario que realiza el corte: lo envia el frontend con el usuario de la sesion.
   const registeredBy =
-    String(data.registeredBy ?? "").trim() || "Edgar Rodriguez";
+    String(data.registeredBy ?? "").trim() || "Sin registrar";
 
   if (issues.length > 0) {
     return { issues, input: null };

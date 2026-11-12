@@ -74,7 +74,7 @@ export function validateWasteInput(body: unknown): {
   // Usuario que registra: todavia no hay inicio de sesion, asi que si no
   // viene lo dejo vacio y la base pone el valor por omision.
   const registeredBy =
-    String(data.registeredBy ?? "").trim() || "Edgar Rodriguez";
+    String(data.registeredBy ?? "").trim() || "Sin registrar";
 
   if (issues.length > 0) {
     return { issues, input: null };

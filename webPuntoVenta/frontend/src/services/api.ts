@@ -17,10 +17,21 @@ import type {
 /**
  * obtiene la direccion base del backend desde las variables de Vite
  * 
- * replace (/\, "") elimina una diagonal final para evitar URLs
- * como http://localhost:3003//api/health.
+ * replace(/\/$/, "") elimina una diagonal final para evitar URLs
+ * como http://localhost:3003//api/health. Si falta la variable, la aplicacion
+ * no se rompe al cargar: el Punto de Venta avisa al hacer su primera peticion.
  */
-const API_URL = import.meta.env.VITE_API_URL.replace(/\$/, "");
+const API_URL = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
+
+/** Avisa con un mensaje claro cuando falta configurar el Punto de Venta. */
+function exigirConfiguracion(): void {
+    if (!API_URL) {
+        throw new ApiError(
+            { message: "Falta configurar VITE_API_URL: copia frontend/.env.example como frontend/.env y reinicia." },
+            0,
+        );
+    }
+}
 
 /**
  * representa el posible de cada servicio revisado
@@ -48,6 +59,7 @@ export interface HealthResponse {
  * una opcion operacion HTTP asincrona
  */
 export async function getHealth(): Promise<HealthResponse> {
+    exigirConfiguracion();
     const response = await fetch(`${API_URL}/api/health`);
 
     /**
@@ -101,6 +113,7 @@ export class ApiError extends Error {
  * reviso response.ok a mano y convierto la respuesta en un ApiError.
  */
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+    exigirConfiguracion();
     const response = await fetch(`${API_URL}${path}`, {
         ...options,
         headers: {
@@ -206,6 +219,7 @@ export async function getWasteRecords(): Promise<WasteRecord[]> {
 
 // Datos que envia el formulario de merma.
 export interface WastePayload {
+    registeredBy?: string;
     productId: number;
     quantity: number;
     reason: WasteReason;

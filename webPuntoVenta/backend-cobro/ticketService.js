@@ -1,81 +1,86 @@
-// ticketService.js (version CommonJS, compatible con tu serverWebCobro.js)
-const escpos = require('escpos');
-escpos.Network = require('escpos-network');
+// Adaptación del servicio de Carlos: ESC/POS por red sin dependencias adicionales.
+// Desactivado por defecto. Un fallo de impresión nunca revierte un cobro.
+const net = require('node:net');
+const ANCHO = 42;
+const fmt = (valor) => Number(valor || 0).toLocaleString('es-MX', {
+  minimumFractionDigits: 2, maximumFractionDigits: 2,
+});
 
-const ANCHO = 42; // 58mm. Cambiar a 48 si es de 80mm.
-const fmt = n => Number(n).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// Impide que nombres o referencias inyecten órdenes de control a la impresora.
+const texto = (valor) => String(valor ?? '').normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '').replace(/[^\x20-\x7e]/g, ' ').trim();
+const fila = (izquierda, derecha) => {
+  const der = texto(derecha).slice(0, ANCHO - 2);
+  const izq = texto(izquierda).slice(0, ANCHO - der.length - 1);
+  return izq + ' '.repeat(ANCHO - izq.length - der.length) + der;
+};
 
-function padRow(l, r) {
-  const space = Math.max(1, ANCHO - l.length - r.length);
-  return l + ' '.repeat(space) + r;
+function crearContenidoTicket(pago) {
+  const fecha = new Date(pago.fecha);
+  const lineas = [
+    'NUUCLEO',
+    pago.contexto === 'pos' ? 'VENTA DE MOSTRADOR' : pago.contexto === 'membresia' ? 'VENTA DE MEMBRESIA' : 'COBRO DE SERVICIOS',
+    '='.repeat(ANCHO),
+    fila('Folio:', pago.folio),
+    fila('Fecha:', Number.isNaN(fecha.getTime()) ? '-' : fecha.toLocaleString('es-MX', { hour12: false })),
+    fila('Atendio:', pago.usuario || 'Recepcion'),
+    fila('Cliente:', pago.cliente_nombre ?? pago.cliente ?? '-'),
+  ];
+  const reserva = pago.codigo_reserva ?? pago.reservaId;
+  if (reserva != null) lineas.push(fila('Reserva:', reserva));
+  if (pago.fechaClase) lineas.push(fila('Clase:', `${pago.fechaClase} ${pago.horaClase || ''}`));
+  if (pago.fechaInicio) lineas.push(fila('Inicio:', pago.fechaInicio));
+  if (pago.fechaFin) lineas.push(fila('Vigencia hasta:', pago.fechaFin));
+  lineas.push('-'.repeat(ANCHO));
+  for (const item of pago.items || []) {
+    const cantidad = Number(item.cantidad ?? 1);
+    const precio = Number(item.precioUnitario ?? 0);
+    lineas.push(texto(item.descripcion || 'SERVICIO').slice(0, ANCHO));
+    lineas.push(fila(`${cantidad} x $${fmt(precio)}`, `$${fmt(cantidad * precio)}`));
+  }
+  lineas.push('='.repeat(ANCHO), fila('TOTAL:', `$${fmt(pago.total)}`));
+  const pagos = pago.pagos || [{ metodo: pago.metodoPago, monto: pago.total }];
+  for (const parcial of pagos) lineas.push(fila(`Pago ${parcial.metodo || '-'}`, `$${fmt(parcial.monto)}`));
+  if (pago.efectivoRecibido != null) lineas.push(fila('Recibido:', `$${fmt(pago.efectivoRecibido)}`));
+  lineas.push(fila('Cambio:', `$${fmt(pago.cambio)}`));
+  if (pago.referencia) lineas.push(fila('Referencia:', pago.referencia));
+  lineas.push('='.repeat(ANCHO), 'Gracias por su visita.', 'Este ticket es su comprobante.', '', '', '');
+  return Buffer.concat([
+    Buffer.from([0x1b, 0x40]),
+    Buffer.from(lineas.join('\n') + '\n', 'ascii'),
+    Buffer.from([0x1d, 0x56, 0x00]),
+  ]);
 }
-const line = (ch = '=') => ch.repeat(ANCHO);
-const trunc = (s, n) => (s.length > n ? s.slice(0, n - 1) + '.' : s);
 
-function imprimirTicket(pago) {
-  const ip = process.env.PRINTER_IP;
-  if (!ip) {
-    console.warn('PRINTER_IP no configurada. Ticket no impreso.');
+function imprimirTicket(pago, opciones = {}) {
+  const habilitada = opciones.habilitada ?? process.env.TICKET_IMPRESION_HABILITADA === 'true';
+  const host = opciones.host ?? process.env.PRINTER_IP;
+  if (!habilitada || !host) return Promise.resolve(false);
+  const port = Number(opciones.port ?? process.env.PRINTER_PORT ?? 9100);
+  const timeout = Number(opciones.timeout ?? process.env.PRINTER_TIMEOUT_MS ?? 2000);
+  if (!Number.isInteger(port) || port < 1 || port > 65535 || !Number.isFinite(timeout) || timeout <= 0) {
     return Promise.resolve(false);
   }
-
   return new Promise((resolve) => {
-    const device = new escpos.Network(ip, 9100);
-    const printer = new escpos.Printer(device);
-
-    device.open(err => {
-      if (err) {
-        console.error('Error conectando a impresora:', err.message);
-        return resolve(false);
-      }
-
-      try {
-        const d = new Date(pago.fecha);
-        const lineas = pago.items || [];
-
-        printer.font('a').align('ct').size(2, 2).style('b').text('NUUCLEO\n')
-          .size(1, 1).style('').text('Gymfit\n').text(line('=') + '\n');
-
-        const titulo = pago.contexto === 'pos' ? 'VENTA DE MOSTRADOR' : 'COBRO DE SERVICIOS';
-        printer.align('ct').style('b').text(titulo + '\n').style('').align('lt');
-
-        printer.text(padRow('Folio:', pago.folio) + '\n');
-        printer.text(padRow('Fecha:', d.toLocaleDateString('es-MX')) + '\n');
-        printer.text(padRow('Hora:', d.toLocaleTimeString('es-MX', { hour12: false })) + '\n');
-        printer.text(padRow('Atendio:', pago.usuario ?? '-') + '\n');
-        if (pago.codigo_reserva) printer.text(padRow('Reserva:', pago.codigo_reserva) + '\n');
-        if (pago.cliente_nombre) printer.text(padRow('Cliente:', trunc(pago.cliente_nombre, 22)) + '\n');
-        printer.text(line('-') + '\n');
-
-        for (const l of lineas) {
-          const desc = l.descripcion || 'SERVICIO';
-          const cant = l.cantidad ?? 1;
-          const pu = l.precioUnitario || 0;
-          printer.style('b').text(trunc(desc.toUpperCase(), 38) + '\n').style('');
-          printer.text('  ' + padRow(`${cant} x $${fmt(pu)}`, '$' + fmt(cant * pu)) + '\n');
-        }
-
-        printer.text(line('=') + '\n');
-        printer.style('b').text(padRow('TOTAL A PAGAR:', '$' + fmt(pago.total)) + '\n').style('');
-        printer.text(line('-') + '\n');
-
-        for (const p of (pago.pagos || [])) {
-          printer.text(padRow(`Pago ${p.metodo}:`, '$' + fmt(p.monto)) + '\n');
-        }
-
-        printer.text(line('-') + '\n');
-        printer.style('bu').text(padRow('CAMBIO:', '$' + fmt(pago.cambio || 0)) + '\n').style('');
-        printer.text(line('=') + '\n');
-        printer.align('ct').text('\nGracias por su visita.\nEste ticket es su comprobante.\n\n\n');
-        printer.align('lt').cut();
-
-        printer.close(() => device.close(() => resolve(true)));
-      } catch (e) {
-        console.error('Error armando ticket:', e.message);
-        resolve(false);
-      }
-    });
+    let terminado = false;
+    const socket = new net.Socket();
+    const finalizar = (resultado) => {
+      if (terminado) return;
+      terminado = true;
+      clearTimeout(limite);
+      socket.destroy();
+      resolve(resultado);
+    };
+    const limite = setTimeout(() => finalizar(false), timeout);
+    socket.on('error', () => finalizar(false));
+    socket.on('close', () => finalizar(false));
+    try {
+      const contenido = crearContenidoTicket(pago);
+      socket.connect(port, host, () => socket.end(contenido, () => finalizar(true)));
+    } catch {
+      finalizar(false);
+    }
   });
 }
 
-module.exports = { imprimirTicket };
+module.exports = { crearContenidoTicket, imprimirTicket };

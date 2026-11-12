@@ -1,146 +1,188 @@
-import type { Product, CartItem } from '../types';
-import MaterialIcon from "./MaterialIcon";
+import type { CartItem, Product } from "../types"
 
-const fmt = (n: number) => `$${n.toFixed(2)}`;
+import MaterialIcon from "./MaterialIcon"
+
+const fmt = (value: number) => `$${value.toFixed(2)}`
 
 interface CartPanelProps {
-  cart: CartItem[];
-  products: Product[];
-  subtotal: number;
-  discount: number;
-  total: number;
-  onUpdateQuantity: (productId: number, delta: number) => void;
-  onRemove: (productId: number) => void;
-  onCobrar: () => void;
-  onCancelVenta: () => void;
+  cart: CartItem[]
+
+  products: Product[]
+
+  subtotal: number
+
+  discount: number
+
+  total: number
+
+  onUpdateQuantity: (productId: number, delta: number) => void
+
+  onRemove: (productId: number) => void
+
+  onCobrar: () => void
+
+  onCancelVenta: () => void
 }
 
 export default function CartPanel({
-  cart, products, subtotal, discount, total,
-  onUpdateQuantity, onRemove, onCobrar, onCancelVenta,
+  cart,
+
+  products,
+
+  subtotal,
+
+  discount,
+
+  total,
+
+  onUpdateQuantity,
+
+  onRemove,
+
+  onCobrar,
+
+  onCancelVenta,
 }: CartPanelProps) {
-  const getProduct = (id: number) => products.find(p => p.id === id)!;
+  /* Localizo la información completa del producto mediante su identificador. */
+
+  const getProduct = (id: number) =>
+    products.find((product) => product.id === id)!
+
+  /* Cuento unidades y no solo renglones del carrito. */
+
+  const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0)
 
   return (
-    <div className="flex flex-col bg-white border-l border-[#E5E7EB]" style={{ width: '35%', minWidth: 300 }}>
-      {/* Header */}
-      <div className="px-5 py-4 border-b border-[#E5E7EB] flex-shrink-0">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold text-[#0D0F14]">Venta actual</h2>
-          {cart.length > 0 && (
-            <span className="text-xs bg-[#111827] text-white font-bold px-2 py-0.5 rounded-full">
-              {cart.reduce((s, i) => s + i.quantity, 0)} artículos
-            </span>
-          )}
+    <aside className="rx-cart-panel">
+      <header className="rx-cart-header">
+        <div>
+          <h2 className="rx-cart-title">Venta actual</h2>
+          <p className="rx-sale-subtitle">
+            Revisa los productos antes de cobrar
+          </p>
         </div>
-      </div>
 
-      {/* Cart items */}
-      <div className="flex-1 overflow-y-auto min-h-0 px-4 py-4">
+        {cart.length > 0 && (
+          <span className="rx-badge rx-badge--accent">
+            {totalItems} {totalItems === 1 ? "artículo" : "artículos"}
+          </span>
+        )}
+      </header>
+
+      <div className="rx-cart-items">
         {cart.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-center gap-3 pb-8">
-            <div className="w-16 h-16 bg-[#F9FAFB] rounded-full flex items-center justify-center">
-                <MaterialIcon name="shopping_cart" className="text-3xl text-[#D1D5DB]" />
+          <div className="rx-empty-state">
+            <div className="rx-empty-icon">
+              <MaterialIcon name="shopping_cart" className="text-3xl" />
             </div>
-            <p className="text-sm text-[#9CA3AF] leading-snug max-w-[180px]">
-              Agrega productos para comenzar una venta
+            <p className="rx-empty-title">La venta está vacía</p>
+            <p className="rx-help-text">
+              Agrega productos para comenzar una venta.
             </p>
           </div>
         ) : (
-          <div className="flex flex-col gap-2.5">
-            {cart.map(item => {
-              const p = getProduct(item.productId);
+          <div className="rx-cart-list">
+            {cart.map((item) => {
+              const product = getProduct(item.productId)
+
               return (
-                <div key={item.productId} className="bg-[#F9FAFB] rounded-xl p-3">
-                  <div className="flex items-start justify-between mb-2.5">
-                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                      <MaterialIcon name={p.icon} className="flex-shrink-0 text-[#6B7280]" filled />
+                <article key={item.productId} className="rx-cart-item">
+                  <div className="rx-cart-item-header">
+                    <div className="rx-cart-product">
+                      <div className="rx-cart-product-icon">
+                        <MaterialIcon
+                          name={product.icon}
+                          className="text-xl"
+                          filled
+                        />
+                      </div>
                       <div className="min-w-0">
-                        <p className="text-sm font-semibold text-[#0D0F14] truncate">{p.name}</p>
-                        <p className="text-xs text-[#9CA3AF]">{fmt(p.price)} c/u</p>
+                        <h3 className="rx-cart-product-name">{product.name}</h3>
+                        <p className="rx-cart-product-price">
+                          {fmt(product.price)} por unidad
+                        </p>
                       </div>
                     </div>
+
                     <button
                       type="button"
                       onClick={() => onRemove(item.productId)}
-                      aria-label={`Eliminar ${p.name} del carrito`}
-                      className="w-6 h-6 flex items-center justify-center text-[#D1D5DB] hover:text-[#EF4444] hover:bg-[#FEE2E2] rounded-lg transition-colors flex-shrink-0 ml-1"
+                      aria-label={`Eliminar ${product.name} del carrito`}
+                      className="rx-remove-button"
                     >
                       <MaterialIcon name="close" className="text-base" />
                     </button>
                   </div>
 
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
+                  <div className="rx-cart-item-footer">
+                    <div className="rx-quantity-control">
                       <button
                         type="button"
                         onClick={() => onUpdateQuantity(item.productId, -1)}
-                        aria-label={`Disminuir cantidad de ${p.name}`}
-                        className="w-7 h-7 bg-white border border-[#E5E7EB] rounded-lg flex items-center justify-center text-[#374151] hover:border-[#111827] hover:text-[#111827] transition-colors text-base font-bold leading-none"
+                        aria-label={`Disminuir cantidad de ${product.name}`}
+                        className="rx-quantity-button"
                       >
                         <MaterialIcon name="remove" className="text-lg" />
                       </button>
-                      <span className="text-sm font-bold text-[#0D0F14] w-6 text-center tabular-nums">
-                        {item.quantity}
-                      </span>
+                      <span className="rx-quantity-value">{item.quantity}</span>
                       <button
                         type="button"
                         onClick={() => onUpdateQuantity(item.productId, 1)}
-                        disabled={item.quantity >= p.stock}
-                        aria-label={`Aumentar cantidad de ${p.name}`}
-                        className="w-7 h-7 bg-white border border-[#E5E7EB] rounded-lg flex items-center justify-center text-[#374151] hover:border-[#111827] hover:text-[#111827] transition-colors text-base font-bold leading-none disabled:opacity-30 disabled:cursor-not-allowed"
+                        disabled={item.quantity >= product.stock}
+                        aria-label={`Aumentar cantidad de ${product.name}`}
+                        className="rx-quantity-button"
                       >
                         <MaterialIcon name="add" className="text-lg" />
                       </button>
                     </div>
-                    <span className="text-sm font-bold text-[#0D0F14] tabular-nums">
-                      {fmt(p.price * item.quantity)}
-                    </span>
+
+                    <strong className="rx-cart-item-total">
+                      {fmt(product.price * item.quantity)}
+                    </strong>
                   </div>
-                </div>
-              );
+                </article>
+              )
             })}
           </div>
         )}
       </div>
 
-      {/* Summary + Actions */}
-      <div className="flex-shrink-0 border-t border-[#E5E7EB] px-5 py-4">
-        <div className="space-y-2 mb-4">
-          <div className="flex justify-between text-sm">
-            <span className="text-[#6B7280]">Subtotal</span>
-            <span className="text-[#0D0F14] font-medium tabular-nums">{fmt(subtotal)}</span>
+      <footer className="rx-cart-summary">
+        <div className="rx-summary-list">
+          <div className="rx-summary-row">
+            <span>Subtotal</span>
+            <strong>{fmt(subtotal)}</strong>
           </div>
-          <div className="flex justify-between text-sm">
-            <span className="text-[#6B7280]">Descuento</span>
-            <span className="text-[#0D0F14] font-medium tabular-nums">{fmt(discount)}</span>
+          <div className="rx-summary-row">
+            <span>Descuento</span>
+            <strong>{fmt(discount)}</strong>
           </div>
-          <div className="flex justify-between items-center pt-2.5 border-t border-[#E5E7EB]">
-            <span className="text-base font-bold text-[#0D0F14]">Total</span>
-            <span className="text-2xl font-bold tabular-nums" style={{ fontFamily: 'Outfit, sans-serif', color: '#111827' }}>
-              {fmt(total)}
-            </span>
+          <div className="rx-summary-row rx-summary-total">
+            <span className="rx-summary-total-label">Total</span>
+            <strong className="rx-summary-total-value">{fmt(total)}</strong>
           </div>
         </div>
 
         <button
+          type="button"
           onClick={onCobrar}
           disabled={cart.length === 0}
-          className="w-full py-3.5 text-white font-bold text-base rounded-xl transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 active:scale-[0.98] mb-2"
-          style={{ fontFamily: 'Outfit, sans-serif', backgroundColor: '#6B7280' }}
+          className="rx-btn rx-btn--dark rx-btn--large rx-btn--block"
         >
-          COBRAR
+          <MaterialIcon name="payments" className="text-xl" />
+          Cobrar
         </button>
 
         {cart.length > 0 && (
           <button
+            type="button"
             onClick={onCancelVenta}
-            className="w-full py-2 text-sm text-[#EF4444] hover:bg-[#FEF2F2] rounded-xl transition-colors font-medium"
+            className="rx-btn rx-btn--danger-ghost rx-btn--block mt-2"
           >
             Cancelar venta
           </button>
         )}
-      </div>
-    </div>
-  );
+      </footer>
+    </aside>
+  )
 }

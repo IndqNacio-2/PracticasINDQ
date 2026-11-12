@@ -19,7 +19,7 @@ router.post('/login', async (req, res) => {
   // El campo password está en select:false, hay que pedirlo explícitamente.
   // Se castea a any para leer el hash: la inferencia de tipos de Mongoose no
   // siempre resuelve bien los campos con select:false.
-  const usuario: any = await Usuario.findOne({ correo: correo.toLowerCase() }).select('+password');
+  const usuario: any = await Usuario.findOne({ correo: correo.trim().toLowerCase() }).select('+password');
 
   const valido =
     usuario !== null &&
@@ -48,6 +48,33 @@ router.get('/me', requireAuth, async (req, res) => {
   if (!usuario || usuario.estatus !== 'activo') {
     return res.status(401).json({ message: 'Usuario no disponible.' });
   }
+  return res.json({ user: usuario.toJSON() });
+});
+
+// POST /api/auth/cambiar-password  { passwordActual, passwordNueva }
+// Cambia la contraseña de quien tiene la sesión y quita la marca de temporal.
+router.post('/cambiar-password', requireAuth, async (req, res) => {
+  const { passwordActual, passwordNueva } = req.body ?? {};
+
+  if (typeof passwordActual !== 'string' || typeof passwordNueva !== 'string') {
+    return res.status(400).json({ message: 'La contraseña actual y la nueva son obligatorias.' });
+  }
+  if (passwordNueva.length < 8) {
+    return res.status(400).json({ message: 'La nueva contraseña debe tener al menos 8 caracteres.' });
+  }
+  if (passwordNueva === passwordActual) {
+    return res.status(400).json({ message: 'La nueva contraseña debe ser distinta a la actual.' });
+  }
+
+  const usuario: any = await Usuario.findById(req.auth!.id).select('+password');
+  if (!usuario || usuario.estatus !== 'activo' || !bcrypt.compareSync(passwordActual, usuario.password)) {
+    return res.status(401).json({ message: 'La contraseña actual no es correcta.' });
+  }
+
+  usuario.password = bcrypt.hashSync(passwordNueva, 10);
+  usuario.debeCambiarPassword = false;
+  await usuario.save();
+
   return res.json({ user: usuario.toJSON() });
 });
 

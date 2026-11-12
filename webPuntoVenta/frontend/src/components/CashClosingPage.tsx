@@ -1,3 +1,4 @@
+import { nombreUsuarioSesion } from "../auth/session";
 import { useMemo, useState } from "react";
 
 import type { CashClosingRecord, SaleRecord } from "../types";
@@ -262,7 +263,7 @@ export default function CashClosingPage({
       expectedCash: summary.expectedCash,
       countedCash,
       difference: summary.difference,
-      registeredBy: "Edgar Rodríguez",
+      registeredBy: nombreUsuarioSesion(),
     };
 
     onConfirmClosing(closing);
@@ -769,9 +770,10 @@ export default function CashClosingPage({
             </p>
 
             <p className="mt-0.5 text-xs leading-5 text-[#6B7280]">
-              El corte ya calcula el fondo inicial, el efectivo esperado,
-              el efectivo contado y la diferencia. Queda pendiente imprimir
-              el comprobante y guardar los cortes en la base de datos.
+              El corte calcula el fondo inicial, el efectivo esperado, el
+              efectivo contado y la diferencia. Al confirmar el cierre se
+              registra el corte y queda en el historial del turno. La
+              impresión del comprobante aún no está disponible.
             </p>
           </div>
         </div>

@@ -40,7 +40,8 @@ datos son del modulo administrativo, todas las colecciones empiezan con
 ```
 
 Campos: `nombre` y `capacidad` obligatorios; `estatus` solo acepta
-`activo` o `inactivo`.
+`activo` o `inactivo`. **La clase NO tiene hora fija**: la fecha y el
+intervalo (`horaInicio`/`horaFin`) se programan en la coleccion de horarios.
 
 ### 2. webadministrativa_horarios  (catalogo, agenda)
 
@@ -57,14 +58,52 @@ Campos: `nombre` y `capacidad` obligatorios; `estatus` solo acepta
   "capacidadTotal": 20,
   "capacidadDisponible": 12,
   "salon": "Salon A",
-  "estatus": "activo"
+  "estatus": "activo",
+  "idPlantilla": "66f1a2b3c4d5e6f7a8b9c0d9",
+  "claveGeneracion": "66f1a2b3c4d5e6f7a8b9c0d9:2026-02-10",
+  "origen": "plantilla"
 }
 ```
 
 En MongoDB se guarda tambien el nombre de la clase y del entrenador porque
 en un documento no hay relaciones: se lee todo junto y mas rapido.
 
-### 3. webadministrativa_productos  (catalogo)
+Reglas de la agenda (validadas en `horarios.routes.ts`):
+
+- `fecha` (YYYY-MM-DD), `horaInicio` y `horaFin` (HH:MM) son obligatorios.
+- La duracion minima de una sesion es de **30 minutos**
+  (`horaFin - horaInicio >= 30`).
+- Un entrenador no puede tener dos horarios que se solapen en la misma fecha
+  (solapamiento de rango, excluyendo el propio horario al editar). Un horario
+  sin `entrenadorId` puede coexistir con cualquiera.
+- Tampoco puede haber dos horarios en la misma `salon` y el mismo intervalo.
+
+### 3. webadministrativa_plantillas_horarios  (programacion semanal)
+
+```json
+{
+  "_id": "66f1a2b3c4d5e6f7a8b9c0d9",
+  "clave": "Force Room|Force Room|1|06:00|2026-10-27",
+  "idClase": "66f1a2b3c4d5e6f7a8b9c0d1",
+  "nombreClase": "Force Room",
+  "entrenadorId": "",
+  "nombreEntrenador": "Sin asignar",
+  "diaSemana": 1,
+  "horaInicio": "06:00",
+  "horaFin": "07:00",
+  "capacidadTotal": 15,
+  "salon": "Force Room",
+  "vigenteDesde": "2026-10-27",
+  "vigenteHasta": "",
+  "estatus": "activo"
+}
+```
+
+`diaSemana` usa 0=domingo y 6=sabado. Cada regla activa genera sesiones
+fechadas con una `claveGeneracion` unica (`idPlantilla:fecha`), de modo que el
+proceso se puede repetir sin crear duplicados.
+
+### 4. webadministrativa_productos  (catalogo)
 
 ```json
 {
@@ -78,7 +117,7 @@ en un documento no hay relaciones: se lee todo junto y mas rapido.
 }
 ```
 
-### 4. webadministrativa_movimientos  (movimientos)
+### 5. webadministrativa_movimientos  (movimientos)
 
 ```json
 {
@@ -101,6 +140,7 @@ en positivo.
 |---|---|---|
 | Clases | tabla `clases` | `webadministrativa_clases` |
 | Horarios | tabla `horarios` | `webadministrativa_horarios` |
+| Plantillas semanales | pendiente | `webadministrativa_plantillas_horarios` |
 | Productos | tabla `productos` | `webadministrativa_productos` |
 | Movimientos | tabla `movimientos` | `webadministrativa_movimientos` |
 | Usuarios, clientes, membresias, reservaciones, ventas | tablas `usuarios`, `clientes`, `membresias`, `reservaciones`, `ventas`, `venta_detalle` | no van a MongoDB |

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import BrandLogo from '../../../../components/BrandLogo';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../../context/AuthContext';
 
@@ -27,17 +28,10 @@ export function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex" style={{ background: 'linear-gradient(135deg, #111827 0%, #1e293b 50%, #111827 100%)' }}>
+    <div className="rx-admin-login min-h-screen flex" style={{ background: 'linear-gradient(135deg, #111827 0%, #1e293b 50%, #111827 100%)' }}>
       {/* Left panel */}
       <div className="hidden lg:flex flex-col justify-between w-2/5 p-12">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-[#F3F4F6]0 flex items-center justify-center">
-            <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
-          </div>
-          <span className="text-white font-bold text-xl" style={{ fontFamily: 'DM Sans, sans-serif' }}>GymFit</span>
-        </div>
+        <BrandLogo className="w-full max-w-xs" />
 
         <div>
           <h1 className="text-4xl font-bold text-white leading-tight mb-4" style={{ fontFamily: 'DM Sans, sans-serif' }}>
@@ -48,19 +42,14 @@ export function LoginPage() {
           </p>
         </div>
 
-        <p className="text-gray-600 text-sm">© GymFit · Sistema de Gestión</p>
+        <p className="text-gray-400 text-sm">NUUCLEO · Hybrid Training Club</p>
       </div>
 
       {/* Right panel */}
       <div className="flex-1 flex items-center justify-center p-8">
         <div className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-md">
-          <div className="lg:hidden flex items-center gap-2 mb-6">
-            <div className="w-8 h-8 rounded-xl bg-[#F3F4F6]0 flex items-center justify-center">
-              <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-            </div>
-            <span className="text-gray-900 font-bold text-lg" style={{ fontFamily: 'DM Sans, sans-serif' }}>GymFit</span>
+          <div className="lg:hidden mb-6 rounded-xl bg-[#111827] p-4">
+            <BrandLogo className="w-full" />
           </div>
 
           <div className="mb-7">
@@ -73,7 +62,7 @@ export function LoginPage() {
               <label className="block text-sm font-medium text-gray-700 mb-1.5">Correo electrónico</label>
               <input
                 type="email" value={correo} onChange={e => setCorreo(e.target.value)}
-                placeholder="usuario@gymfit.mx" required
+                placeholder="Tu correo electrónico" required
                 className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#111827] focus:border-transparent"
               />
             </div>
@@ -97,7 +86,7 @@ export function LoginPage() {
 
             <button
               type="submit" disabled={loading}
-              className="w-full bg-[#111827] hover:bg-[#6B7280] text-white font-semibold py-2.5 rounded-xl transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
+              className="rx-btn rx-btn--dark rx-btn--block"
             >
               {loading ? 'Verificando...' : 'Ingresar al sistema'}
             </button>

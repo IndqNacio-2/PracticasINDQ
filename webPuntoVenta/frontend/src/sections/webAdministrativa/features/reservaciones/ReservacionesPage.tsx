@@ -11,14 +11,24 @@ import { apiCobro } from '../../lib/api';
 interface ReservaCobro {
   id: number;
   client: string;
+  clienteId: number | null;
+  paymentStatus: 'pendiente' | 'pagado';
+  attendanceStatus: 'pendiente' | 'asistido' | 'no_asistio';
   type: 'cliente' | 'visitante';
   class: string;
   time: string;
-  status: 'pendiente' | 'pagado' | 'asistido' | 'cancelado';
+  status: 'pendiente' | 'pagado' | 'asistido' | 'cancelado' | 'no_asistio';
+  capacityStatus: 'confirmada' | 'espera';
+  codigo?: string;
+  reagendada?: boolean;
+  horarioId?: string;
   price: number;
+  // Fecha del horario reservado (YYYY-MM-DD). Viene vacia en los registros
+  // antiguos, que no apuntan a ningun horario real del modulo de horarios.
+  fecha?: string;
 }
 
-type FilterEstatus = 'todos' | ReservaCobro['status'];
+type FilterEstatus = 'todos' | ReservaCobro['status'] | 'espera';
 
 const filterTabs: { value: FilterEstatus; label: string }[] = [
   { value: 'todos', label: 'Todas' },
@@ -26,6 +36,8 @@ const filterTabs: { value: FilterEstatus; label: string }[] = [
   { value: 'pagado', label: 'Pagadas' },
   { value: 'asistido', label: 'Asistidas' },
   { value: 'cancelado', label: 'Canceladas' },
+  { value: 'no_asistio', label: 'No asistió' },
+  { value: 'espera', label: 'Lista de espera' },
 ];
 
 // Los estados del módulo de cobro se pintan con las variantes visuales de la
@@ -35,6 +47,7 @@ const estatusBadge: Record<ReservaCobro['status'], { variant: 'confirmada' | 'pe
   pagado: { variant: 'confirmada', label: 'Pagada' },
   asistido: { variant: 'confirmada', label: 'Asistió' },
   cancelado: { variant: 'cancelada', label: 'Cancelada' },
+  no_asistio: { variant: 'cancelada', label: 'No asistió' },
 };
 
 export function ReservacionesPage() {
@@ -60,18 +73,23 @@ export function ReservacionesPage() {
     void cargar();
   }, [cargar]);
 
-  const filtered = filter === 'todos' ? reservaciones : reservaciones.filter(r => r.status === filter);
-  const pendientes = reservaciones.filter(r => r.status === 'pendiente').length;
+  const filtered = filter === 'todos'
+    ? reservaciones
+    : filter === 'espera'
+      ? reservaciones.filter(r => r.capacityStatus === 'espera' && r.status !== 'cancelado')
+      : reservaciones.filter(r => filter === 'pagado' ? r.paymentStatus === 'pagado' : r.status === filter);
+  const pendientes = reservaciones.filter(r => r.paymentStatus === 'pendiente' && r.status === 'pendiente' && r.capacityStatus === 'confirmada').length;
+  const enEspera = reservaciones.filter(r => r.capacityStatus === 'espera' && r.status !== 'cancelado').length;
 
   return (
     <div className="space-y-5 max-w-7xl">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>Reservaciones</h1>
-          <p className="text-gray-500 text-sm mt-0.5">{reservaciones.length} registradas en Cobro · {pendientes} pendientes de pago</p>
+          <p className="text-gray-500 text-sm mt-0.5">{reservaciones.length} registradas en Cobro · {pendientes} pendientes de pago · {enEspera} en espera</p>
         </div>
         <button onClick={() => void cargar()} disabled={loading}
-          className="flex items-center gap-2 bg-[#111827] hover:bg-[#6B7280] text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors disabled:opacity-60">
+          className="rx-btn rx-btn--outline">
           <svg className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
           Actualizar
         </button>
@@ -84,7 +102,7 @@ export function ReservacionesPage() {
       <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit">
         {filterTabs.map(tab => (
           <button key={tab.value} onClick={() => setFilter(tab.value)}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${filter === tab.value ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+            className={`rx-tab ${filter === tab.value ? 'rx-tab--active' : ''}`}>
             {tab.label}
           </button>
         ))}
@@ -102,7 +120,7 @@ export function ReservacionesPage() {
                 const r = row as unknown as ReservaCobro;
                 return (
                   <div className="flex items-center gap-2">
-                    <p className="font-medium text-gray-800">{r.client}</p>
+                    <p className="font-medium text-gray-800">{r.client} {r.clienteId ? `#${r.clienteId}` : ''}</p>
                     <Badge variant="cliente" label={r.type === 'visitante' ? 'Visitante' : 'Socio'} />
                   </div>
                 );
@@ -115,7 +133,9 @@ export function ReservacionesPage() {
                 return (
                   <div>
                     <p className="font-medium text-gray-800">{r.class}</p>
-                    <p className="text-xs text-gray-400">Hora {r.time}</p>
+                    <p className="text-xs text-gray-400">
+                      {r.fecha ? `${r.fecha} · ` : ''}Hora {r.time}
+                    </p>
                   </div>
                 );
               }
@@ -124,8 +144,20 @@ export function ReservacionesPage() {
               key: 'status', header: 'Estatus',
               render: row => {
                 const r = row as unknown as ReservaCobro;
-                const badge = estatusBadge[r.status];
-                return <Badge variant={badge.variant} label={badge.label} />;
+                const badge = estatusBadge[r.status] ?? { variant: 'pendiente' as const, label: r.status };
+                return <div className="space-y-1"><Badge variant={badge.variant} label={badge.label} />
+                  <p className="text-xs text-gray-500">{r.paymentStatus === 'pagado' ? 'Pago registrado' : 'Pago pendiente'} · {r.attendanceStatus === 'pendiente' ? 'Asistencia pendiente' : r.attendanceStatus === 'asistido' ? 'Asistio' : 'No asistio'}</p>
+                </div>;
+              }
+            },
+            {
+              key: 'capacityStatus', header: 'Cupo',
+              render: row => {
+                const r = row as unknown as ReservaCobro;
+                return <Badge
+                  variant={r.capacityStatus === 'espera' ? 'pendiente' : 'confirmada'}
+                  label={r.capacityStatus === 'espera' ? 'En espera' : 'Confirmada'}
+                />;
               }
             },
             {

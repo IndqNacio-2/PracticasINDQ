@@ -88,9 +88,9 @@ export function validateSaleInput(body: unknown): {
   const transferRef =
     data.transferRef === undefined ? undefined : String(data.transferRef).trim();
 
-  // Usuario que cobra: todavia no hay inicio de sesion.
+  // Usuario que cobra: lo envia el frontend con el usuario de la sesion.
   const registeredBy =
-    String(data.registeredBy ?? "").trim() || "Edgar Rodriguez";
+    String(data.registeredBy ?? "").trim() || "Sin registrar";
 
   if (issues.length > 0) {
     return { issues, input: null };

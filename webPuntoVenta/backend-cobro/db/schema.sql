@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS webcobro.reservas (
                                       -- reserva coincide con un horario
                                       -- real (modulo de horarios).
     estado  TEXT NOT NULL DEFAULT 'pendiente'
-        CHECK (estado IN ('pendiente', 'pagado', 'asistido', 'cancelado')),
+        CHECK (estado IN ('pendiente', 'pagado', 'asistido', 'cancelado', 'no_asistio')),
     precio  NUMERIC(10, 2) NOT NULL DEFAULT 0 CHECK (precio >= 0)
 );
 
@@ -72,6 +72,28 @@ ALTER TABLE webcobro.reservas
 ALTER TABLE webcobro.reservas
     ADD COLUMN IF NOT EXISTS fecha TEXT NOT NULL DEFAULT '';
 
+-- Vinculo estable con la sesion de MongoDB y estado independiente del cupo.
+-- Una reserva puede estar pendiente de pago y, al mismo tiempo, en lista de
+-- espera; por eso estado_cupo no reutiliza la columna financiera estado.
+ALTER TABLE webcobro.reservas
+    ADD COLUMN IF NOT EXISTS horario_id TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE webcobro.reservas
+    ADD COLUMN IF NOT EXISTS estado_cupo TEXT NOT NULL DEFAULT 'confirmada';
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'reservas_estado_cupo_check'
+          AND conrelid = 'webcobro.reservas'::regclass
+    ) THEN
+        ALTER TABLE webcobro.reservas
+            ADD CONSTRAINT reservas_estado_cupo_check
+            CHECK (estado_cupo IN ('confirmada', 'espera'));
+    END IF;
+END $$;
+
 -- Modelo de CUPO: varias personas pueden reservar la misma clase a la misma
 -- hora (el límite es la capacidad de la clase, validada en el backend). Por eso
 -- se elimina el índice único (clase, hora) de la versión anterior de slots.
@@ -81,6 +103,60 @@ DROP INDEX IF EXISTS webcobro.reservas_clase_hora_idx;
 -- concretas (la clave de consistencia con el modulo de horarios).
 CREATE INDEX IF NOT EXISTS reservas_clase_fecha_hora_idx
     ON webcobro.reservas (clase, fecha, hora);
+
+CREATE INDEX IF NOT EXISTS reservas_horario_cupo_idx
+    ON webcobro.reservas (horario_id, estado_cupo, estado, id);
+
+-- ---------------------------------------------------------------------
+-- Release 1.2.0: inasistencia, cancelaciones, reagendar y código de reserva
+-- ---------------------------------------------------------------------
+
+-- Nuevo estado 'no_asistio': la clase ya pasó y el cliente nunca llegó.
+-- No tiene reembolso, no se puede cobrar ni reagendar.
+ALTER TABLE webcobro.reservas DROP CONSTRAINT IF EXISTS reservas_estado_check;
+ALTER TABLE webcobro.reservas
+    ADD CONSTRAINT reservas_estado_check
+    CHECK (estado IN ('pendiente', 'pagado', 'asistido', 'cancelado', 'no_asistio'));
+
+-- Código de reserva (folio) que el cliente da en recepción, p. ej. RSV-7K2M9Q.
+-- Las reservas viejas reciben uno al vuelo para poder buscarlas igual.
+ALTER TABLE webcobro.reservas ADD COLUMN IF NOT EXISTS codigo TEXT;
+UPDATE webcobro.reservas
+   SET codigo = 'RSV-' || upper(substr(md5(random()::text || id::text), 1, 6))
+ WHERE codigo IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS reservas_codigo_idx
+    ON webcobro.reservas (codigo)
+    WHERE codigo IS NOT NULL;
+
+-- De dónde vino la reservación: recepción (front desk) o la app móvil.
+ALTER TABLE webcobro.reservas
+    ADD COLUMN IF NOT EXISTS origen TEXT NOT NULL DEFAULT 'recepcion';
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'reservas_origen_check'
+          AND conrelid = 'webcobro.reservas'::regclass
+    ) THEN
+        ALTER TABLE webcobro.reservas
+            ADD CONSTRAINT reservas_origen_check
+            CHECK (origen IN ('recepcion', 'app'));
+    END IF;
+END $$;
+
+-- Momento en que se hizo la reservación: de aquí corren las 24 horas
+-- que tiene el cliente para cancelar.
+ALTER TABLE webcobro.reservas
+    ADD COLUMN IF NOT EXISTS creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE webcobro.reservas ADD COLUMN IF NOT EXISTS cancelada_en TIMESTAMPTZ;
+
+-- Reagendar: solo se permite una vez y sin costo. Se guarda la fecha y hora
+-- originales para conservar el historial.
+ALTER TABLE webcobro.reservas
+    ADD COLUMN IF NOT EXISTS reagendada BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE webcobro.reservas ADD COLUMN IF NOT EXISTS reagendada_en TIMESTAMPTZ;
+ALTER TABLE webcobro.reservas ADD COLUMN IF NOT EXISTS fecha_original TEXT;
+ALTER TABLE webcobro.reservas ADD COLUMN IF NOT EXISTS hora_original TEXT;
 
 -- Pagos registrados desde el modal de cobro.
 -- Cada pago se liga a la reservación que se cobró (reserva_id). El cliente_id
@@ -219,3 +295,46 @@ CREATE TABLE IF NOT EXISTS webcobro.turnos (
     activo      BOOLEAN NOT NULL DEFAULT TRUE,
     UNIQUE (codigo, dia_semana, hora_inicio)
 );
+
+-- Flujo de reservas: identidad estable y pago independiente de asistencia.
+ALTER TABLE webcobro.reservas ADD COLUMN IF NOT EXISTS cliente_id INTEGER
+    REFERENCES webcobro.clientes(id) ON DELETE RESTRICT;
+ALTER TABLE webcobro.reservas ADD COLUMN IF NOT EXISTS hora_fin TEXT NOT NULL DEFAULT '';
+ALTER TABLE webcobro.reservas ADD COLUMN IF NOT EXISTS estado_pago TEXT;
+-- Solo inicializa filas antiguas, no vuelve a escribir pagos en cada arranque.
+UPDATE webcobro.reservas r SET estado_pago = CASE
+    WHEN r.estado = 'pagado' OR EXISTS (SELECT 1 FROM webcobro.pagos p WHERE p.reserva_id = r.id)
+    THEN 'pagado' ELSE 'pendiente' END WHERE estado_pago IS NULL;
+ALTER TABLE webcobro.reservas ALTER COLUMN estado_pago SET DEFAULT 'pendiente';
+ALTER TABLE webcobro.reservas ALTER COLUMN estado_pago SET NOT NULL;
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'reservas_estado_pago_check'
+        AND conrelid = 'webcobro.reservas'::regclass) THEN
+        ALTER TABLE webcobro.reservas ADD CONSTRAINT reservas_estado_pago_check
+            CHECK (estado_pago IN ('pendiente', 'pagado'));
+    END IF;
+END $$;
+-- Se recuperan IDs exclusivamente de pagos ya vinculados; nunca por nombre.
+UPDATE webcobro.reservas r SET cliente_id = p.cliente_id
+FROM webcobro.pagos p WHERE p.reserva_id = r.id AND r.tipo = 'cliente'
+    AND r.cliente_id IS NULL AND p.cliente_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS reservas_cliente_id_idx ON webcobro.reservas(cliente_id, fecha, estado);
+
+-- Compras: fotografía contractual del catálogo, pago y cobertura en la misma BD.
+CREATE TABLE IF NOT EXISTS webcobro.membresias_compras (
+    id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    solicitud_id UUID NOT NULL UNIQUE,
+    cliente_id INTEGER NOT NULL REFERENCES webcobro.clientes(id) ON DELETE RESTRICT,
+    catalogo_id TEXT NOT NULL,
+    opcion_id TEXT NOT NULL,
+    condiciones JSONB NOT NULL,
+    fecha_inicio DATE NOT NULL,
+    fecha_fin DATE NOT NULL CHECK (fecha_fin >= fecha_inicio),
+    pago_id BIGINT NOT NULL UNIQUE REFERENCES webcobro.pagos(id) ON DELETE RESTRICT,
+    creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+ALTER TABLE webcobro.reservas ADD COLUMN IF NOT EXISTS membresia_compra_id BIGINT
+    REFERENCES webcobro.membresias_compras(id) ON DELETE RESTRICT;
+ALTER TABLE webcobro.reservas ADD COLUMN IF NOT EXISTS clase_id TEXT;
+CREATE INDEX IF NOT EXISTS reservas_membresia_idx ON webcobro.reservas(membresia_compra_id);
+CREATE INDEX IF NOT EXISTS membresias_cliente_idx ON webcobro.membresias_compras(cliente_id, fecha_fin);

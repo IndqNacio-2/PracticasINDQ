@@ -1,3 +1,4 @@
+import BrandLogo from '../../../components/BrandLogo';
 import { useState, useEffect, useRef } from 'react';
 import MaterialIcon from '../../../components/MaterialIcon';
 
@@ -189,6 +190,7 @@ const Attendance = () => {
         ? await resHistorial.json()
         : [];
 
+      if (id !== busqRef.current) return;
       setEmpleado(persona);
       setHistorial(obtenerRegistros(historialData));
       setResultado(null);
@@ -209,9 +211,10 @@ const Attendance = () => {
   };
 
   const marcar = async () => {
-    if (!empleado || marcando) return;
+    if (!empleado || marcando || normalizar(codigo.trim().toUpperCase()) !== empleado.codigo) return;
 
     const codigoMarcado = empleado.codigo;
+    const busquedaMarcada = busqRef.current;
     setMarcando(true);
     setResultado(null);
 
@@ -224,9 +227,11 @@ const Attendance = () => {
 
       const data = await res.json();
 
+      if (busquedaMarcada !== busqRef.current) return;
       if (!res.ok) {
         setResultado({
           exitoso: false,
+          tipo: null,
           estado: null,
           msg: data.error || 'Error al registrar la asistencia.',
         });
@@ -243,8 +248,10 @@ const Attendance = () => {
         ),
       ]);
 
+      if (busquedaMarcada !== busqRef.current) return;
       if (resEmpleado.ok) {
         const personaActualizada = await resEmpleado.json();
+        if (busquedaMarcada !== busqRef.current) return;
 
         // Evita cambiar la tarjeta si ya se está consultando otro código.
         if (normalizar(codigo.trim().toUpperCase()) === codigoMarcado) {
@@ -254,6 +261,7 @@ const Attendance = () => {
 
       if (resHistorial.ok) {
         const historialData = await resHistorial.json();
+        if (busquedaMarcada !== busqRef.current) return;
         setHistorial(obtenerRegistros(historialData));
       }
 
@@ -265,8 +273,10 @@ const Attendance = () => {
     } catch (error) {
       console.error('Error al marcar asistencia:', error);
 
+      if (busquedaMarcada !== busqRef.current) return;
       setResultado({
         exitoso: false,
+        tipo: null,
         estado: null,
         msg: 'No se pudo conectar con el servidor.',
       });
@@ -310,9 +320,7 @@ const Attendance = () => {
       <main className="rx-kiosk-card">
         <header className="rx-kiosk-header">
           <div className="rx-kiosk-brand">
-            <div className="rx-brand-logo">
-              <MaterialIcon name="fitness_center" className="text-2xl" filled />
-            </div>
+            <BrandLogo variant="symbol" className="rx-brand-symbol" />
             <div className="rx-brand-content">
               <h1 className="rx-brand-title">Nuucleo</h1>
               <p className="rx-brand-subtitle">Checador de asistencia</p>
@@ -450,7 +458,14 @@ const Attendance = () => {
                 </div>
               )}
 
-              {listoParaMarcar && (
+              {empleado.activo === false && (
+                <div className="rx-alert rx-alert--danger rx-kiosk-mark" role="alert">
+                  <MaterialIcon name="block" className="flex-shrink-0 text-2xl" filled />
+                  <p className="rx-alert-title">Este socio está inactivo: pasa a recepción.</p>
+                </div>
+              )}
+
+              {listoParaMarcar && empleado.activo !== false && (
                 <button
                   type="button"
                   onClick={marcar}

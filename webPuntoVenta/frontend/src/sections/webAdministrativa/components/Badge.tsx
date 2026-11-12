@@ -1,28 +1,29 @@
 interface BadgeProps {
-  variant: 'activo' | 'inactivo' | 'confirmada' | 'pendiente' | 'cancelada' | 'asistencia' | 'retardo' | 'falta' | 'administrador' | 'entrenador' | 'recepcion' | 'cliente';
+  variant: 'activo' | 'inactivo' | 'confirmada' | 'pendiente' | 'cancelada' | 'asistencia' | 'retardo' | 'falta' | 'administrador' | 'entrenador' | 'recepcion' | 'vendedor' | 'cliente';
   label?: string;
 }
 
 const configs: Record<string, string> = {
   activo: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200',
-  inactivo: 'bg-slate-100 text-slate-500 ring-1 ring-slate-200',
+  inactivo: 'bg-gray-100 text-gray-500 ring-1 ring-gray-200',
   confirmada: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200',
   pendiente: 'bg-amber-50 text-amber-700 ring-1 ring-amber-200',
   cancelada: 'bg-red-50 text-red-600 ring-1 ring-red-200',
   asistencia: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200',
   retardo: 'bg-amber-50 text-amber-700 ring-1 ring-amber-200',
   falta: 'bg-red-50 text-red-600 ring-1 ring-red-200',
-  administrador: 'bg-purple-50 text-purple-700 ring-1 ring-purple-200',
-  entrenador: 'bg-blue-50 text-blue-700 ring-1 ring-blue-200',
-  recepcion: 'bg-sky-50 text-sky-700 ring-1 ring-sky-200',
-  cliente: 'bg-slate-50 text-slate-600 ring-1 ring-slate-200',
+  administrador: 'bg-[#F3F4F6] text-[#6B7280] ring-1 ring-[#6B7280]',
+  entrenador: 'bg-[#F3F4F6] text-[#6B7280] ring-1 ring-[#6B7280]',
+  recepcion: 'bg-[#F3F4F6] text-[#6B7280] ring-1 ring-[#6B7280]',
+  vendedor: 'bg-[#F3F4F6] text-[#6B7280] ring-1 ring-[#6B7280]',
+  cliente: 'bg-gray-50 text-gray-600 ring-1 ring-gray-200',
 };
 
 const defaultLabels: Record<string, string> = {
   activo: 'Activo', inactivo: 'Inactivo', confirmada: 'Confirmada',
   pendiente: 'Pendiente', cancelada: 'Cancelada', asistencia: 'Asistencia',
   retardo: 'Retardo', falta: 'Falta', administrador: 'Administrador',
-  entrenador: 'Entrenador', recepcion: 'Recepción', cliente: 'Cliente',
+  entrenador: 'Entrenador', recepcion: 'Recepción', vendedor: 'Vendedor', cliente: 'Cliente',
 };
 
 export function Badge({ variant, label }: BadgeProps) {

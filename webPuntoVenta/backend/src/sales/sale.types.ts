@@ -41,6 +41,7 @@ export interface SaleItem {
 
 export interface SaleRecord {
   folio: string;
+  soldAt: string;
   date: string;
   time: string;
   items: SaleItem[];

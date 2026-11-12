@@ -16,6 +16,7 @@ import type {
 const CLOSING_SELECT = `
   SELECT
     folio,
+    closed_at AS "closedAt",
     to_char(closed_at AT TIME ZONE 'America/Mexico_City', 'DD/MM/YYYY') AS date,
     to_char(closed_at AT TIME ZONE 'America/Mexico_City', 'HH24:MI')    AS time,
     sales_count::int        AS "salesCount",

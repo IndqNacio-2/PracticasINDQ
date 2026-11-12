@@ -23,6 +23,7 @@ import type { SaleInput, SaleRecord } from "./sale.types.js";
 const SALE_SELECT = `
   SELECT
     s.folio,
+    s.sold_at AS "soldAt",
     to_char(s.sold_at AT TIME ZONE 'America/Mexico_City', 'DD/MM/YYYY') AS date,
     to_char(s.sold_at AT TIME ZONE 'America/Mexico_City', 'HH24:MI')    AS time,
     s.subtotal::float      AS subtotal,
@@ -61,6 +62,7 @@ const SALE_SELECT = `
 export type SaleInsertResult =
   | { outcome: "created"; sale: SaleRecord }
   | { outcome: "product-not-found"; productId: number }
+  | { outcome: "product-inactive"; productName: string }
   | { outcome: "insufficient-stock"; productName: string; available: number };
 
 /**
@@ -100,7 +102,7 @@ export async function insertSale(input: SaleInput): Promise<SaleInsertResult> {
        * veces la misma existencia.
        */
       const productResult = await client.query(
-        `SELECT id, name, price::float AS price, stock
+        `SELECT id, name, price::float AS price, stock, status
            FROM webpontoventa.products
           WHERE id = $1
           FOR UPDATE`,
@@ -108,7 +110,7 @@ export async function insertSale(input: SaleInput): Promise<SaleInsertResult> {
       );
 
       const product = productResult.rows[0] as
-        | { id: number; name: string; price: number; stock: number }
+        | { id: number; name: string; price: number; stock: number; status: string }
         | undefined;
 
       // El producto pudo borrarse del catalogo entre que se armo el
@@ -116,6 +118,12 @@ export async function insertSale(input: SaleInput): Promise<SaleInsertResult> {
       if (!product) {
         await client.query("ROLLBACK");
         return { outcome: "product-not-found", productId: item.productId };
+      }
+
+      // Un producto desactivado ya no se vende, aunque siguiera en un carrito abierto.
+      if (product.status !== "active") {
+        await client.query("ROLLBACK");
+        return { outcome: "product-inactive", productName: product.name };
       }
 
       // No permito vender mas unidades de las que hay.

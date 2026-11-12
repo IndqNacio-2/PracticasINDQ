@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import BrandLogo from '../../../components/BrandLogo';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Mail, Lock, ArrowRight, ArrowLeft, AlertCircle } from 'lucide-react';
@@ -62,6 +63,9 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center p-4 bg-dark-900">
       <div className="w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden">
         {/* Encabezado */}
+        <div className="bg-[#111827] p-6">
+          <BrandLogo className="mx-auto w-full max-w-xs" />
+        </div>
         <div className="p-8 border-b border-gray-100">
           <h2 className="text-3xl font-bold text-gray-800">Iniciar sesión</h2>
           <p className="text-gray-500 mt-1 text-sm">
@@ -89,10 +93,10 @@ export default function Login() {
               <input
                 type="email"
                 required
-                placeholder="usuario@gymfit.mx"
+                placeholder="Tu correo electrónico"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="pl-10 block w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary text-gray-800"
+                className="pl-10 block w-full px-4 py-2.5 border border-[#111827] rounded-lg focus:ring-2 focus:ring-primary text-gray-800"
               />
             </div>
           </div>
@@ -110,7 +114,7 @@ export default function Login() {
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="pl-10 block w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary text-gray-800"
+                className="pl-10 block w-full px-4 py-2.5 border border-[#111827] rounded-lg focus:ring-2 focus:ring-primary text-gray-800"
               />
             </div>
           </div>
@@ -139,7 +143,7 @@ export default function Login() {
               usuario puesto sin pedir inicio de sesión otra vez. */}
           <a
             href="/administrativa/dashboard"
-            className="w-full flex items-center justify-center px-4 py-2.5 rounded-lg border border-gray-300 text-gray-700 font-medium text-sm hover:bg-gray-50 hover:border-gray-400 transition-all"
+            className="w-full flex items-center justify-center px-4 py-2.5 rounded-lg border border-[#111827] text-gray-700 font-medium text-sm hover:bg-[#E5E7EB] hover:border-[#111827] transition-all"
           >
             <ArrowLeft className="mr-2 h-4 w-4" />
             Volver al panel administrativo

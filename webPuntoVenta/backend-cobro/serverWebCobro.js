@@ -6,9 +6,15 @@
 // time, status, price) para que las pantallas sigan funcionando sin cambios.
 require('dotenv/config');
 
+const crypto = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
 const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
+const { imprimirTicket } = require('./ticketService');
+const flujoReservas = require('./reservasFlujo');
+const membresiasService = require('./membresiasService');
 
 const app = express();
 
@@ -35,6 +41,8 @@ pool.on('error', (error) => {
   console.error('Error inesperado en el pool de PostgreSQL:', error.message);
 });
 
+membresiasService.registrarRutas(app, pool, ADMIN_API);
+
 // Bitacora de consultas: imprime cada SQL con la hora que llega a PostgreSQL,
 // para que la terminal del backend muestre los SELECT, INSERT, UPDATE y
 // DELETE que se ejecutan al usar la aplicacion.
@@ -51,25 +59,221 @@ pool.query = (texto, parametros) => {
   return consultaOriginal(texto, parametros);
 };
 
+// ===================================================================
+// Reglas de reservaciones (Release 1.2.0)
+// ===================================================================
+
+// Horas que tiene el cliente para cancelar, contadas desde que hizo la
+// reservación. Cancelar no genera reembolso.
+const VENTANA_CANCELACION_HORAS = 24;
+// Estados que ya no apartan lugar ni cuentan como reservación activa.
+const ESTADOS_INACTIVOS = ['cancelado', 'no_asistio'];
+
+// Columnas de una reservación con los nombres que usan las pantallas.
+const COLUMNAS_RESERVA = `id, cliente AS client, tipo AS type, clase AS class,
+  membresia_compra_id AS "membresiaCompraId", clase_id AS "claseId",
+  cliente_id AS "clienteId", estado_pago AS "paymentStatus", hora_fin AS "horaFin",
+  CASE WHEN estado IN ('asistido', 'no_asistio') THEN estado ELSE 'pendiente' END AS "attendanceStatus",
+  hora AS time, estado AS status, precio::float8 AS price, fecha,
+  horario_id AS "horarioId", estado_cupo AS "capacityStatus", codigo, origen,
+  reagendada, fecha_original AS "fechaOriginal", hora_original AS "horaOriginal",
+  creado_en AS "creadoEn"`;
+
+const dosDigitos = (n) => String(n).padStart(2, '0');
+
+// 'YYYY-MM-DD HH:MM' en hora local, comparable como texto con fecha || ' ' || hora.
+const marcaLocal = (d) =>
+  `${d.getFullYear()}-${dosDigitos(d.getMonth() + 1)}-${dosDigitos(d.getDate())} ${dosDigitos(d.getHours())}:${dosDigitos(d.getMinutes())}`;
+
+// Fecha/hora de inicio de la clase (hora local) o null si la reserva no tiene fecha.
+const inicioDeClase = (fecha, hora) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha || '') || !/^\d{2}:\d{2}$/.test(hora || '')) return null;
+  const [anio, mes, dia] = fecha.split('-').map(Number);
+  const [h, m] = hora.split(':').map(Number);
+  return new Date(anio, mes - 1, dia, h, m);
+};
+
+const MOTIVO_POR_ESTADO = {
+  asistido: 'El cliente ya asistió a esta clase.',
+  no_asistio: 'El cliente no asistió a su clase: no tiene reembolso y no se puede reagendar.',
+  cancelado: 'La reservación ya está cancelada.',
+};
+
+/*
+ * Decide si una reservación (con los nombres de COLUMNAS_RESERVA) se puede
+ * cancelar o reagendar en este momento. Devuelve el motivo cuando no se puede,
+ * o null cuando sí. Es la misma regla para recepción y para la app móvil.
+ */
+const reglasDeReserva = (r, ahora = new Date()) => {
+  const inicio = inicioDeClase(r.fecha, r.time);
+  const yaInicio = inicio ? inicio.getTime() <= ahora.getTime() : false;
+  const creado = r.creadoEn ? new Date(r.creadoEn) : null;
+  const cancelableHasta = creado
+    ? new Date(creado.getTime() + VENTANA_CANCELACION_HORAS * 3600 * 1000)
+    : null;
+  const motivoEstado = MOTIVO_POR_ESTADO[r.status] ?? null;
+
+  let motivoNoCancelar = motivoEstado;
+  if (!motivoNoCancelar && yaInicio) {
+    motivoNoCancelar = 'La clase ya comenzó, ya no se puede cancelar.';
+  }
+  // La lista de espera no aparta lugar: se puede abandonar en cualquier momento.
+  if (!motivoNoCancelar && r.capacityStatus !== 'espera' && cancelableHasta
+      && ahora.getTime() > cancelableHasta.getTime()) {
+    motivoNoCancelar = `El plazo de ${VENTANA_CANCELACION_HORAS} horas para cancelar venció el ${cancelableHasta.toLocaleString('es-MX')}.`;
+  }
+
+  let motivoNoReagendar = motivoEstado;
+  if (!motivoNoReagendar && r.reagendada) {
+    motivoNoReagendar = 'Esta reservación ya se reagendó una vez; solo se permite reagendar una vez.';
+  }
+  if (!motivoNoReagendar && yaInicio) {
+    motivoNoReagendar = 'La clase ya comenzó, ya no se puede reagendar.';
+  }
+
+  return {
+    motivoNoCancelar,
+    motivoNoReagendar,
+    cancelableHasta: cancelableHasta ? cancelableHasta.toISOString() : null,
+  };
+};
+
+// Agrega a la reservación las banderas que usan recepción y la app móvil.
+const decorarReserva = (r) => {
+  if (!r) return r;
+  const reglas = reglasDeReserva(r);
+  return {
+    ...r,
+    puedeCancelar: !reglas.motivoNoCancelar,
+    puedeReagendar: !reglas.motivoNoReagendar,
+    motivoNoCancelar: reglas.motivoNoCancelar,
+    motivoNoReagendar: reglas.motivoNoReagendar,
+    cancelableHasta: reglas.cancelableHasta,
+  };
+};
+
+/*
+ * Inasistencia: toda reservación confirmada que sigue 'pendiente' cuando ya
+ * pasó el inicio de su clase (más la tolerancia) se marca 'no_asistio'. El
+ * cliente nunca llegó a recepción, así que no hay reembolso ni reagenda.
+ * Las reservas pagadas no se tocan: pagar en recepción implica que llegó.
+ */
+const marcarInasistencias = async (db = pool) => {
+  return flujoReservas.marcarInasistencias(db);
+};
+
+// Código de reserva legible (sin 0/O ni 1/I para no confundirlos al dictarlo).
+const ALFABETO_CODIGO = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const generarCodigoReserva = async (db) => {
+  for (let intento = 0; intento < 10; intento += 1) {
+    let codigo = 'RSV-';
+    for (let i = 0; i < 6; i += 1) {
+      codigo += ALFABETO_CODIGO[crypto.randomInt(ALFABETO_CODIGO.length)];
+    }
+    const existe = (await db.query('SELECT 1 FROM webcobro.reservas WHERE codigo = $1', [codigo])).rowCount;
+    if (!existe) return codigo;
+  }
+  throw new Error('No se pudo generar un código de reserva único.');
+};
+
+// Acepta 'rsv-7k2m9q', 'RSV-7K2M9Q' o solo '7K2M9Q'.
+const normalizarCodigoReserva = (valor) => {
+  const limpio = String(valor ?? '').trim().toUpperCase();
+  if (/^RSV-[A-Z0-9]{6}$/.test(limpio)) return limpio;
+  if (/^[A-Z0-9]{6}$/.test(limpio)) return `RSV-${limpio}`;
+  return null;
+};
+
+/*
+ * Busca en administrativa el horario activo de una fecha (por id o por
+ * clase + hora) y la clase a la que pertenece (precio y capacidad).
+ */
+const buscarHorarioActivo = async (fecha, { horarioId, clase, time }) => {
+  const [resHorarios, resClases] = await Promise.all([
+    fetch(`${ADMIN_API}/horarios?fecha=${encodeURIComponent(fecha)}&estatus=activo`),
+    fetch(`${ADMIN_API}/clases`),
+  ]);
+  if (!resHorarios.ok) throw new Error(`horarios HTTP ${resHorarios.status}`);
+  if (!resClases.ok) throw new Error(`clases HTTP ${resClases.status}`);
+
+  const horarios = await resHorarios.json();
+  const clases = await resClases.json();
+
+  const horario = Array.isArray(horarios)
+    ? horarios.find((h) =>
+        typeof horarioId === 'string' && horarioId
+          ? h.idHorario === horarioId
+          : h.nombreClase === clase && h.horaInicio === time
+      ) ?? null
+    : null;
+  const claseReal = horario && Array.isArray(clases)
+    ? clases.find((c) => c.idClase === horario.idClase) ?? null
+    : null;
+  return { horario, clase: claseReal };
+};
+
+// Al liberarse un lugar confirmado, sube a la primera persona en lista de espera.
+const promoverListaEspera = async (conexion, horarioId) => (
+  await conexion.query(
+    `UPDATE webcobro.reservas
+        SET estado_cupo = 'confirmada'
+      WHERE id = (
+        SELECT id FROM webcobro.reservas
+         WHERE horario_id = $1 AND estado_cupo = 'espera'
+           AND estado NOT IN ('cancelado', 'no_asistio')
+         ORDER BY id
+         LIMIT 1
+         FOR UPDATE SKIP LOCKED
+      )
+      RETURNING ${COLUMNAS_RESERVA}`,
+    [horarioId],
+  )
+).rows[0] ?? null;
+
 //Modulo para recepcion y cobro
 
 //GET para las reservas
 app.get('/api/reservas', async (req, res) => {
+  // Antes de listar se marcan las inasistencias de las clases que ya pasaron.
+  await marcarInasistencias();
   const resultado = await pool.query(
-    `SELECT id, cliente AS client, tipo AS type, clase AS class, hora AS time,
-            estado AS status, precio::float8 AS price, fecha AS fecha
+    `SELECT ${COLUMNAS_RESERVA}
        FROM webcobro.reservas
       ORDER BY id`,
   );
-  res.json(resultado.rows);
+  res.json(resultado.rows.map(decorarReserva));
+});
+
+/*
+ * GET por código de reserva. Lo usa recepción para cobrar las reservaciones
+ * hechas desde la app móvil cuando el cliente da su código (RSV-XXXXXX o solo
+ * los 6 caracteres).
+ */
+app.get('/api/reservas/codigo/:codigo', async (req, res) => {
+  const codigo = normalizarCodigoReserva(req.params.codigo);
+  if (!codigo) {
+    return res.status(400).json({ error: 'El código de reserva no es válido. Ejemplo: RSV-7K2M9Q' });
+  }
+  await marcarInasistencias();
+  const reserva = (
+    await pool.query(`SELECT ${COLUMNAS_RESERVA} FROM webcobro.reservas WHERE codigo = $1`, [codigo])
+  ).rows[0];
+  if (!reserva) {
+    return res.status(404).json({ error: `No existe una reservación con el código ${codigo}.` });
+  }
+  res.json(decorarReserva(reserva));
 });
 
 //POST para registrar una reservacion nueva (socio registrado o visitante)
 app.post('/api/reservas', async (req, res) => {
   // 'price' NO se usa: el precio lo calcula el servidor con la tarifa de la
   // clase (ver validacion 7). Solo se aceptan 'client', 'type', 'class',
-  // 'time' y 'fecha'.
-  const { client, type, class: clase, time, fecha } = req.body ?? {};
+  // 'time', 'fecha', 'horarioId' y 'origen' ('recepcion' o 'app').
+  const { client, type, class: clase, time, fecha, horarioId, clienteId } = req.body ?? {};
+  const origen = req.body?.origen === undefined ? 'recepcion' : req.body.origen;
+  if (origen !== 'recepcion' && origen !== 'app') {
+    return res.status(400).json({ error: "El origen debe ser 'recepcion' o 'app'." });
+  }
 
   //validacion 1 el nombre del cliente es obligatorio
   if (typeof client !== 'string' || client.trim().length < 3) {
@@ -123,30 +327,11 @@ app.post('/api/reservas', async (req, res) => {
   let claseReal = null;
   try {
     // Los horarios dicen en que clase y salon se da la sesion y cuantas
-    // plazas tiene; las clases traen el precio y la capacidad maxima.
-    const [resHorarios, resClases] = await Promise.all([
-      fetch(`${ADMIN_API}/horarios?fecha=${encodeURIComponent(fecha)}&estatus=activo`),
-      fetch(`${ADMIN_API}/clases`),
-    ]);
-    if (!resHorarios.ok) {
-      throw new Error(`horarios HTTP ${resHorarios.status}`);
-    }
-    if (!resClases.ok) {
-      throw new Error(`clases HTTP ${resClases.status}`);
-    }
-
-    const horarios = await resHorarios.json();
-    const clases = await resClases.json();
-
-    horarioActivo = Array.isArray(horarios)
-      ? horarios.find((h) => h.nombreClase === clase.trim() && h.horaInicio === time)
-      : null;
-
-    // La clase del horario es la que manda: el precio y la capacidad salen de
-    // ella, no de lo que mande el navegador.
-    claseReal = Array.isArray(clases)
-      ? clases.find((c) => c.idClase === horarioActivo?.idClase)
-      : null;
+    // plazas tiene; la clase del horario es la que manda: el precio y la
+    // capacidad salen de ella, no de lo que mande el navegador.
+    const encontrado = await buscarHorarioActivo(fecha, { horarioId, clase: clase.trim(), time });
+    horarioActivo = encontrado.horario;
+    claseReal = encontrado.clase;
   } catch (err) {
     console.error('No se pudieron validar los horarios de administrativa:', err);
     return res.status(500).json({ error: 'No se pudieron validar los horarios disponibles.' });
@@ -155,6 +340,9 @@ app.post('/api/reservas', async (req, res) => {
     return res.status(409).json({
       error: `No hay un horario activo de "${clase.trim()}" a las ${time} el ${fecha}. Elige un horario disponible en el modulo Horarios.`,
     });
+  }
+  if (horarioActivo.nombreClase !== clase.trim() || horarioActivo.horaInicio !== time) {
+    return res.status(409).json({ error: 'La sesión seleccionada ya no coincide con la clase y hora enviadas.' });
   }
   if (!claseReal) {
     return res.status(409).json({
@@ -175,23 +363,28 @@ app.post('/api/reservas', async (req, res) => {
   }
 
   let precioFinal = monto;
+  let clienteNombre = client.trim();
   if (type === 'cliente') {
+    if (!Number.isSafeInteger(clienteId) || clienteId <= 0) {
+      return res.status(400).json({ error: 'Selecciona un socio por su ID.' });
+    }
     const socio = (
       await pool.query(
         `SELECT nombre, membresia, activo, to_char(vigencia_hasta, 'YYYY-MM-DD') AS vigencia
-           FROM webcobro.clientes WHERE nombre = $1`,
-        [client.trim()],
+           FROM webcobro.clientes WHERE id = $1`,
+        [clienteId],
       )
     ).rows[0];
 
-    const hoy = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, '0')}-${String(ahora.getDate()).padStart(2, '0')}`;
+    if (!socio) return res.status(404).json({ error: 'El socio seleccionado no existe.' });
+    clienteNombre = socio.nombre;
     const inactivo = socio ? socio.activo === false : false;
-    const vencida = socio?.vigencia ? socio.vigencia < hoy : false;
+    const vencida = socio?.vigencia ? socio.vigencia < fecha : false;
 
     if (inactivo) {
       return res.status(409).json({ error: `El socio "${client.trim()}" esta inactivo. Registralo como visitante para continuar.` });
     }
-    if (vencida) {
+    if (vencida && !(await pool.query('SELECT 1 FROM webcobro.membresias_compras WHERE cliente_id = $1 LIMIT 1', [clienteId])).rowCount) {
       return res.status(409).json({ error: `La membresia de "${client.trim()}" esta vencida. Registralo como visitante para continuar.` });
     }
 
@@ -208,77 +401,127 @@ app.post('/api/reservas', async (req, res) => {
     precioFinal = monto;
   }
 
-  //validacion 8 duplicado: una misma persona no puede reservar dos veces la
-  //misma clase en la misma hora del mismo dia (mientras no este cancelada).
-  const duplicada = Number(
-    (await pool.query(
-      `SELECT COUNT(*) AS n FROM webcobro.reservas
-         WHERE cliente = $1 AND clase = $2 AND hora = $3 AND fecha = $4 AND estado <> 'cancelado'`,
-      [client.trim(), clase.trim(), time, fecha],
-    )).rows[0].n,
-  );
-  if (duplicada > 0) {
-    return res.status(409).json({ error: `"${client.trim()}" ya reservo "${clase.trim()}" a las ${time} el ${fecha}.` });
-  }
-
-  //validacion 9 limite de reservaciones activas por socio (anti-acaparamiento
-  //de cupo). Maximo 3 reservaciones activas por persona. Solo cuentan las
-  //reservas con fecha: las que no la tienen (registros viejos, sin horario
-  //real) no ocupan cupo y no deben bloquear al socio.
-  const LIMITE_RESERVAS = 3;
-  const activas = Number(
-    (await pool.query(
-      `SELECT COUNT(*) AS n FROM webcobro.reservas
-         WHERE cliente = $1 AND estado <> 'cancelado' AND fecha <> ''`,
-      [client.trim()],
-    )).rows[0].n,
-  );
-  if (activas >= LIMITE_RESERVAS) {
-    return res.status(409).json({ error: `"${client.trim()}" ya tiene ${LIMITE_RESERVAS} reservaciones activas. Cancela una para crear otra.` });
-  }
-
-  //validacion 10 cupo del slot. La capacidad la define el horario de
-  //administracion (MongoDB): el backend la valida contra esa capacidad fija y
-  //rechaza si se lleno. El frontend no puede pisar el limite.
   const capacidadTotal = Number(horarioActivo.capacidadTotal || 0);
-  const reservadas = Number(
-    (await pool.query(
+  const idHorario = horarioActivo.idHorario;
+  const listaEsperaHabilitada = horarioActivo.listaEsperaHabilitada === true;
+  const LIMITE_RESERVAS = 3;
+  const conexion = await pool.connect();
+  try {
+    await conexion.query('BEGIN');
+    await conexion.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+      type === 'cliente' ? `webcobro-cliente-${clienteId}` : `webcobro-visitante-${clienteNombre}`,
+    ]);
+    if (type === 'cliente') {
+      const socioActual = (await conexion.query(
+        `SELECT nombre, activo, membresia, to_char(vigencia_hasta, 'YYYY-MM-DD') AS vigencia
+           FROM webcobro.clientes WHERE id = $1 FOR SHARE`, [clienteId],
+      )).rows[0];
+      if (!socioActual || !socioActual.activo) {
+        await conexion.query('ROLLBACK');
+        return res.status(409).json({ error: 'El socio ya no esta disponible o vigente para la fecha de la sesion.' });
+      }
+      clienteNombre = socioActual.nombre;
+      const tieneCompras = (await conexion.query('SELECT 1 FROM webcobro.membresias_compras WHERE cliente_id = $1 LIMIT 1', [clienteId])).rowCount > 0;
+      if (!tieneCompras && socioActual.vigencia && socioActual.vigencia < fecha) {
+        await conexion.query('ROLLBACK');
+        return res.status(409).json({ error: 'La membresía histórica no está vigente para esta sesión.' });
+      }
+      // Premium solo conserva compatibilidad para socios aún no migrados.
+      precioFinal = !tieneCompras && socioActual.membresia === 'Premium' ? 0 : monto;
+      const sinConciliar = await conexion.query(
+        `SELECT 1 FROM webcobro.reservas WHERE tipo = 'cliente' AND cliente_id IS NULL
+          AND cliente = $1 AND estado IN ('pendiente', 'pagado')
+          AND fecha <> '' AND (fecha || ' ' || hora) > $2 LIMIT 1`,
+        [clienteNombre, marcaLocal(new Date())],
+      );
+      if (sinConciliar.rowCount) {
+        await conexion.query('ROLLBACK');
+        return res.status(409).json({ error: 'Hay reservas antiguas con este nombre sin ID. Concilialas antes de crear otras para evitar limites incorrectos.' });
+      }
+    }
+    // Un bloqueo por sesión serializa la revisión del último lugar y el INSERT.
+    await conexion.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`webcobro-horario-${idHorario}`]);
+
+    const duplicada = Number((await conexion.query(
       `SELECT COUNT(*) AS n FROM webcobro.reservas
-         WHERE clase = $1 AND fecha = $2 AND hora = $3 AND estado <> 'cancelado'`,
-      [clase.trim(), fecha, time],
-    )).rows[0].n,
-  );
-  if (capacidadTotal > 0 && reservadas >= capacidadTotal) {
-    return res.status(409).json({ error: `La clase "${clase.trim()}" a las ${time} no tiene cupo disponible.` });
+        WHERE ((cliente_id = $6) OR ($6::integer IS NULL AND tipo = 'visitante' AND cliente = $1)) AND estado NOT IN ('cancelado', 'no_asistio')
+          AND (horario_id = $2 OR (horario_id = '' AND clase = $3 AND fecha = $4 AND hora = $5))`,
+      [clienteNombre, idHorario, clase.trim(), fecha, time, type === 'cliente' ? clienteId : null],
+    )).rows[0].n);
+    if (duplicada > 0) {
+      await conexion.query('ROLLBACK');
+      return res.status(409).json({ error: `"${client.trim()}" ya reservo esta sesión de "${clase.trim()}".` });
+    }
+
+    const activas = Number((await conexion.query(
+      `SELECT COUNT(*) AS n FROM webcobro.reservas
+        WHERE ((cliente_id = $2) OR ($2::integer IS NULL AND tipo = 'visitante' AND cliente = $1))
+          AND estado IN ('pendiente', 'pagado') AND fecha <> '' AND (fecha || ' ' || hora) > $3`,
+      [clienteNombre, type === 'cliente' ? clienteId : null, marcaLocal(new Date())],
+    )).rows[0].n);
+    if (activas >= LIMITE_RESERVAS) {
+      await conexion.query('ROLLBACK');
+      return res.status(409).json({ error: `"${client.trim()}" ya tiene ${LIMITE_RESERVAS} reservaciones activas. Cancela una para crear otra.` });
+    }
+
+    const confirmadas = Number((await conexion.query(
+      `SELECT COUNT(*) AS n FROM webcobro.reservas
+        WHERE estado_cupo = 'confirmada' AND estado NOT IN ('cancelado', 'no_asistio')
+          AND (horario_id = $1 OR (horario_id = '' AND clase = $2 AND fecha = $3 AND hora = $4))`,
+      [idHorario, clase.trim(), fecha, time],
+    )).rows[0].n);
+    const cupoLleno = capacidadTotal > 0 && confirmadas >= capacidadTotal;
+    if (cupoLleno && !listaEsperaHabilitada) {
+      await conexion.query('ROLLBACK');
+      return res.status(409).json({ error: `La clase "${clase.trim()}" a las ${time} no tiene cupo disponible y no admite lista de espera.` });
+    }
+
+    const estadoCupo = cupoLleno ? 'espera' : 'confirmada';
+    const cobertura = type === 'cliente'
+      ? await membresiasService.buscarCobertura(conexion, clienteId, claseReal.idClase, fecha) : null;
+    if (cobertura) precioFinal = 0;
+    // Código de reserva que el cliente presenta en recepción para pagar.
+    const codigo = await generarCodigoReserva(conexion);
+    let nueva = (await conexion.query(
+      `INSERT INTO webcobro.reservas
+         (cliente, tipo, clase, hora, estado, precio, fecha, horario_id, estado_cupo, codigo, origen, cliente_id, hora_fin)
+       VALUES ($1, $2, $3, $4, 'pendiente', $5, $6, $7, $8, $9, $10, $11, $12)
+       RETURNING ${COLUMNAS_RESERVA}`,
+      [clienteNombre, type, clase.trim(), time, precioFinal, fecha, idHorario, estadoCupo, codigo, origen, type === 'cliente' ? clienteId : null, horarioActivo.horaFin],
+    )).rows[0];
+
+    if (cobertura) {
+      nueva = (await conexion.query(`UPDATE webcobro.reservas
+        SET membresia_compra_id = $2, clase_id = $3, estado_pago = 'pagado', estado = 'pagado'
+        WHERE id = $1 RETURNING ${COLUMNAS_RESERVA}`, [nueva.id, cobertura.id, claseReal.idClase])).rows[0];
+    }
+
+    await conexion.query('COMMIT');
+    res.status(201).json({
+      mensaje: estadoCupo === 'espera'
+        ? `Sesión llena: cliente agregado a la lista de espera. Código: ${codigo}.`
+        : `Reservación confirmada. Código: ${codigo}.`,
+      reservacion: decorarReserva(nueva),
+    });
+  } catch (error) {
+    await conexion.query('ROLLBACK');
+    console.error('No se pudo registrar la reservación:', error);
+    res.status(500).json({ error: 'No se pudo registrar la reservación.' });
+  } finally {
+    conexion.release();
   }
-
-  const nueva = (
-    await pool.query(
-      `INSERT INTO webcobro.reservas (cliente, tipo, clase, hora, estado, precio, fecha)
-       VALUES ($1, $2, $3, $4, 'pendiente', $5, $6)
-       RETURNING id, cliente, tipo, clase, hora, estado, precio, fecha`,
-      [client.trim(), type, clase.trim(), time, precioFinal, fecha],
-    )
-  ).rows[0];
-
-  res.status(201).json({
-    mensaje: 'Reservacion registrada',
-    reservacion: {
-      id: nueva.id,
-      client: nueva.cliente,
-      type: nueva.tipo,
-      class: nueva.clase,
-      time: nueva.hora,
-      status: nueva.estado,
-      price: Number(nueva.precio),
-      fecha: nueva.fecha,
-    },
-  });
 });
 //GET para clientes para llenar tabla del dashboard
 app.get('/api/clientes', async (req, res) => {
   const resultado = await pool.query(
     `SELECT id, nombre, membresia, telefono, correo, activo,
+            EXISTS (SELECT 1 FROM webcobro.membresias_compras mc WHERE mc.cliente_id = webcobro.clientes.id) AS "tieneCompras",
+             COALESCE((SELECT jsonb_agg(jsonb_build_object(
+               'id', mc.id, 'nombre', mc.condiciones->>'nombre',
+               'fechaInicio', to_char(mc.fecha_inicio, 'YYYY-MM-DD'),
+               'fechaFin', to_char(mc.fecha_fin, 'YYYY-MM-DD')
+             ) ORDER BY mc.fecha_fin DESC, mc.id DESC)
+               FROM webcobro.membresias_compras mc WHERE mc.cliente_id = webcobro.clientes.id), '[]'::jsonb) AS "membresiasCompradas",
             to_char(vigencia_hasta, 'YYYY-MM-DD') AS vigencia_hasta
        FROM webcobro.clientes ORDER BY id`,
   );
@@ -296,9 +539,9 @@ app.post('/api/clientes', async (req, res) => {
     return res.status(400).json({ error: 'El nombre del cliente es obligatorio (mínimo 3 letras).' });
   }
 
-  const plan = typeof membresia === 'string' && membresia.trim() ? membresia.trim() : 'Básica';
-  if (!['Básica', 'Premium'].includes(plan)) {
-    return res.status(400).json({ error: 'La membresía debe ser Básica o Premium.' });
+  const plan = typeof membresia === 'string' && membresia.trim() ? membresia.trim() : 'Sin membresía';
+  if (!['Sin membresía', 'Básica', 'Premium'].includes(plan)) {
+    return res.status(400).json({ error: 'Las membresías del catálogo se asignan mediante una compra en Recepción.' });
   }
 
   const correoLimpio = typeof correo === 'string' ? correo.trim().toLowerCase() : '';
@@ -344,40 +587,243 @@ app.patch('/api/reservas/:id', async (req, res) => {
     return res.status(400).json({ error: "El estatus debe ser 'cancelado' o 'asistido'." });
   }
 
-  const existente = (
-    await pool.query(
-      `SELECT id, estado FROM webcobro.reservas WHERE id = $1`,
-      [id],
-    )
-  ).rows[0];
+  // Las clases que ya pasaron sin que el cliente llegara quedan como inasistencia.
+  await marcarInasistencias();
 
-  if (!existente) {
+  const conexion = await pool.connect();
+  try {
+    await conexion.query('BEGIN');
+    const existente = (await conexion.query(
+      `SELECT ${COLUMNAS_RESERVA} FROM webcobro.reservas WHERE id = $1 FOR UPDATE`,
+      [id],
+    )).rows[0];
+
+    if (!existente) {
+      await conexion.query('ROLLBACK');
+      return res.status(404).json({ error: 'La reservación no existe.' });
+    }
+    if (status === 'asistido' && !flujoReservas.puedeConfirmarAsistencia(existente)) {
+      await conexion.query('ROLLBACK');
+      return res.status(409).json({ error: 'Primero registra el pago o la cobertura de esta reserva; debe estar vigente y con cupo confirmado.' });
+    }
+    if (status === 'asistido' && existente.fecha !== marcaLocal(new Date()).slice(0, 10)) {
+      await conexion.query('ROLLBACK');
+      return res.status(409).json({ error: 'La asistencia solo se confirma el dia de la sesion.' });
+    }
+    if (existente.status === status) {
+      await conexion.query('ROLLBACK');
+      return res.status(409).json({ error: status === 'asistido'
+        ? 'Este cliente ya tiene asistencia confirmada.'
+        : 'La reservación ya estaba cancelada.' });
+    }
+    if (status === 'asistido' && existente.status === 'cancelado') {
+      await conexion.query('ROLLBACK');
+      return res.status(409).json({ error: 'No se puede confirmar asistencia de una reservación cancelada.' });
+    }
+    if (status === 'asistido' && existente.status === 'no_asistio') {
+      await conexion.query('ROLLBACK');
+      return res.status(409).json({ error: 'La clase ya pasó y quedó registrada como inasistencia.' });
+    }
+    if (status === 'asistido' && existente.capacityStatus === 'espera') {
+      await conexion.query('ROLLBACK');
+      return res.status(409).json({ error: 'No se puede confirmar asistencia mientras el cliente siga en lista de espera.' });
+    }
+
+    // Cancelación: solo dentro de las 24 horas siguientes a la reservación,
+    // antes de que inicie la clase, y sin reembolso (el pago, si lo hubo, se
+    // conserva en webcobro.pagos).
+    if (status === 'cancelado') {
+      const { motivoNoCancelar } = reglasDeReserva(existente);
+      if (motivoNoCancelar) {
+        await conexion.query('ROLLBACK');
+        return res.status(409).json({ error: motivoNoCancelar });
+      }
+    }
+
+    if (existente.horarioId) {
+      await conexion.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`webcobro-horario-${existente.horarioId}`]);
+    }
+    const actualizada = (await conexion.query(
+      `UPDATE webcobro.reservas
+          SET estado = $2::text,
+              cancelada_en = CASE WHEN $2::text = 'cancelado' THEN NOW() ELSE cancelada_en END
+        WHERE id = $1
+        RETURNING ${COLUMNAS_RESERVA}`,
+      [id, status],
+    )).rows[0];
+
+    let promovida = null;
+    if (status === 'cancelado' && existente.capacityStatus === 'confirmada' && existente.horarioId) {
+      promovida = await promoverListaEspera(conexion, existente.horarioId);
+    }
+
+    await conexion.query('COMMIT');
+    // Una clase cubierta con membresía no tuvo pago propio: su entrada se devuelve.
+    const avisoCancelacion = existente.membresiaCompraId
+      ? ' La entrada regresa a la membresía.'
+      : existente.status === 'pagado' ? ' El pago no se reembolsa.' : '';
+    res.json({
+      mensaje: status === 'asistido'
+        ? 'Asistencia confirmada'
+        : promovida
+          ? `Reservación cancelada.${avisoCancelacion} ${promovida.client} fue promovido desde la lista de espera.`
+          : `Reservación cancelada.${avisoCancelacion}`,
+      reservacion: decorarReserva(actualizada),
+      promovida: decorarReserva(promovida),
+    });
+  } catch (error) {
+    await conexion.query('ROLLBACK');
+    console.error('No se pudo actualizar la reservación:', error);
+    res.status(500).json({ error: 'No se pudo actualizar la reservación.' });
+  } finally {
+    conexion.release();
+  }
+});
+
+/*
+ * POST para reagendar una reservación: solo UNA vez y sin costo.
+ * Body: { horarioId, fecha } del nuevo horario (de administrativa).
+ *
+ * Reglas:
+ *  - Solo reservaciones pendientes o pagadas; las inasistencias, canceladas y
+ *    asistidas no se reagendan.
+ *  - La clase original no debe haber comenzado.
+ *  - El nuevo horario debe ser de la MISMA clase (por eso no cambia el precio),
+ *    estar activo, no haber pasado y tener cupo (no se reagenda a lista de espera).
+ *  - El precio y el pago, si ya lo hubo, se conservan: reagendar no cuesta.
+ *  - El lugar que se libera se ofrece a la primera persona en lista de espera.
+ */
+app.post('/api/reservas/:id/reagendar', async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    return res.status(400).json({ error: 'El id de la reservación no es válido.' });
+  }
+  const { horarioId, fecha } = req.body ?? {};
+  if (typeof horarioId !== 'string' || !horarioId.trim()) {
+    return res.status(400).json({ error: 'Elige el nuevo horario.' });
+  }
+  if (typeof fecha !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+    return res.status(400).json({ error: 'La fecha del nuevo horario es obligatoria (YYYY-MM-DD).' });
+  }
+
+  await marcarInasistencias();
+
+  const actual = (
+    await pool.query(`SELECT ${COLUMNAS_RESERVA} FROM webcobro.reservas WHERE id = $1`, [id])
+  ).rows[0];
+  if (!actual) {
     return res.status(404).json({ error: 'La reservación no existe.' });
   }
-  if (existente.estado === status) {
-    return res.status(409).json({ error: status === 'asistido'
-      ? 'Este cliente ya tiene asistencia confirmada.'
-      : 'La reservación ya estaba cancelada.' });
+  const reglasPrevias = reglasDeReserva(actual);
+  if (reglasPrevias.motivoNoReagendar) {
+    return res.status(409).json({ error: reglasPrevias.motivoNoReagendar });
   }
-  // No tiene sentido confirmar asistencia de una reservación cancelada.
-  if (status === 'asistido' && existente.estado === 'cancelado') {
-    return res.status(409).json({ error: 'No se puede confirmar asistencia de una reservación cancelada.' });
+  if (actual.horarioId === horarioId.trim()) {
+    return res.status(409).json({ error: 'Elige un horario distinto al que ya tiene reservado.' });
   }
 
-  const actualizada = (
-    await pool.query(
-      `UPDATE webcobro.reservas SET estado = $2
+  let destino;
+  try {
+    destino = await buscarHorarioActivo(fecha, { horarioId: horarioId.trim() });
+  } catch (err) {
+    console.error('No se pudieron validar los horarios de administrativa:', err);
+    return res.status(500).json({ error: 'No se pudieron validar los horarios disponibles.' });
+  }
+  const nuevoHorario = destino.horario;
+  if (!nuevoHorario) {
+    return res.status(409).json({ error: `El horario elegido no existe o no está activo el ${fecha}.` });
+  }
+  if (nuevoHorario.nombreClase !== actual.class) {
+    return res.status(409).json({
+      error: `Solo se puede reagendar a otro horario de la misma clase ("${actual.class}").`,
+    });
+  }
+  const inicioNuevo = inicioDeClase(nuevoHorario.fecha || fecha, nuevoHorario.horaInicio);
+  if (!inicioNuevo || inicioNuevo.getTime() <= Date.now()) {
+    return res.status(409).json({ error: `La clase de las ${nuevoHorario.horaInicio} del ${fecha} ya pasó, elige otro horario.` });
+  }
+
+  const capacidadTotal = Number(nuevoHorario.capacidadTotal || 0);
+  const conexion = await pool.connect();
+  try {
+    await conexion.query('BEGIN');
+    // Se bloquean ambos horarios en orden fijo para evitar interbloqueos.
+    const candados = [actual.horarioId, nuevoHorario.idHorario].filter(Boolean).sort();
+    for (const candado of candados) {
+      await conexion.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`webcobro-horario-${candado}`]);
+    }
+
+    // Se vuelve a leer bloqueada por si cambió mientras se consultaba administrativa.
+    const bloqueada = (await conexion.query(
+      `SELECT ${COLUMNAS_RESERVA} FROM webcobro.reservas WHERE id = $1 FOR UPDATE`,
+      [id],
+    )).rows[0];
+    const reglas = reglasDeReserva(bloqueada);
+    if (reglas.motivoNoReagendar) {
+      await conexion.query('ROLLBACK');
+      return res.status(409).json({ error: reglas.motivoNoReagendar });
+    }
+
+    await membresiasService.validarReagenda(conexion, bloqueada, nuevoHorario.fecha || fecha, nuevoHorario.idClase);
+
+    const duplicada = Number((await conexion.query(
+      `SELECT COUNT(*) AS n FROM webcobro.reservas
+        WHERE ((cliente_id = $4) OR ($4::integer IS NULL AND tipo = 'visitante' AND cliente = $1)) AND id <> $2 AND horario_id = $3
+          AND estado NOT IN ('cancelado', 'no_asistio')`,
+      [bloqueada.client, id, nuevoHorario.idHorario, bloqueada.clienteId],
+    )).rows[0].n);
+    if (duplicada > 0) {
+      await conexion.query('ROLLBACK');
+      return res.status(409).json({ error: `"${bloqueada.client}" ya tiene una reservación en ese horario.` });
+    }
+
+    const confirmadas = Number((await conexion.query(
+      `SELECT COUNT(*) AS n FROM webcobro.reservas
+        WHERE horario_id = $1 AND estado_cupo = 'confirmada'
+          AND estado NOT IN ('cancelado', 'no_asistio')`,
+      [nuevoHorario.idHorario],
+    )).rows[0].n);
+    if (capacidadTotal > 0 && confirmadas >= capacidadTotal) {
+      await conexion.query('ROLLBACK');
+      return res.status(409).json({ error: `El horario de las ${nuevoHorario.horaInicio} del ${fecha} ya no tiene cupo.` });
+    }
+
+    // En un UPDATE los valores de la derecha son los anteriores, así que
+    // fecha_original/hora_original guardan el horario que se deja.
+    const reagendada = (await conexion.query(
+      `UPDATE webcobro.reservas
+          SET fecha_original = fecha,
+              hora_original  = hora,
+              fecha          = $2,
+              hora           = $3,
+              horario_id     = $4,
+              hora_fin       = $5,
+              estado_cupo    = 'confirmada',
+              reagendada     = TRUE,
+              reagendada_en  = NOW()
         WHERE id = $1
-        RETURNING id, cliente AS client, tipo AS type, clase AS class,
-                  hora AS time, estado AS status, precio::float8 AS price, fecha`,
-      [id, status],
-    )
-  ).rows[0];
+        RETURNING ${COLUMNAS_RESERVA}`,
+      [id, nuevoHorario.fecha || fecha, nuevoHorario.horaInicio, nuevoHorario.idHorario, nuevoHorario.horaFin],
+    )).rows[0];
 
-  res.json({
-    mensaje: status === 'asistido' ? 'Asistencia confirmada' : 'Reservación cancelada',
-    reservacion: actualizada,
-  });
+    let promovida = null;
+    if (bloqueada.capacityStatus === 'confirmada' && bloqueada.horarioId) {
+      promovida = await promoverListaEspera(conexion, bloqueada.horarioId);
+    }
+
+    await conexion.query('COMMIT');
+    res.json({
+      mensaje: `Reservación reagendada sin costo al ${reagendada.fecha} a las ${reagendada.time}. Ya no se podrá volver a reagendar.`,
+      reservacion: decorarReserva(reagendada),
+      promovida: decorarReserva(promovida),
+    });
+  } catch (error) {
+    await conexion.query('ROLLBACK');
+    console.error('No se pudo reagendar la reservación:', error);
+    res.status(error.status || 500).json({ error: error.status ? error.message : 'No se pudo reagendar la reservación.' });
+  } finally {
+    conexion.release();
+  }
 });
 
 /*
@@ -409,8 +855,8 @@ app.patch('/api/clientes/:id', async (req, res) => {
     campos.push(`nombre = $${valores.length}`);
   }
   if (membresia !== undefined) {
-    if (!['Básica', 'Premium'].includes(membresia)) {
-      return res.status(400).json({ error: 'La membresía debe ser Básica o Premium.' });
+    if (!['Sin membresía', 'Básica', 'Premium'].includes(membresia)) {
+      return res.status(400).json({ error: 'Las membresías del catálogo se asignan mediante una compra en Recepción.' });
     }
     valores.push(membresia);
     campos.push(`membresia = $${valores.length}`);
@@ -471,6 +917,15 @@ app.delete('/api/clientes/:id', async (req, res) => {
   }
 
   try {
+    const historial = await pool.query(
+      `SELECT 1 FROM webcobro.clientes c WHERE c.id = $1 AND (
+        EXISTS (SELECT 1 FROM webcobro.reservas r WHERE r.cliente_id = c.id
+          OR (r.tipo = 'cliente' AND r.cliente_id IS NULL AND r.cliente = c.nombre))
+        OR EXISTS (SELECT 1 FROM webcobro.asistencias a WHERE a.codigo = 'CLI-' || c.id::text))`, [id],
+    );
+    if (historial.rowCount) {
+      return res.status(409).json({ error: 'El cliente tiene historial de reservas o asistencia. Desactivalo en vez de eliminarlo.' });
+    }
     const borrado = (
       await pool.query(`DELETE FROM webcobro.clientes WHERE id = $1 RETURNING id`, [id])
     ).rows[0];
@@ -541,6 +996,9 @@ app.post('/api/cobros', async (req, res) => {
       ? String(req.body.referencia).trim()
       : null;
 
+  // Si la clase ya pasó sin que el cliente llegara, queda como inasistencia.
+  await marcarInasistencias();
+
   const conexion = await pool.connect();
   try {
     await conexion.query('BEGIN');
@@ -548,7 +1006,7 @@ app.post('/api/cobros', async (req, res) => {
     //validacion 4 la reservación debe existir (bloqueada para el cobro)
     const reserva = (
       await conexion.query(
-        `SELECT id, cliente, tipo, clase, hora, fecha, estado, precio
+        `SELECT id, cliente, cliente_id, tipo, clase, hora, fecha, estado, estado_pago, estado_cupo, precio
            FROM webcobro.reservas
           WHERE id = $1
           FOR UPDATE`,
@@ -561,7 +1019,7 @@ app.post('/api/cobros', async (req, res) => {
     }
 
     //validacion 5 solo se puede cobrar una reservación pendiente
-    if (reserva.estado === 'pagado') {
+    if (reserva.estado_pago === 'pagado') {
       await conexion.query('ROLLBACK');
       return res.status(400).json({ error: 'Esta reservación ya fue cobrada.' });
     }
@@ -569,28 +1027,13 @@ app.post('/api/cobros', async (req, res) => {
       await conexion.query('ROLLBACK');
       return res.status(400).json({ error: 'No se puede cobrar una reservación cancelada.' });
     }
-
-    /*
-     * El estado puede quedar desfasado por datos viejos o por volver a ejecutar
-     * el seed. La tabla de pagos es la fuente final: si ya existe uno para esta
-     * reservación, no intentamos insertar otro y mostramos un mensaje claro.
-     */
-    const pagoExistente = (
-      await conexion.query(
-        `SELECT id, folio
-           FROM webcobro.pagos
-          WHERE reserva_id = $1
-          LIMIT 1`,
-        [reserva.id],
-      )
-    ).rows[0];
-    if (pagoExistente) {
+    if (reserva.estado === 'no_asistio') {
       await conexion.query('ROLLBACK');
-      return res.status(409).json({
-        error: pagoExistente.folio
-          ? `Esta reservación ya fue cobrada con el folio ${pagoExistente.folio}.`
-          : 'Esta reservación ya tiene un pago registrado.',
-      });
+      return res.status(409).json({ error: 'El cliente no asistió a esta clase: la reservación ya no se puede cobrar.' });
+    }
+    if (reserva.estado_cupo === 'espera') {
+      await conexion.query('ROLLBACK');
+      return res.status(409).json({ error: 'No se puede cobrar una reservación que sigue en lista de espera.' });
     }
 
     const monto = Number(reserva.precio);
@@ -629,9 +1072,10 @@ app.post('/api/cobros', async (req, res) => {
     const folio = `NCC-${fechaFolio.fecha}-${String(consecutivo).padStart(4, '0')}`;
 
     // El socio puede tener ficha en webcobro.clientes; el visitante no.
-    const socio = (
-      await conexion.query('SELECT id FROM webcobro.clientes WHERE nombre = $1', [reserva.cliente])
-    ).rows[0];
+    if (reserva.tipo === 'cliente' && !reserva.cliente_id) {
+      await conexion.query('ROLLBACK');
+      return res.status(409).json({ error: 'Reserva antigua sin socio identificado: requiere conciliacion por ID antes de cobrar.' });
+    }
 
     const nuevoPago = (
       await conexion.query(
@@ -644,7 +1088,7 @@ app.post('/api/cobros', async (req, res) => {
                    cambio::float8 AS cambio, referencia, usuario, creado_en`,
         [
           reserva.id,
-          socio ? socio.id : null,
+          reserva.cliente_id,
           reserva.cliente,
           monto,
           metodoPago,
@@ -662,10 +1106,9 @@ app.post('/api/cobros', async (req, res) => {
     const reservaPagada = (
       await conexion.query(
         `UPDATE webcobro.reservas
-            SET estado = 'pagado'
+            SET estado_pago = 'pagado', estado = CASE WHEN estado = 'pendiente' THEN 'pagado' ELSE estado END
           WHERE id = $1
-          RETURNING id, cliente AS client, tipo AS type, clase AS class,
-                    hora AS time, estado AS status, precio::float8 AS price, fecha`,
+          RETURNING ${COLUMNAS_RESERVA}`,
         [reserva.id],
       )
     ).rows[0];
@@ -697,9 +1140,16 @@ app.post('/api/cobros', async (req, res) => {
       ],
     };
 
+    // El pago ya está confirmado. La impresora es opcional y se atiende aparte.
+    void imprimirTicket(ticket).then((enviado) => {
+      if (process.env.TICKET_IMPRESION_HABILITADA === 'true' && !enviado) {
+        console.warn('Cobro registrado; no se pudo enviar el comprobante a la impresora.');
+      }
+    }).catch((error) => console.error('Fallo de impresión:', error.message));
+
     res.status(201).json({
       mensaje: 'Cobro registrado',
-      reserva: reservaPagada,
+      reserva: decorarReserva(reservaPagada),
       ticket,
       pago: {
         id: Number(nuevoPago.id),
@@ -716,13 +1166,6 @@ app.post('/api/cobros', async (req, res) => {
     });
   } catch (error) {
     await conexion.query('ROLLBACK');
-
-    // Protección adicional ante dos solicitudes simultáneas para la misma
-    // reservación. El índice único sigue siendo la última barrera de seguridad.
-    if (error?.code === '23505' && error?.constraint === 'pagos_reserva_id_idx') {
-      return res.status(409).json({ error: 'Esta reservación ya tiene un pago registrado.' });
-    }
-
     console.error('Error al registrar el cobro:', error);
     res.status(500).json({ error: 'No se pudo registrar el cobro.' });
   } finally {
@@ -732,10 +1175,15 @@ app.post('/api/cobros', async (req, res) => {
 
 //GET para tarjetas superiores del dashboard
 app.get('/api/kpis', async (req, res) => {
+  await marcarInasistencias();
   const resumen = (
     await pool.query(
-      `SELECT COUNT(*) FILTER (WHERE estado = 'pendiente' AND fecha = CURRENT_DATE::text)::int AS pendientes,
-              COUNT(*) FILTER (WHERE estado <> 'cancelado' AND fecha = CURRENT_DATE::text)::int AS total
+      `SELECT COUNT(*) FILTER (
+                WHERE estado = 'pendiente' AND estado_cupo = 'confirmada' AND fecha = CURRENT_DATE::text
+              )::int AS pendientes,
+              COUNT(*) FILTER (
+                WHERE estado NOT IN ('cancelado', 'no_asistio') AND estado_cupo = 'confirmada' AND fecha = CURRENT_DATE::text
+              )::int AS total
          FROM webcobro.reservas`,
     )
   ).rows[0];
@@ -755,6 +1203,8 @@ app.get('/api/kpis', async (req, res) => {
   });
 });
 
+// Asistencia adaptada del commit 948c1a5, con las reglas de puntualidad del punto 3.6.1.
+// reservasFlujo.test.js corta este archivo en la linea anterior: no cambiar su texto.
 //MODULO PARA ASISTENCIA
 
 // Convierte lo que escriban el checador a un codigo normalizado:
@@ -909,7 +1359,7 @@ app.get('/api/asistencia/empleado/:codigo', async (req, res) => {
         ).rows[0]
       : (
           await pool.query(
-            'SELECT id, nombre, membresia FROM webcobro.clientes WHERE id = $1',
+            'SELECT id, nombre, membresia, activo FROM webcobro.clientes WHERE id = $1',
             [codigo.slice(4)],
           )
         ).rows[0];
@@ -934,6 +1384,7 @@ app.get('/api/asistencia/empleado/:codigo', async (req, res) => {
       nombre: persona.nombre,
       rol: esEmpleado ? persona.rol : null,
       membresia: esEmpleado ? null : persona.membresia,
+      activo: esEmpleado ? true : persona.activo !== false,
       marcoHoy: estadoDia.marcoHoy,
       ultimaMarcaHoy: estadoDia.ultimaHoy ? estadoDia.ultimaHoy.tipo : null,
       siguienteTipo: estadoDia.siguienteTipo, // 'entrada' | 'salida'
@@ -948,6 +1399,64 @@ app.get('/api/asistencia/empleado/:codigo', async (req, res) => {
   }
 });
 
+// Los registros completos son información del personal: solo para administradores.
+const exigirAdministrador = async (req, res, next) => {
+  const encabezado = req.headers.authorization;
+  if (!encabezado?.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Inicia sesión para consultar los registros.' });
+  }
+  try {
+    const respuesta = await fetch(`${ADMIN_API}/auth/me`, {
+      headers: { Authorization: encabezado },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!respuesta.ok) {
+      return res.status(respuesta.status === 401 ? 401 : 503).json({ error: 'No se pudo validar tu sesión.' });
+    }
+    const { user } = await respuesta.json();
+    if (user?.rol !== 'administrador') {
+      return res.status(403).json({ error: 'No tienes permiso para consultar los registros.' });
+    }
+    return next();
+  } catch {
+    return res.status(503).json({ error: 'Administración no está disponible para validar tu sesión.' });
+  }
+};
+
+//GET registros del checador en un rango de fechas (YYYY-MM-DD), para los reportes.
+app.get('/api/asistencia/registros', exigirAdministrador, async (req, res) => {
+  const { desde, hasta } = req.query;
+  const esFecha = (valor) => typeof valor === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(valor);
+  if (!esFecha(desde) || !esFecha(hasta)) {
+    return res.status(400).json({ error: 'Las fechas deben tener el formato YYYY-MM-DD.' });
+  }
+
+  // El rango se calcula en la hora local del servidor, igual que el resto del checador.
+  const inicio = new Date(`${desde}T00:00:00`);
+  const fin = new Date(`${hasta}T00:00:00`);
+  fin.setDate(fin.getDate() + 1);
+
+  const { rows } = await pool.query(
+    `SELECT a.id, a.codigo, a.nombre, a.tipo, a.estado, a.automatica, a.creado_en, e.rol
+       FROM webcobro.asistencias a
+       LEFT JOIN webcobro.empleados e ON e.codigo = a.codigo
+      WHERE a.creado_en >= $1 AND a.creado_en < $2
+      ORDER BY a.creado_en, a.id`,
+    [inicio, fin],
+  );
+
+  res.json(rows.map((r) => ({
+    id: Number(r.id),
+    codigo: r.codigo,
+    nombre: r.nombre,
+    rol: r.rol ?? null,
+    tipo: r.tipo,
+    estado: r.estado ?? null,
+    automatica: r.automatica === true,
+    fecha: new Date(r.creado_en).toISOString(),
+  })));
+});
+
 app.post('/api/asistencia/marcar', async (req, res) => {
   const codigo = normalizarIdentificador((req.body.codigo || '').trim().toUpperCase());
 
@@ -960,8 +1469,13 @@ app.post('/api/asistencia/marcar', async (req, res) => {
   const esEmpleado = codigo.startsWith('EMP-');
   const persona = esEmpleado
     ? (await pool.query('SELECT codigo, nombre, rol FROM webcobro.empleados WHERE codigo = $1', [codigo])).rows[0]
-    : (await pool.query('SELECT id, nombre FROM webcobro.clientes WHERE id = $1', [codigo.slice(4)])).rows[0];
+    : (await pool.query('SELECT id, nombre, activo FROM webcobro.clientes WHERE id = $1', [codigo.slice(4)])).rows[0];
   if (!persona) return res.status(404).json({ error: `Código ${codigo} no registrado` });
+
+  // Un socio dado de baja no puede registrar entradas ni salidas.
+  if (!esEmpleado && persona.activo === false) {
+    return res.status(409).json({ error: 'Este socio está inactivo: pasa a recepción.' });
+  }
 
   //validacion 3 antispam (60 seg)
   const ultimo = (
@@ -1006,9 +1520,9 @@ app.post('/api/asistencia/marcar', async (req, res) => {
     ts: new Date(registro.creado_en).getTime(),
   });
 });
-
-// Marca inasistencia a quien no checó entrada pasado su umbral.
-setInterval(async () => {
+// Marca inasistencia a quien no checó entrada pasado su umbral. Se programa
+// junto con la revisión de reservas, cuando ya hay conexión y esquema.
+const revisarFaltasPersonal = async () => {
   try {
     const { rows } = await pool.query(
       `SELECT DISTINCT t.codigo, e.nombre, t.rol, to_char(min(t.hora_inicio),'HH24:MI') AS hora
@@ -1047,7 +1561,7 @@ setInterval(async () => {
   } catch (e) {
     console.error('Cron de inasistencias:', e.message);
   }
-}, 60000);
+};
 
 //Iniciar Servidor
 const PORT = Number(process.env.PORT) || 3002;
@@ -1057,9 +1571,31 @@ const PORT = Number(process.env.PORT) || 3002;
 // fallo de PostgreSQL solo afecta a esta seccion: no apaga el proceso completo.
 module.exports = app;
 
+/*
+ * Al arrancar se aplica db/schema.sql (es idempotente: solo agrega lo que
+ * falte) para que las columnas nuevas de la Release 1.2.0 existan sin tener
+ * que correr `npm run db:setup` a mano. Se usa la consulta sin bitácora para
+ * no imprimir todo el esquema en la terminal.
+ */
+const aplicarEsquema = () =>
+  consultaOriginal(fs.readFileSync(path.join(__dirname, 'db', 'schema.sql'), 'utf8'));
+
+// Revisa cada minuto las clases que ya pasaron para marcar inasistencias,
+// aunque nadie tenga abierta la pantalla de recepción.
+const iniciarRevisionInasistencias = () => {
+  setInterval(revisarFaltasPersonal, 60 * 1000).unref();
+  setInterval(() => {
+    marcarInasistencias({ query: consultaOriginal })
+      .then((n) => { if (n > 0) console.log(`Inasistencias marcadas: ${n}`); })
+      .catch((error) => console.error('No se pudieron marcar inasistencias:', error.message));
+  }, 60 * 1000).unref();
+};
+
 // Comprueba la conexion antes de escuchar peticiones.
 pool.query('SELECT 1')
+  .then(aplicarEsquema)
   .then(() => {
+    iniciarRevisionInasistencias();
     if (process.env.GATEWAY_MODE) {
       console.log('API cobro conectada a PostgreSQL (gateway unificado)');
       return;

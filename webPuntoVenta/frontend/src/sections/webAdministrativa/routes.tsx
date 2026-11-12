@@ -5,11 +5,11 @@ import { DashboardPage } from './features/dashboard/DashboardPage';
 import { UsuariosPage } from './features/usuarios/UsuariosPage';
 import { ClientesPage } from './features/clientes/ClientesPage';
 import { ClienteDetalle } from './features/clientes/ClienteDetalle';
-import { ClasesPage } from './features/clases/ClasesPage';
-import { HorariosPage } from './features/horarios/HorariosPage';
+import ClasesHorariosPage from './features/clasesHorarios/ClasesHorariosPage';
 import { ReservacionesPage } from './features/reservaciones/ReservacionesPage';
 import { ProductosPage } from './features/productos/ProductosPage';
 import { ReportesPage } from './features/reportes/ReportesPage';
+import MembresiasPage from './features/membresia/membresia';
 
 export const router = createBrowserRouter([
   {
@@ -25,8 +25,10 @@ export const router = createBrowserRouter([
       { path: 'usuarios', Component: UsuariosPage },
       { path: 'clientes', Component: ClientesPage },
       { path: 'clientes/:id', Component: ClienteDetalle },
-      { path: 'clases', Component: ClasesPage },
-      { path: 'horarios', Component: HorariosPage },
+      { path: 'membresias', Component: MembresiasPage },
+      { path: 'clases-horarios', Component: ClasesHorariosPage },
+      { path: 'clases', element: <Navigate to="/clases-horarios?vista=catalogo" replace /> },
+      { path: 'horarios', element: <Navigate to="/clases-horarios?vista=agenda" replace /> },
       { path: 'reservaciones', Component: ReservacionesPage },
       { path: 'productos', Component: ProductosPage },
       { path: 'reportes', Component: ReportesPage },

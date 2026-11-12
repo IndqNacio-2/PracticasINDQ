@@ -1,6 +1,8 @@
 ﻿import { useState } from "react"
-import { NavLink, Outlet, useNavigate } from "react-router"
+import { NavLink, Outlet } from "react-router"
 import MaterialIcon from "../../../components/MaterialIcon"
+import BrandLogo from "../../../components/BrandLogo"
+import { LOGIN_PATH } from "../../../auth/session"
 import { useAuth } from "../context/AuthContext"
 import type { UserRole } from "../types"
 
@@ -31,16 +33,16 @@ const navItems: NavItem[] = [
     roles: ["administrador", "recepcion"],
   },
   {
-    path: "/clases",
-    label: "Clases",
-    icon: "fitness_center",
+    path: "/clases-horarios",
+    label: "Clases y horarios",
+    icon: "calendar_month",
     roles: ["administrador", "entrenador", "recepcion"],
   },
   {
-    path: "/horarios",
-    label: "Horarios",
-    icon: "calendar_month",
-    roles: ["administrador", "entrenador", "recepcion"],
+    path: "/membresias",
+    label: "Membresías",
+    icon: "card_membership",
+    roles: ["administrador", "recepcion"],
   },
   {
     path: "/reservaciones",
@@ -66,12 +68,12 @@ const rolLabel: Record<string, string> = {
   administrador: "Administrador",
   entrenador: "Entrenador",
   recepcion: "Recepción",
+  vendedor: "Vendedor",
   cliente: "Cliente",
 }
 
 export function Layout() {
   const { user, logout } = useAuth()
-  const navigate = useNavigate()
   const [collapsed, setCollapsed] = useState(false)
   const visibleItems = navItems.filter(
     (item) => user && item.roles.includes(user.rol),
@@ -79,7 +81,7 @@ export function Layout() {
 
   const handleLogout = () => {
     logout()
-    navigate("/login")
+    window.location.assign(LOGIN_PATH)
   }
 
   return (
@@ -94,6 +96,10 @@ export function Layout() {
             collapsed ? "rx-sidebar-header--collapsed" : ""
           }`}
         >
+          <div className={collapsed ? "rx-brand-symbol" : "rx-brand-content"}>
+            <BrandLogo variant={collapsed ? "symbol" : "full"} />
+            {!collapsed && <p className="rx-brand-subtitle mt-2">Administración</p>}
+          </div>
           {collapsed ? (
             <button
               type="button"
@@ -107,13 +113,6 @@ export function Layout() {
             </button>
           ) : (
             <>
-              <div className="rx-brand-logo">
-                <MaterialIcon name="bolt" className="text-2xl" filled />
-              </div>
-              <div className="rx-brand-content">
-                <p className="rx-brand-title">Recepción</p>
-                <p className="rx-brand-subtitle">Administración</p>
-              </div>
               <button
                 type="button"
                 onClick={() => setCollapsed(true)}

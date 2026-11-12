@@ -91,6 +91,8 @@ export interface ToastMessage {
 }
 
 export interface SaleRecord {
+  // Momento exacto de la venta: dice si ya entró en un corte de caja.
+  soldAt?: string;
   folio: string;
   date: string;
   time: string;
@@ -108,6 +110,8 @@ export interface SaleRecord {
  * Represento un corte de caja realizado al cerrar un turno.
  */
 export interface CashClosingRecord {
+  // Momento exacto del corte: las ventas posteriores son el turno vigente.
+  closedAt?: string;
   // Folio visible para localizar el corte.
   folio: string;
 

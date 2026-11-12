@@ -57,6 +57,16 @@ saleRouter.post("/", async (request, response) => {
       return;
     }
 
+    // 422: el producto se desactivo mientras seguia en el carrito.
+    if (result.outcome === "product-inactive") {
+      response.status(422).json({
+        status: "error",
+        message: `${result.productName} ya no esta disponible para la venta.`,
+        errors: [{ field: "items", message: `${result.productName} ya no esta disponible para la venta.` }],
+      });
+      return;
+    }
+
     // 422: se intento vender mas de lo que hay en existencia.
     if (result.outcome === "insufficient-stock") {
       response.status(422).json({

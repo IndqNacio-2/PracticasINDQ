@@ -6,11 +6,14 @@ import clienteRoutes from './routes/clientes.routes';
 import reservacionRoutes from './routes/reservaciones.routes';
 import horarioRoutes from './routes/horarios.routes';
 import claseRoutes from './routes/clases.routes';
+import plantillaHorarioRoutes from './routes/plantillas-horarios.routes';
 import productoRoutes from './routes/productos.routes';
 import movimientoRoutes from './routes/movimientos.routes';
 import usuarioRoutes from './routes/usuarios.routes';
 import ventaRoutes from './routes/ventas.routes';
+import membresiaRoutes from './routes/membresia.routes';
 import { connectDB } from './lib/mongo';
+import { iniciarMantenimientoHorizonte } from './services/mantener-horizonte-sesiones';
 
 if (!process.env.JWT_SECRET) {
   throw new Error('Falta JWT_SECRET en el archivo .env');
@@ -20,6 +23,8 @@ const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
 app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:5173' }));
+// Límite ampliado exclusivamente para usuarios con foto reducida.
+app.use('/api/usuarios', express.json({ limit: '256kb' }));
 app.use(express.json());
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
@@ -28,10 +33,12 @@ app.use('/api/clientes', clienteRoutes);
 app.use('/api/reservaciones', reservacionRoutes);
 app.use('/api/horarios', horarioRoutes);
 app.use('/api/clases', claseRoutes);
+app.use('/api/plantillas-horarios', plantillaHorarioRoutes);
 app.use('/api/productos', productoRoutes);
 app.use('/api/movimientos', movimientoRoutes);
 app.use('/api/usuarios', usuarioRoutes);
 app.use('/api/ventas', ventaRoutes);
+app.use('/api/membresias', membresiaRoutes);
 
 // Exporta la app para que el gateway unificado pueda montarla bajo su prefijo
 // (/admin) en un solo puerto. Con GATEWAY_MODE no abre su propio puerto y un
@@ -40,6 +47,7 @@ export default app;
 
 connectDB()
   .then(() => {
+    iniciarMantenimientoHorizonte();
     if (process.env.GATEWAY_MODE) {
       console.log('API administrativa conectada a MongoDB (gateway unificado)');
       return;
