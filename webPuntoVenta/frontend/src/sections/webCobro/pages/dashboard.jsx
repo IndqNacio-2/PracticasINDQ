@@ -1242,6 +1242,7 @@ export default function Dashboard({ vista = 'recepcion' }) {
             </header>
 
             <div className="rx-page-content">
+
               {verMembresias && <MembresiasRecepcion clientes={clientes} clases={clases} onClose={() => setVerMembresias(false)} onTicket={nuevoTicket => { setVerMembresias(false); setTicket(nuevoTicket); }}
                 onVenta={() => {
                   cargarKpis();
@@ -1257,6 +1258,24 @@ export default function Dashboard({ vista = 'recepcion' }) {
                     <h2 id="reception-schedule-title">Clases programadas</h2>
                     <span className="rx-badge rx-badge--special">{fechaReserva === hoyISO() ? 'Hoy' : formatFechaCorta(fechaReserva)}</span>
                   </div>
+                  <section className="rx-reception-kpis" aria-label="Resumen de recepción">
+                <article className="rx-reception-kpi rx-reception-kpi--classes">
+                  <div className="rx-reception-kpi-heading">
+                    <span className="rx-reception-kpi-icon"><MaterialIcon name="event_available" className="text-2xl" /></span>
+                    <h2>Clases programadas</h2>
+                  </div>
+                  <p className="rx-reception-kpi-value">{horarios.length}</p>
+                  <p className="rx-reception-kpi-caption">{fechaReserva === hoyISO() ? 'Hoy' : formatFechaCorta(fechaReserva)}</p>
+                </article>
+                <article className="rx-reception-kpi rx-reception-kpi--income">
+                  <div className="rx-reception-kpi-heading">
+                    <span className="rx-reception-kpi-icon"><MaterialIcon name="payments" className="text-2xl" /></span>
+                    <h2>Ingresos del día</h2>
+                  </div>
+                  <p className="rx-reception-kpi-value">{formatMoney(kpis.ingresosHoy)}</p>
+                  <p className="rx-reception-kpi-caption">Hoy</p>
+                </article>
+              </section>
                   <label className="rx-field">
                     <span className="rx-label">Fecha de clases</span>
                     <input type="date" className="rx-input" value={fechaReserva}

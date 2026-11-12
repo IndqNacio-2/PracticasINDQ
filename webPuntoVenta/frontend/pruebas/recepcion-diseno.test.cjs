@@ -95,10 +95,22 @@ test('edad respeta cumpleaños y no inventa datos ausentes o inválidos', () => 
   assert.equal(tablaModule.edadCliente({ fechaNacimiento: '2008-02-31' }, props.hoy), null);
 });
 
-test('recepción elimina KPI y conserva los flujos y la lista desplazable', () => {
+test('recepción integra los KPI de Carlos y conserva los flujos y la lista desplazable', () => {
   const dashboard = fs.readFileSync(path.resolve(__dirname, '../src/sections/webCobro/pages/dashboard.jsx'), 'utf8');
   const css = fs.readFileSync(path.resolve(__dirname, '../src/styles/recepcion-workspace.css'), 'utf8');
   assert.doesNotMatch(dashboard, /KpiCard|rx-grid-kpi/);
+  assert.match(dashboard, /aria-label="Resumen de recepción"/);
+  const inicioPanel = dashboard.indexOf('<section className="rx-reception-schedule"');
+  const inicioKpis = dashboard.indexOf('<section className="rx-reception-kpis"');
+  const selectorFecha = dashboard.indexOf('Fecha de clases', inicioPanel);
+  assert.ok(inicioPanel < inicioKpis && inicioKpis < selectorFecha, 'Los KPI deben estar en el panel izquierdo antes del selector de fecha');
+  assert.equal(dashboard.match(/className="rx-reception-kpis"/g).length, 1);
+  assert.match(dashboard, /Clases programadas<\/h2>/);
+  assert.match(dashboard, /rx-reception-kpi-value">\{horarios.length\}/);
+  assert.match(dashboard, /Ingresos del día<\/h2>/);
+  assert.match(dashboard, /rx-reception-kpi-value">\{formatMoney\(kpis.ingresosHoy\)\}/);
+  assert.match(css, /\.rx-reception-kpis\s*\{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(css, /\.rx-reception-kpi\s*\{[^}]*box-shadow: none/);
   assert.match(dashboard, /<RecepcionTabla/);
   for (const accion of ['onCobrar={handlePayment}', 'onAsistencia={handleConfirmAttendance}', 'onReagendar={openReagendar}', 'onCancelar={handleCancel}']) assert.ok(dashboard.includes(accion));
   assert.match(css, /overflow-y: auto/);
