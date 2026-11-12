@@ -1241,6 +1241,56 @@ export default function Dashboard({ vista = 'recepcion' }) {
               </div>
             </header>
 
+
+            {/* ========== TARJETAS kpi Clases y ingresos diarios ========== */}
+              <div className="rx-kpi-cards" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+              {/* KPI: Clases programadas */}
+                  <div className="rx-kpi-card" style={{
+                    background: '#fff',
+                    borderRadius: '12px',
+                      padding: '20px',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+                        border: '1px solid #e5e7eb'
+                          }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+                     <div style={{
+                        width: '40px', height: '40px', borderRadius: '10px',
+                        background: '#e0f2fe', display: 'flex', alignItems: 'center', justifyContent: 'center'
+                          }}>
+                          <MaterialIcon name="event_available" className="text-2xl" style={{ color: '#0284c7' }} />
+                    </div>
+                          <span style={{ fontSize: '14px', color: '#6b7280', fontWeight: '500' }}>Clases programadas</span>
+                        </div>
+                      <p style={{ fontSize: '28px', fontWeight: '700', color: '#111827', margin: 0 }}>
+                      {horarios.length}
+                      </p>
+                          </div>
+
+                {/* KPI: Ingresos del día */}
+                <div className="rx-kpi-card" style={{
+                  background: '#fff',
+                  borderRadius: '12px',
+                  padding: '20px',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+                  border: '1px solid #e5e7eb'
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+                          <div style={{
+                        width: '40px', height: '40px', borderRadius: '10px',
+                          background: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center'
+                        }}>
+                        <MaterialIcon name="payments" className="text-2xl" style={{ color: '#16a34a' }} />
+                    </div>
+                        <span style={{ fontSize: '14px', color: '#6b7280', fontWeight: '500' }}>Ingresos del día</span>
+                         </div>
+                   <p style={{ fontSize: '28px', fontWeight: '700', color: '#111827', margin: 0 }}>
+                      {formatMoney(kpis.ingresosHoy)}
+                       </p>
+                       </div>
+                </div>
+
+        <div className="rx-page-content"></div>
+
             <div className="rx-page-content">
               {verMembresias && <MembresiasRecepcion clientes={clientes} clases={clases} onClose={() => setVerMembresias(false)} onTicket={nuevoTicket => { setVerMembresias(false); setTicket(nuevoTicket); }}
                 onVenta={() => {
@@ -1826,7 +1876,7 @@ export default function Dashboard({ vista = 'recepcion' }) {
         </div>
       )}
 
-      {/* ========== MODAL DE COBRO (mismo diseño que el Punto de Venta) ========== */}
+      {/* ========== MODAL DE COBRO ========== */}
       {isPaymentModalOpen && selectedReservationForPayment && (
         <div className="rx-modal-overlay" role="presentation">
           <section
