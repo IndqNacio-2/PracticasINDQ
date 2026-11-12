@@ -13,6 +13,14 @@ function App() {
       <Router basename="/cobro">
         <Routes>
           <Route path="/asistencia" element={<Attendance />} />
+          <Route
+            path="/front-desk/clientes"
+            element={
+              <ProtectedRoute allowedRoles={['recepcion']}>
+                <Dashboard vista="clientes" />
+              </ProtectedRoute>
+            }
+          />
 
           {/* Ruta protegida*/}
           <Route

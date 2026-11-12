@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, Legend } from 'recharts';
-import { api, apiCobro, apiPos } from '../../lib/api';
+import { mockVentas, mockAsistencias, mockAsistenciaClases, mockProductos, mockMovimientos, ventasPorDia, asistenciaPorClase } from '../../data/mock';
 
 type Tab = 'ventas' | 'visitas' | 'asistencia' | 'inventario' | 'personal';
 
@@ -14,246 +14,22 @@ const tabs: { value: Tab; label: string; icon: string }[] = [
 
 const PIE_COLORS = ['#4B5563', '#6B7280', '#9CA3AF', '#4B5563', '#6B7280'];
 
-// Datos reales: ventas e inventario del Punto de Venta, reservaciones y checador
-// de Cobro, y horarios de administrativa (ahí está el entrenador de cada clase).
-interface VentaPos {
-  folio: string;
-  soldAt: string;
-  items: { name: string; qty: number; unitPrice: number }[];
-  total: number;
-}
-interface ProductoPos {
-  id: number;
-  name: string;
-  category: string;
-  price: number;
-  stock: number;
-  status: string;
-}
-interface MermaPos {
-  id: number;
-  productId: number;
-  quantity: number;
-  reason: string;
-  createdAt: string;
-}
-interface ReservaCobro {
-  id: number;
-  client: string;
-  class: string;
-  status: string;
-  fecha?: string;
-  horarioId?: string;
-}
-interface HorarioAdmin {
-  idHorario: string;
-  nombreEntrenador?: string;
-}
-interface RegistroAsistencia {
-  id: number;
-  codigo: string;
-  nombre: string;
-  rol: string | null;
-  tipo: 'entrada' | 'salida';
-  estado: string | null;
-  automatica: boolean;
-  fecha: string;
-}
-interface Fuentes {
-  ventas: VentaPos[];
-  productos: ProductoPos[];
-  mermas: MermaPos[];
-  reservas: ReservaCobro[];
-  horarios: HorarioAdmin[];
-  registros: RegistroAsistencia[];
-}
-
-const FUENTES_VACIAS: Fuentes = { ventas: [], productos: [], mermas: [], reservas: [], horarios: [], registros: [] };
-
-// Los mismos nombres que muestra el módulo de Mermas.
-const MOTIVO_MERMA: Record<string, string> = {
-  damaged: 'Producto dañado',
-  expired: 'Producto caducado',
-  broken: 'Producto roto',
-  'internal-use': 'Consumo interno',
-  'inventory-error': 'Error de inventario',
-  lost: 'Producto perdido',
-  other: 'Otro motivo',
-};
-
-const dosDigitos = (n: number) => String(n).padStart(2, '0');
-const fechaLocal = (d: Date) => `${d.getFullYear()}-${dosDigitos(d.getMonth() + 1)}-${dosDigitos(d.getDate())}`;
-const horaLocal = (d: Date) => `${dosDigitos(d.getHours())}:${dosDigitos(d.getMinutes())}`;
-const diaCorto = (iso: string) => {
-  const [anio, mes, dia] = iso.split('-').map(Number);
-  return new Date(anio, mes - 1, dia).toLocaleDateString('es-MX', { day: '2-digit', month: 'short' });
-};
-
 export function ReportesPage() {
   const [activeTab, setActiveTab] = useState<Tab>('ventas');
-  const [dateFrom, setDateFrom] = useState(() => {
-    const hoy = new Date();
-    return fechaLocal(new Date(hoy.getFullYear(), hoy.getMonth(), 1));
-  });
-  const [dateTo, setDateTo] = useState(() => fechaLocal(new Date()));
-  const [fuentes, setFuentes] = useState<Fuentes>(FUENTES_VACIAS);
-  const [fallidas, setFallidas] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
-  const ultimaCarga = useRef(0);
+  const [dateFrom, setDateFrom] = useState('2024-09-01');
+  const [dateTo, setDateTo] = useState('2024-09-16');
 
-  const cargar = useCallback(async () => {
-    if (!dateFrom || !dateTo) return;
-    const carga = ++ultimaCarga.current;
-    setLoading(true);
-    // Si una fuente falla, las demás se siguen mostrando y se avisa cuál faltó.
-    const [ventas, productos, mermas, reservas, horarios, registros] = await Promise.allSettled([
-      apiPos.get<VentaPos[]>('/sales'),
-      apiPos.get<ProductoPos[]>('/products'),
-      apiPos.get<MermaPos[]>('/waste'),
-      apiCobro.get<ReservaCobro[]>('/reservas'),
-      api.get<HorarioAdmin[]>('/horarios'),
-      apiCobro.get<RegistroAsistencia[]>(`/asistencia/registros?desde=${dateFrom}&hasta=${dateTo}`),
-    ]);
-    if (carga !== ultimaCarga.current) return;
-    const valor = <T,>(r: PromiseSettledResult<T[]>): T[] => (r.status === 'fulfilled' ? r.value : []);
-    setFuentes({
-      ventas: valor(ventas),
-      productos: valor(productos),
-      mermas: valor(mermas),
-      reservas: valor(reservas),
-      horarios: valor(horarios),
-      registros: valor(registros),
-    });
-    setFallidas(([
-      ['ventas', ventas], ['productos', productos], ['mermas', mermas],
-      ['reservaciones', reservas], ['horarios', horarios], ['checador', registros],
-    ] as const).filter(([, r]) => r.status === 'rejected').map(([nombre]) => nombre));
-    setLoading(false);
-  }, [dateFrom, dateTo]);
+  const totalVentas = mockVentas.reduce((s, v) => s + v.total, 0);
+  const ticketPromedio = totalVentas / mockVentas.length;
 
-  useEffect(() => {
-    void cargar();
-  }, [cargar]);
-
-  const enRango = useCallback((fecha?: string) => Boolean(fecha) && fecha! >= dateFrom && fecha! <= dateTo, [dateFrom, dateTo]);
-
-  const ventasDelPeriodo = useMemo(() => fuentes.ventas
-    .map(v => ({
-      idVenta: v.folio,
-      // En hora local, igual que las mermas y el checador: una venta de la noche
-      // no debe pasar al día siguiente por la zona horaria fija del Punto de Venta.
-      fecha: fechaLocal(new Date(v.soldAt)),
-      total: v.total,
-      productos: (v.items ?? []).map(i => ({ nombre: i.name, precio: i.unitPrice, cantidad: i.qty })),
-    }))
-    .filter(v => enRango(v.fecha)), [fuentes.ventas, enRango]);
-
-  const totalVentas = ventasDelPeriodo.reduce((s, v) => s + v.total, 0);
-  const ticketPromedio = ventasDelPeriodo.length ? totalVentas / ventasDelPeriodo.length : 0;
-
-  const ventasPorProducto = ventasDelPeriodo.flatMap(v => v.productos).reduce((acc, p) => {
+  const ventasPorProducto = mockVentas.flatMap(v => v.productos).reduce((acc, p) => {
     acc[p.nombre] = (acc[p.nombre] ?? 0) + p.precio * p.cantidad;
     return acc;
   }, {} as Record<string, number>);
 
   const ventasPorProductoArray = Object.entries(ventasPorProducto).map(([nombre, total]) => ({ nombre, total })).sort((a, b) => b.total - a.total);
 
-  // Una visita es la entrada de un socio registrada en el checador.
-  const visitas = fuentes.registros.filter(r => r.codigo.startsWith('CLI-') && r.tipo === 'entrada' && !r.automatica);
-
-  const ventasPorDia = useMemo(() => {
-    const dias = new Map<string, { ventas: number; visitas: number }>();
-    const dia = (fecha: string) => {
-      if (!dias.has(fecha)) dias.set(fecha, { ventas: 0, visitas: 0 });
-      return dias.get(fecha)!;
-    };
-    for (const v of ventasDelPeriodo) dia(v.fecha).ventas += v.total;
-    for (const v of visitas) dia(fechaLocal(new Date(v.fecha))).visitas += 1;
-    return [...dias.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([fecha, datos]) => ({ dia: diaCorto(fecha), ...datos }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ventasDelPeriodo, fuentes.registros]);
-
-  const totalVisitas = visitas.length;
-  const diasConVisitas = ventasPorDia.filter(d => d.visitas > 0);
-  const promedioVisitas = diasConVisitas.length ? Math.round(totalVisitas / diasConVisitas.length) : 0;
-  const diaConMasVisitas = diasConVisitas.length
-    ? diasConVisitas.reduce((m, d) => (d.visitas > m.visitas ? d : m)).dia
-    : '—';
-
-  // Asistencia a clases: reservaciones cuya asistencia ya se resolvió en el periodo.
-  const entrenadorDe = new Map(fuentes.horarios.map(h => [h.idHorario, h.nombreEntrenador]));
-  const asistenciaClases = fuentes.reservas
-    .filter(r => enRango(r.fecha) && (r.status === 'asistido' || r.status === 'no_asistio'))
-    .map(r => ({
-      id: r.id,
-      nombreCliente: r.client,
-      clase: r.class,
-      entrenador: entrenadorDe.get(r.horarioId ?? '') ?? '—',
-      asistio: r.status === 'asistido',
-    }));
-
-  const asistenciaPorClase = Object.entries(
-    asistenciaClases.filter(a => a.asistio).reduce((acc, a) => {
-      acc[a.clase] = (acc[a.clase] ?? 0) + 1;
-      return acc;
-    }, {} as Record<string, number>)
-  ).map(([clase, asistencias]) => ({ clase, asistencias })).sort((a, b) => b.asistencias - a.asistencias);
-
-  const productos = fuentes.productos.map(p => ({
-    idProducto: p.id,
-    nombre: p.name,
-    categoria: p.category,
-    stock: p.stock,
-    precio: p.price,
-    estatus: p.status === 'active' ? 'activo' : 'inactivo',
-  }));
-
-  const nombreProducto = new Map(fuentes.productos.map(p => [p.id, p.name]));
-  const mermas = fuentes.mermas
-    .map(m => ({
-      id: m.id,
-      nombreProducto: nombreProducto.get(m.productId) ?? `Producto ${m.productId}`,
-      cantidad: m.quantity,
-      motivo: MOTIVO_MERMA[m.reason] ?? m.reason,
-      fecha: fechaLocal(new Date(m.createdAt)),
-    }))
-    .filter(m => enRango(m.fecha));
-  const totalMerma = mermas.reduce((s, m) => s + m.cantidad, 0);
-
-  // Personal: una fila por empleado y día. La falta automática y la llegada
-  // tardía del mismo día cuentan como una sola falta.
-  const registrosPersonal = useMemo(() => {
-    const TIPO: Record<string, 'asistencia' | 'retardo' | 'falta'> = {
-      puntual: 'asistencia', sin_turno: 'asistencia', retardo: 'retardo', inasistencia: 'falta',
-    };
-    const dias = new Map<string, {
-      id: string; nombreEmpleado: string; rol: string; fecha: string;
-      horaEntrada: string; horaSalida: string; tipoRegistro: 'asistencia' | 'retardo' | 'falta';
-    }>();
-    for (const r of fuentes.registros) {
-      if (!r.codigo.startsWith('EMP-')) continue;
-      const momento = new Date(r.fecha);
-      const fecha = fechaLocal(momento);
-      const id = `${r.codigo}|${fecha}`;
-      const fila = dias.get(id) ?? {
-        id, nombreEmpleado: r.nombre, rol: r.rol ?? 'Empleado', fecha, horaEntrada: '', horaSalida: '', tipoRegistro: 'asistencia' as const,
-      };
-      if (r.automatica) {
-        fila.tipoRegistro = 'falta';
-      } else if (r.tipo === 'salida') {
-        fila.horaSalida = horaLocal(momento);
-      } else if (!fila.horaEntrada) {
-        fila.horaEntrada = horaLocal(momento);
-        fila.tipoRegistro = TIPO[r.estado ?? ''] ?? fila.tipoRegistro;
-      }
-      dias.set(id, fila);
-    }
-    return [...dias.values()].sort((a, b) => b.fecha.localeCompare(a.fecha) || a.nombreEmpleado.localeCompare(b.nombreEmpleado));
-  }, [fuentes.registros]);
-
-  const asistenciaPersonal = registrosPersonal.reduce((acc, a) => {
+  const asistenciaPersonal = mockAsistencias.reduce((acc, a) => {
     if (!acc[a.nombreEmpleado]) acc[a.nombreEmpleado] = { nombre: a.nombreEmpleado, rol: a.rol, asistencias: 0, retardos: 0, faltas: 0 };
     acc[a.nombreEmpleado][a.tipoRegistro === 'asistencia' ? 'asistencias' : a.tipoRegistro === 'retardo' ? 'retardos' : 'faltas']++;
     return acc;
@@ -261,12 +37,15 @@ export function ReportesPage() {
 
   const personalArray = Object.values(asistenciaPersonal);
 
+  const mermas = mockMovimientos.filter(m => m.tipo === 'merma');
+  const totalMerma = mermas.reduce((s, m) => s + m.cantidad, 0);
+
   return (
     <div className="space-y-5 max-w-7xl">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>Reportes</h1>
-          <p className="text-gray-500 text-sm mt-0.5">Análisis y estadísticas del sistema{loading ? ' · Actualizando…' : ''}</p>
+          <p className="text-gray-500 text-sm mt-0.5">Análisis y estadísticas del sistema</p>
         </div>
         <div className="flex items-center gap-2 text-sm">
           <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="px-3 py-2 border border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-[#111827]" />
@@ -274,13 +53,6 @@ export function ReportesPage() {
           <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="px-3 py-2 border border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-[#111827]" />
         </div>
       </div>
-
-      {fallidas.length > 0 && (
-        <div className="rx-admin-alert" role="alert">
-          <span>No se pudieron cargar: {fallidas.join(', ')}.</span>
-          <button type="button" onClick={() => void cargar()} className="rx-admin-alert-action">Reintentar</button>
-        </div>
-      )}
 
       {/* Tabs */}
       <div className="flex gap-2 overflow-x-auto pb-1">
@@ -299,9 +71,9 @@ export function ReportesPage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
               { label: 'Total Ventas', value: `$${totalVentas.toLocaleString()}` },
-              { label: 'Transacciones', value: ventasDelPeriodo.length },
+              { label: 'Transacciones', value: mockVentas.length },
               { label: 'Ticket Promedio', value: `$${ticketPromedio.toFixed(0)}` },
-              { label: 'Producto Top', value: ventasPorProductoArray[0]?.nombre.split(' ').slice(0, 2).join(' ') ?? '—' },
+              { label: 'Producto Top', value: ventasPorProductoArray[0]?.nombre.split(' ').slice(0, 2).join(' ') },
             ].map(s => (
               <div key={s.label} className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
                 <p className="text-xs text-gray-500 mb-1">{s.label}</p>
@@ -346,15 +118,15 @@ export function ReportesPage() {
             </div>
             <table className="w-full text-sm">
               <thead><tr className="border-b border-gray-100">
-                <th className="pb-3 text-left text-xs font-semibold text-gray-400 uppercase">Folio</th>
+                <th className="pb-3 text-left text-xs font-semibold text-gray-400 uppercase">Cliente</th>
                 <th className="pb-3 text-left text-xs font-semibold text-gray-400 uppercase">Productos</th>
                 <th className="pb-3 text-left text-xs font-semibold text-gray-400 uppercase">Fecha</th>
                 <th className="pb-3 text-right text-xs font-semibold text-gray-400 uppercase">Total</th>
               </tr></thead>
               <tbody className="divide-y divide-gray-50">
-                {[...ventasDelPeriodo].sort((a, b) => b.total - a.total).map(v => (
+                {[...mockVentas].sort((a, b) => b.total - a.total).map(v => (
                   <tr key={v.idVenta}>
-                    <td className="py-3 font-medium text-gray-800">{v.idVenta}</td>
+                    <td className="py-3 font-medium text-gray-800">{v.nombreCliente}</td>
                     <td className="py-3 text-gray-500 text-xs max-w-xs truncate">{v.productos.map(p => p.nombre).join(', ')}</td>
                     <td className="py-3 text-gray-500">{v.fecha}</td>
                     <td className="py-3 text-right font-semibold text-gray-800">${v.total.toLocaleString()}</td>
@@ -371,9 +143,9 @@ export function ReportesPage() {
         <div className="space-y-4">
           <div className="grid grid-cols-3 gap-4">
             {[
-              { label: 'Total Visitas', value: totalVisitas },
-              { label: 'Promedio Diario', value: promedioVisitas },
-              { label: 'Día con más visitas', value: diaConMasVisitas },
+              { label: 'Total Visitas (Sep)', value: ventasPorDia.reduce((s, d) => s + d.visitas, 0) },
+              { label: 'Promedio Diario', value: Math.round(ventasPorDia.reduce((s, d) => s + d.visitas, 0) / ventasPorDia.length) },
+              { label: 'Día con más visitas', value: ventasPorDia.reduce((m, d) => d.visitas > m.visitas ? d : m).dia },
             ].map(s => (
               <div key={s.label} className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
                 <p className="text-xs text-gray-500 mb-1">{s.label}</p>
@@ -419,7 +191,7 @@ export function ReportesPage() {
           </div>
 
           <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
-            <h3 className="font-semibold text-gray-900 mb-4" style={{ fontFamily: 'DM Sans, sans-serif' }}>Asistencia en el periodo</h3>
+            <h3 className="font-semibold text-gray-900 mb-4" style={{ fontFamily: 'DM Sans, sans-serif' }}>Asistencia Hoy por Clase</h3>
             <table className="w-full text-sm">
               <thead><tr className="border-b border-gray-100">
                 <th className="pb-3 text-left text-xs font-semibold text-gray-400 uppercase">Cliente</th>
@@ -428,7 +200,7 @@ export function ReportesPage() {
                 <th className="pb-3 text-center text-xs font-semibold text-gray-400 uppercase">Asistió</th>
               </tr></thead>
               <tbody className="divide-y divide-gray-50">
-                {asistenciaClases.map(a => (
+                {mockAsistenciaClases.map(a => (
                   <tr key={a.id}>
                     <td className="py-3 font-medium text-gray-800">{a.nombreCliente}</td>
                     <td className="py-3 text-gray-600">{a.clase}</td>
@@ -451,10 +223,10 @@ export function ReportesPage() {
         <div className="space-y-4">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
-              { label: 'Productos activos', value: productos.filter(p => p.estatus === 'activo').length },
-              { label: 'Total unidades', value: productos.reduce((s, p) => s + p.stock, 0) },
+              { label: 'Productos activos', value: mockProductos.filter(p => p.estatus === 'activo').length },
+              { label: 'Total unidades', value: mockProductos.reduce((s, p) => s + p.stock, 0) },
               { label: 'Mermas registradas', value: totalMerma },
-              { label: 'Valor total inventario', value: `$${productos.reduce((s, p) => s + p.stock * p.precio, 0).toLocaleString()}` },
+              { label: 'Valor total inventario', value: `$${mockProductos.reduce((s, p) => s + p.stock * p.precio, 0).toLocaleString()}` },
             ].map(s => (
               <div key={s.label} className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
                 <p className="text-xs text-gray-500 mb-1">{s.label}</p>
@@ -473,7 +245,7 @@ export function ReportesPage() {
                 <th className="pb-3 text-right text-xs font-semibold text-gray-400 uppercase">Valor</th>
               </tr></thead>
               <tbody className="divide-y divide-gray-50">
-                {productos.map(p => (
+                {mockProductos.map(p => (
                   <tr key={p.idProducto}>
                     <td className="py-3 font-medium text-gray-800">{p.nombre}</td>
                     <td className="py-3 text-gray-500">{p.categoria}</td>
@@ -559,7 +331,7 @@ export function ReportesPage() {
                 <th className="pb-3 text-center text-xs font-semibold text-gray-400 uppercase">Tipo</th>
               </tr></thead>
               <tbody className="divide-y divide-gray-50">
-                {registrosPersonal.map(a => (
+                {mockAsistencias.map(a => (
                   <tr key={a.id}>
                     <td className="py-3 font-medium text-gray-800">{a.nombreEmpleado}</td>
                     <td className="py-3 text-gray-500">{a.fecha}</td>

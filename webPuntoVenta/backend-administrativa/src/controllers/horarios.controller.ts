@@ -1,6 +1,5 @@
 import type { Request, Response } from 'express';
 import { Horario } from '../models/Horarios/horarios';
-import { PlantillaHorario } from '../models/PlantillasHorarios/plantillasHorarios';
 import { Clase } from '../models/Clases/clases';
 import { Usuario } from '../models/Usuarios/usuarios';
 import {
@@ -504,14 +503,6 @@ export const eliminarHorario = async (req: Request, res: Response) => {
     if (!existente) return res.status(404).json({ error: 'Horario no encontrado' });
     if (reservasDeHorario(await obtenerDetalleReservas(), existente.toJSON()).length) {
         return res.status(409).json({ error: 'No se puede eliminar una sesion con historial de reservas.' });
-    }
-    // Una sesión de una serie semanal se generaría otra vez en la siguiente
-    // pasada: se anota su fecha para no volver a crearla.
-    if (existente.idPlantilla) {
-        await PlantillaHorario.updateOne(
-            { _id: existente.idPlantilla },
-            { $addToSet: { fechasExcluidas: existente.fecha } },
-        );
     }
     await Horario.findByIdAndDelete(req.params.id);
     res.json({ mensaje: 'Horario eliminado' });

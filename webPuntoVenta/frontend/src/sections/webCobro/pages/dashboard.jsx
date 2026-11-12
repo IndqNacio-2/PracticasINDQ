@@ -1,11 +1,15 @@
 import { useState, useEffect } from 'react';
-import { Link, NavLink } from 'react-router-dom';
+import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import MaterialIcon from '../../../components/MaterialIcon';
 import BrandLogo from '../../../components/BrandLogo';
 import { LOGIN_PATH } from '../../../auth/session';
 import MembresiasRecepcion, { membresiasRequest, SaldosMembresias } from './MembresiasRecepcion';
 import { EVENTO_CAMBIO_APLICACION, CLAVE_CAMBIO_APLICACION } from '../../../services/cambiosAplicacion';
+import RecepcionDetalle from './RecepcionDetalle';
+import RecepcionTabla from './RecepcionTabla';
+import { ClientesPage } from '../../webAdministrativa/features/clientes/ClientesPage';
+import '../../../styles/recepcion-workspace.css';
 
 /*
  * Diseño: sistema visual compartido rx- (src/styles/pos-ui.css), el mismo que
@@ -84,7 +88,8 @@ const ESTADO_BADGE = {
 
 // Pestañas de filtro de la tabla (mismo componente rx-tab que el Punto de Venta).
 const FILTROS_ESTADO = [
-  { key: 'todas', etiqueta: 'Todas', coincide: () => true },
+  { key: 'todas', etiqueta: 'Todos', coincide: () => true },
+  { key: 'por_llegar', etiqueta: 'Por llegar', coincide: r => ['pendiente', 'pagado'].includes(r.status) && r.capacityStatus !== 'espera' },
   {
     key: 'por_cobrar',
     etiqueta: 'Por cobrar',
@@ -127,21 +132,6 @@ const fechaDeHoyLarga = () => {
   return texto.charAt(0).toUpperCase() + texto.slice(1);
 };
 
-// Tarjeta KPI con el mismo marcado que el dashboard administrativo.
-function KpiCard({ etiqueta, valor, icono, tono }) {
-  return (
-    <article className="rx-kpi-card rx-admin-stat">
-      <div>
-        <p className="rx-kpi-label">{etiqueta}</p>
-        <p className="rx-kpi-value">{valor}</p>
-      </div>
-      <div className={`rx-admin-stat-icon rx-admin-stat-icon--${tono}`}>
-        <MaterialIcon name={icono} className="text-2xl" filled />
-      </div>
-    </article>
-  );
-}
-
 // Botón "Cambiar método" igual al del modal de cobro del Punto de Venta.
 function BotonCambiarMetodo({ onClick }) {
   return (
@@ -152,11 +142,33 @@ function BotonCambiarMetodo({ onClick }) {
   );
 }
 
-export default function Dashboard() {
+export default function Dashboard({ vista = 'recepcion' }) {
+  const navigate = useNavigate();
   const { user, logout } = useAuth();
 
   // ========== ESTADOS ==========
   const [reservations, setReservations] = useState([]);
+  const [horarioVistaId, setHorarioVistaId] = useState(null);
+  const [reservaVistaId, setReservaVistaId] = useState(null);
+  const [comprasDetalle, setComprasDetalle] = useState([]);
+  const [errorDetalle, setErrorDetalle] = useState('');
+  const [cargandoDetalle, setCargandoDetalle] = useState(false);
+  const reservaDetalle = reservations.find(r => r.id === reservaVistaId);
+  useEffect(() => {
+    let vigente = true;
+    setComprasDetalle([]);
+    setErrorDetalle('');
+    if (!reservaDetalle?.clienteId || !reservaDetalle?.membresiaCompraId) {
+      setCargandoDetalle(false);
+      return;
+    }
+    setCargandoDetalle(true);
+    membresiasRequest(`/clientes/${encodeURIComponent(reservaDetalle.clienteId)}/membresias`)
+      .then(datos => { if (vigente) setComprasDetalle(Array.isArray(datos) ? datos : []); })
+      .catch(error => { if (vigente) setErrorDetalle(error.message); })
+      .finally(() => { if (vigente) setCargandoDetalle(false); });
+    return () => { vigente = false; };
+  }, [reservaDetalle]);
   const [notification, setNotification] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -503,39 +515,26 @@ export default function Dashboard() {
   };
 
   /*
-   * ¿Esta reservación es de la persona indicada? Un socio se identifica por su
-   * ID, porque dos socios pueden llamarse igual; el visitante solo tiene nombre.
-   * Las reservaciones viejas sin ID se comparan por nombre.
-   */
-  const esDeLaPersona = (r, { nombre, clienteId }) =>
-    r.clienteId
-      ? r.clienteId === clienteId
-      : r.client === nombre && (!clienteId || r.type !== 'visitante');
-
-  /*
    * ¿La persona ya reservó esta clase en este horario (y no la canceló)?
    * La comparación incluye la fecha: el mismo horario puede repetirse otro día.
    */
-  const yaReservada = (persona, nombreClase, fecha, hora) =>
+  const yaReservada = (nombre, nombreClase, fecha, hora) =>
     reservations.some(
       r =>
-        esDeLaPersona(r, persona) &&
+        r.client === nombre &&
         r.class === nombreClase &&
         r.fecha === fecha &&
         r.time === hora &&
         !ESTADOS_INACTIVOS.includes(r.status),
     );
 
-  // Cuántas reservaciones futuras tiene una persona (límite anti-acaparamiento),
-  // con la misma regla del servidor: solo cuentan las pendientes o pagadas cuya
-  // clase no ha pasado. Las clases ya tomadas no gastan el límite.
-  const reservasActivasDeCliente = (persona) => {
-    const ahora = new Date();
-    const marca = `${hoyISO()} ${String(ahora.getHours()).padStart(2, '0')}:${String(ahora.getMinutes()).padStart(2, '0')}`;
-    return reservations.filter(
-      r => esDeLaPersona(r, persona) && ['pendiente', 'pagado'].includes(r.status) && r.fecha && `${r.fecha} ${r.time}` > marca
+  // Cuántas reservas activas tiene una persona (límite anti-acaparamiento).
+  // Solo cuentan las reservas con fecha: las que no la tienen (registros
+  // viejos, sin horario real) no ocupan cupo. Las inasistencias tampoco.
+  const reservasActivasDeCliente = (nombre) =>
+    reservations.filter(
+      r => r.client === nombre && !ESTADOS_INACTIVOS.includes(r.status) && r.fecha
     ).length;
-  };
 
   /*
    * ¿El horario ya pasó? Solo aplica a la fecha de hoy: un horario de una
@@ -563,10 +562,6 @@ export default function Dashboard() {
     h => h.idHorario === newReservation.horarioId
   );
   const claseSelModal = clases.find(c => c.nombre === newReservation.class);
-  const personaDelFormulario = {
-    nombre: (newReservation.client || '').trim(),
-    clienteId: tipoReserva === 'cliente' ? selectedClient?.id ?? null : null,
-  };
   const nombreValido = (newReservation.client || '').trim().length >= 3;
   const socioOk = tipoReserva === 'visitante' || (selectedClient && membresiaVigente(selectedClient));
   const puedeGuardar =
@@ -577,8 +572,8 @@ export default function Dashboard() {
     (lugaresDisponibles(horarioSelModal) > 0 || horarioSelModal.listaEsperaHabilitada === true) &&
     !horarioPasado(horarioSelModal.fecha, horarioSelModal.horaInicio) &&
     socioOk &&
-    !yaReservada(personaDelFormulario, newReservation.class, fechaReserva, newReservation.time) &&
-    reservasActivasDeCliente(personaDelFormulario) < 3;
+    !yaReservada(newReservation.client, newReservation.class, fechaReserva, newReservation.time) &&
+    reservasActivasDeCliente(newReservation.client) < 3;
 
   // ========== FUNCIONES DE ACCIONES PRINCIPALES ==========
 
@@ -726,9 +721,7 @@ export default function Dashboard() {
 
       const confirmed = window.confirm(
         `¿Cancelar la reservación de ${reservation.client} (${reservation.class})?\n\n` +
-        (reservation.membresiaCompraId
-          ? 'La entrada regresa a la membresía.'
-          : 'La cancelación NO tiene reembolso.')
+        'La cancelación NO tiene reembolso.'
       );
       if (!confirmed) return;
 
@@ -918,10 +911,10 @@ export default function Dashboard() {
       if (horarioPasado(horarioSel.fecha, horarioSel.horaInicio)) {
         throw new Error(`La clase de las ${horarioSel.horaInicio} ya pasó, elige otro horario.`);
       }
-      if (yaReservada(personaDelFormulario, horarioSel.nombreClase, horarioSel.fecha, horarioSel.horaInicio)) {
+      if (yaReservada(nombreLimpio, horarioSel.nombreClase, horarioSel.fecha, horarioSel.horaInicio)) {
         throw new Error(`"${nombreLimpio}" ya reservó "${horarioSel.nombreClase}" a las ${horarioSel.horaInicio}.`);
       }
-      if (reservasActivasDeCliente(personaDelFormulario) >= 3) {
+      if (reservasActivasDeCliente(nombreLimpio) >= 3) {
         throw new Error(`"${nombreLimpio}" ya tiene 3 reservaciones activas. Cancela una para crear otra.`);
       }
 
@@ -1075,14 +1068,18 @@ export default function Dashboard() {
   // ========== VALORES DE PRESENTACIÓN ==========
 
   const filtroActivo = FILTROS_ESTADO.find(f => f.key === filtroEstado) ?? FILTROS_ESTADO[0];
-  const reservasVisibles = filteredReservations.filter(filtroActivo.coincide);
+  const horarioVista = horarios.find(h => h.idHorario === horarioVistaId);
+  const coincideHorarioVista = res => !horarioVista || (
+    res.class === horarioVista.nombreClase && res.fecha === horarioVista.fecha && res.time === horarioVista.horaInicio
+  );
+  const reservasDeVista = filteredReservations.filter(coincideHorarioVista);
+  const reservasVisibles = reservasDeVista.filter(filtroActivo.coincide);
+  const reservaVista = reservations.find(res => res.id === reservaVistaId);
+  const clienteVista = reservaVista && clientes.find(c => String(c.id) === String(reservaVista.clienteId));
   const conteoPorFiltro = Object.fromEntries(
-    FILTROS_ESTADO.map(f => [f.key, filteredReservations.filter(f.coincide).length])
+    FILTROS_ESTADO.map(f => [f.key, reservasDeVista.filter(f.coincide).length])
   );
   const hayFiltros = searchTerm.trim() !== '' || filtroEstado !== 'todas';
-  const inasistenciasHoy = reservations.filter(
-    r => r.status === 'no_asistio' && r.fecha === hoyISO()
-  ).length;
   const nombreUsuario = user ? `${user.nombre ?? ''} ${user.apellidos ?? ''}`.trim() : '';
   const inicialesUsuario = iniciales(nombreUsuario);
 
@@ -1095,12 +1092,13 @@ export default function Dashboard() {
   const limpiarFiltros = () => {
     setSearchTerm('');
     setFiltroEstado('todas');
+    setHorarioVistaId(null);
   };
 
   // ========== RETORNO DEL JSX ==========
 
   return (
-    <div className="rx-admin-shell">
+    <div className="rx-admin-shell rx-reception">
 
       {/* ========== MENÚ LATERAL (igual que administrativa y Punto de Venta) ========== */}
       <aside className={`rx-sidebar ${menuColapsado ? 'rx-sidebar--collapsed' : 'rx-sidebar--expanded'}`}>
@@ -1118,7 +1116,9 @@ export default function Dashboard() {
             </button>
           ) : (
             <>
-              <div className="rx-brand-content"><BrandLogo className="w-40" /><p className="rx-brand-subtitle">Recepción</p></div>
+              <div className="rx-brand-content">
+                <BrandLogo className="w-40" />
+              </div>
               <button
                 type="button"
                 onClick={() => setMenuColapsado(true)}
@@ -1153,6 +1153,31 @@ export default function Dashboard() {
               </>
             )}
           </NavLink>
+          <NavLink
+            to="/front-desk/clientes"
+            title={menuColapsado ? 'Clientes' : undefined}
+            className={({ isActive }) =>
+              `rx-nav-item ${menuColapsado ? 'rx-nav-item--collapsed' : ''} ${isActive ? 'rx-nav-item--active' : ''}`
+            }
+          >
+            {({ isActive }) => (
+              <>
+                <MaterialIcon name="group" className="flex-shrink-0 text-xl" filled={isActive} />
+                {!menuColapsado && <span className="truncate">Clientes</span>}
+              </>
+            )}
+          </NavLink>
+          <button
+            type="button"
+            onClick={() => { navigate('/front-desk/dashboard'); setVerMembresias(true); }}
+            aria-label="Vender paquetes"
+            aria-pressed={verMembresias}
+            title={menuColapsado ? 'Vender paquetes' : undefined}
+            className={`rx-nav-item ${menuColapsado ? 'rx-nav-item--collapsed' : ''} ${verMembresias ? 'rx-nav-item--active' : ''}`}
+          >
+            <MaterialIcon name="sell" className="flex-shrink-0 text-xl" filled />
+            {!menuColapsado && <span className="truncate">Vender paquetes</span>}
+          </button>
           {/* El checador es un kiosco aparte: se abre en otra pestaña. */}
           <Link
             to="/asistencia"
@@ -1206,22 +1231,13 @@ export default function Dashboard() {
         </header>
 
         <main className="rx-admin-content">
+          {vista === 'clientes' ? <ClientesPage soloRegistro /> : (
           <section className="rx-admin-dashboard">
             <header className="rx-page-header rx-admin-dashboard-header">
               <div className="rx-page-heading rx-page-heading--stacked">
                 <span className="rx-section-eyebrow">Atención de clientes</span>
                 <h1 className="rx-page-title">Recepción</h1>
                 <p className="rx-page-subtitle">{fechaDeHoyLarga()}</p>
-              </div>
-              <div className="rx-page-actions">
-                <button type="button" onClick={() => setVerMembresias(true)} className="rx-btn rx-btn--outline">
-                  <MaterialIcon name="sell" className="text-lg" filled />
-                  Vender membresía
-                </button>
-                <button type="button" onClick={openModal} className="rx-btn rx-btn--accent">
-                  <MaterialIcon name="add" className="text-lg" />
-                  Nueva reservación
-                </button>
               </div>
             </header>
 
@@ -1234,34 +1250,60 @@ export default function Dashboard() {
                     .catch(e => showNotification(e.message, 'error'));
                 }} />}
 
-              {/* ========== TARJETAS KPI ========== */}
-              <div className="rx-grid-kpi rx-admin-kpi-grid" aria-live="polite">
-                <KpiCard
-                  etiqueta="Clientes esperados"
-                  valor={kpis.clientesEsperados}
-                  icono="groups"
-                  tono="accent"
-                />
-                <KpiCard
-                  etiqueta="Ingresos del día"
-                  valor={`$${Number(kpis.ingresosHoy ?? 0).toLocaleString('es-MX')}`}
-                  icono="payments"
-                  tono="success"
-                />
-                <KpiCard
-                  etiqueta="Reservaciones de hoy"
-                  valor={kpis.totalReservas}
-                  icono="event_available"
-                  tono="info"
-                />
-                <KpiCard
-                  etiqueta="Inasistencias de hoy"
-                  valor={inasistenciasHoy}
-                  icono="person_off"
-                  tono="danger"
-                />
-              </div>
 
+              <div className="rx-reception-workspace">
+                <section className="rx-reception-schedule" aria-labelledby="reception-schedule-title">
+                  <div className="rx-reception-section-heading">
+                    <h2 id="reception-schedule-title">Clases programadas</h2>
+                    <span className="rx-badge rx-badge--special">{fechaReserva === hoyISO() ? 'Hoy' : formatFechaCorta(fechaReserva)}</span>
+                  </div>
+                  <label className="rx-field">
+                    <span className="rx-label">Fecha de clases</span>
+                    <input type="date" className="rx-input" value={fechaReserva}
+                      onChange={event => { setFechaReserva(event.target.value); setHorarioVistaId(null); setReservaVistaId(null); }} />
+                  </label>
+                  <button type="button" className="rx-reception-all" aria-pressed={!horarioVista}
+                    onClick={() => { setHorarioVistaId(null); setReservaVistaId(null); }}>
+                    Todas las reservaciones <MaterialIcon name="arrow_forward" className="text-lg" />
+                  </button>
+                  <div className="rx-reception-schedule-list" tabIndex={0} role="region" aria-label="Lista de clases programadas">
+                    {[...horarios].sort((a, b) => a.horaInicio.localeCompare(b.horaInicio)).map(horario => {
+                      const libres = lugaresDisponibles(horario);
+                      const ocupados = reservasActivasDe(horario.nombreClase, horario.fecha, horario.horaInicio);
+                      const ahora = new Date();
+                      const inicio = new Date(`${horario.fecha}T${horario.horaInicio}`);
+                      const fin = horario.horaFin ? new Date(`${horario.fecha}T${horario.horaFin}`) : inicio;
+                      const pasada = fin <= ahora;
+                      const enCurso = inicio <= ahora && fin > ahora;
+                      const llegaron = reservations.filter(r => r.class === horario.nombreClase && r.fecha === horario.fecha && r.time === horario.horaInicio && r.status === 'asistido').length;
+                      return (
+                        <button type="button" key={horario.idHorario}
+                          aria-pressed={horarioVistaId === horario.idHorario}
+                          className={`rx-reception-class ${pasada ? 'rx-reception-class--past' : ''}`}
+                          onClick={() => { setHorarioVistaId(horario.idHorario); setReservaVistaId(null); }}>
+                          <span className="rx-reception-class-top"><strong>{horario.horaInicio}</strong>
+                            <span className={`rx-badge rx-badge--${pasada ? 'neutral' : enCurso ? 'success' : 'warning'}`}>
+                              {pasada ? 'Terminó' : enCurso ? 'En curso' : libres ? 'Próxima' : 'Sin cupo'}
+                            </span>
+                          </span>
+                          <span className="rx-reception-class-name">{horario.nombreClase}</span>
+                          <span className="rx-reception-class-coach">{horario.entrenador || horario.nombreEntrenador || 'Entrenador sin asignar'}</span>
+                          <span className="rx-reception-capacity"><span style={{ width: `${Math.min(100, llegaron / Math.max(1, Number(horario.capacidadTotal)) * 100)}%` }} /><span className="rx-reception-capacity-reserved" style={{ width: `${Math.min(100, Math.max(0, ocupados - llegaron) / Math.max(1, Number(horario.capacidadTotal)) * 100)}%` }} /></span>
+                          <span className="rx-reception-class-meta">{llegaron} llegaron · {ocupados} de {horario.capacidadTotal} reservados</span>
+                        </button>
+                      );
+                    })}
+                    {!horarios.length && <p className="rx-reception-hint">No hay clases programadas para esta fecha.</p>}
+                  </div>
+                </section>
+
+                <section className="rx-reception-reservations" aria-labelledby="reception-reservations-title">
+                  <div className="rx-reception-list-heading">
+                    <div><h2 id="reception-reservations-title">{horarioVista ? `${horarioVista.nombreClase} · ${horarioVista.horaInicio} h` : 'Reservaciones'}</h2>
+                      <p>{horarioVista ? `${horarioVista.nombreEntrenador || 'Entrenador sin asignar'} · ${reservasActivasDe(horarioVista.nombreClase, horarioVista.fecha, horarioVista.horaInicio)} de ${horarioVista.capacidadTotal} lugares reservados` : 'Selecciona una clase o consulta todas las reservaciones.'}</p>
+                    </div>
+                    <button type="button" onClick={openModal} className="rx-btn rx-btn--accent rx-btn--small"><MaterialIcon name="add" className="text-lg" />Nuevo registro</button>
+                  </div>
               {/* ========== BÚSQUEDA (CÓDIGO O NOMBRE) Y FILTROS ========== */}
               <div className="rx-filter-bar rx-filter-stack">
                 <div className="rx-filter-row">
@@ -1336,161 +1378,21 @@ export default function Dashboard() {
                     )}
                   </div>
                 ) : (
-                  <div className="rx-table-wrap">
-                    <table className="rx-table rx-reservations-table">
-                      <thead>
-                        <tr>
-                          <th>Cliente</th>
-                          <th>Código</th>
-                          <th>Clase y horario</th>
-                          <th className="rx-table-number">Monto</th>
-                          <th>Estado</th>
-                          <th>Cupo</th>
-                          <th className="rx-table-number">Acciones</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {reservasVisibles.map((res) => {
-                          const badge = ESTADO_BADGE[res.status] ?? ESTADO_BADGE.pendiente;
-                          const enEspera = res.capacityStatus === 'espera';
-                          const cobrable = res.paymentStatus !== 'pagado' && (res.status === 'pendiente' || res.status === 'asistido') && !enEspera;
-                          const puedeConfirmar = res.paymentStatus === 'pagado' && (res.status === 'pendiente' || res.status === 'pagado') && res.fecha === hoyISO() && !enEspera;
-                          // Solo las pendientes o pagadas se pueden reagendar o cancelar.
-                          const vigente = res.status === 'pendiente' || res.status === 'pagado';
-                          const colorClase = clases.find(c => c.nombre === res.class)?.color;
-                          return (
-                            <tr
-                              key={res.id}
-                              className={res.status === 'no_asistio' ? 'rx-table-row--inactive' : undefined}
-                            >
-                              <td>
-                                <div className="rx-table-product">
-                                  <span className="rx-avatar">{iniciales(res.client)}</span>
-                                  <div>
-                                    <span className="rx-table-product-name">{res.client}</span>
-                                    <span className="rx-cell-caption">
-                                      {res.type === 'visitante' ? 'Visitante' : 'Socio'}
-                                    </span>
-                                  </div>
-                                </div>
-                              </td>
-                              <td>
-                                <span className="rx-code">{res.codigo || '—'}</span>
-                                <span className="rx-cell-caption">
-                                  #{res.id}
-                                  {res.origen === 'app' && (
-                                    <span className="rx-badge rx-badge--info" title="Reservada desde la app móvil">
-                                      App
-                                    </span>
-                                  )}
-                                </span>
-                              </td>
-                              <td>
-                                <span className="rx-cell-strong">
-                                  <span
-                                    className="rx-class-dot"
-                                    style={colorClase ? { '--class-color': colorClase } : undefined}
-                                  />{' '}
-                                  {res.class}
-                                </span>
-                                <span className="rx-cell-caption">
-                                  {formatFechaCorta(res.fecha)} · {res.time}
-                                  {res.reagendada && (
-                                    <span
-                                      className="rx-badge rx-badge--info"
-                                      title={`Antes: ${res.fechaOriginal || ''} ${res.horaOriginal || ''}`}
-                                    >
-                                      Reagendada
-                                    </span>
-                                  )}
-                                </span>
-                              </td>
-                              <td className="rx-cell-strong rx-table-number">
-                                {formatMoney(res.price)}
-                                {res.membresiaCompraId && <span className="rx-cell-caption">Cubierta por membresía · compra #{res.membresiaCompraId}</span>}
-                              </td>
-                              <td>
-                                <span className={`rx-badge rx-badge--${badge.tono}`}>{badge.etiqueta}</span>
-                                <span className="rx-cell-caption">{res.paymentStatus === 'pagado' ? 'Pago registrado' : 'Pago pendiente'} · {res.attendanceStatus === 'asistido' ? 'Asistió' : res.attendanceStatus === 'no_asistio' ? 'No asistió' : 'Asistencia pendiente'}</span>
-                              </td>
-                              <td>
-                                <span className={`rx-badge ${enEspera ? 'rx-badge--special' : 'rx-badge--neutral'}`}>
-                                  {enEspera ? 'En espera' : 'Confirmada'}
-                                </span>
-                              </td>
-                              <td>
-                                <div className="rx-row-actions">
-                                  {res.status === 'no_asistio' && (
-                                    <span className="rx-row-note" title="Sin reembolso y sin reagendar">
-                                      Sin reembolso
-                                    </span>
-                                  )}
-                                  {puedeConfirmar && (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleConfirmAttendance(res.id)}
-                                      title="Confirmar asistencia"
-                                      aria-label={`Confirmar asistencia de ${res.client}`}
-                                      className="rx-compact-icon-button"
-                                    >
-                                      <MaterialIcon name="how_to_reg" className="text-lg" />
-                                    </button>
-                                  )}
-                                  {/* Reagendar: una sola vez y sin costo. Si ya no se puede,
-                                      al hacer clic se avisa el motivo. */}
-                                  {vigente && (
-                                    <button
-                                      type="button"
-                                      onClick={() => openReagendar(res)}
-                                      aria-disabled={res.puedeReagendar === false}
-                                      title={res.puedeReagendar === false
-                                        ? res.motivoNoReagendar || 'Ya no se puede reagendar'
-                                        : 'Reagendar (una sola vez, sin costo)'}
-                                      aria-label={`Reagendar la reservación de ${res.client}`}
-                                      className="rx-compact-icon-button"
-                                    >
-                                      <MaterialIcon name="event_repeat" className="text-lg" />
-                                    </button>
-                                  )}
-                                  {/* Cancelar: dentro de las 24 h de haber reservado, sin reembolso. */}
-                                  {vigente && (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleCancel(res.id)}
-                                      aria-disabled={res.puedeCancelar === false}
-                                      title={res.puedeCancelar === false
-                                        ? res.motivoNoCancelar || 'Ya no se puede cancelar'
-                                        : res.cancelableHasta
-                                          ? `Cancelar (${res.membresiaCompraId ? 'la entrada regresa a la membresía' : 'sin reembolso'}) · hasta ${formatTicketDate(res.cancelableHasta)}`
-                                          : `Cancelar (${res.membresiaCompraId ? 'la entrada regresa a la membresía' : 'sin reembolso'})`}
-                                      aria-label={`Cancelar la reservación de ${res.client}`}
-                                      className="rx-compact-icon-button rx-compact-icon-button--danger"
-                                    >
-                                      <MaterialIcon name="event_busy" className="text-lg" />
-                                    </button>
-                                  )}
-                                  {cobrable && (
-                                    <button
-                                      type="button"
-                                      onClick={() => handlePayment(res.id)}
-                                      className="rx-btn rx-btn--dark rx-btn--small"
-                                    >
-                                      <MaterialIcon name="point_of_sale" className="text-base" />
-                                      Cobrar
-                                    </button>
-                                  )}
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
+                  <RecepcionTabla reservas={reservasVisibles} clientes={clientes} seleccion={reservaVistaId} onSeleccionar={setReservaVistaId} hoy={hoyISO()} />
                 )}
+              </div>
+                </section>
+                <RecepcionDetalle reserva={reservaVista} cliente={clienteVista}
+                  compra={comprasDetalle.find(c => String(c.id) === String(reservaVista?.membresiaCompraId))}
+                  cargando={cargandoDetalle} error={errorDetalle}
+                  claseId={clases.find(c => c.nombre === reservaVista?.class)?.idClase}
+                  horario={horarios.find(h => h.nombreClase === reservaVista?.class && h.fecha === reservaVista?.fecha && h.horaInicio === reservaVista?.time)}
+                  onCobrar={handlePayment} onAsistencia={handleConfirmAttendance}
+                  onReagendar={openReagendar} onCancelar={handleCancel} hoy={hoyISO()} />
               </div>
             </div>
           </section>
+          )}
         </main>
       </div>
 
@@ -1704,7 +1606,7 @@ export default function Dashboard() {
                       const duplicada = Boolean(
                         tipoReserva === 'cliente' &&
                         newReservation.client &&
-                        yaReservada(personaDelFormulario, h.nombreClase, h.fecha, h.horaInicio)
+                        yaReservada(newReservation.client, h.nombreClase, h.fecha, h.horaInicio)
                       );
                       const noReservable = !claseReservable(claseDelHorario);
                       const aceptaEspera = disponibles <= 0 && h.listaEsperaHabilitada === true;
@@ -1859,7 +1761,7 @@ export default function Dashboard() {
                       const pasada = horarioPasado(h.fecha, h.horaInicio);
                       const esActual = h.idHorario === reservaAReagendar.horarioId;
                       const duplicada = !esActual &&
-                        yaReservada({ nombre: reservaAReagendar.client, clienteId: reservaAReagendar.clienteId ?? null }, h.nombreClase, h.fecha, h.horaInicio);
+                        yaReservada(reservaAReagendar.client, h.nombreClase, h.fecha, h.horaInicio);
                       const bloqueada = esActual || pasada || duplicada || disponibles <= 0;
                       const seleccionada = horarioReagendarId === h.idHorario;
                       const estadoTexto = esActual

@@ -457,8 +457,6 @@ export const editarSerieSemanal = async (req: Request, res: Response) => {
     }
 
     const versionId = crypto.randomUUID();
-    // Las sesiones eliminadas a mano siguen eliminadas en la nueva versión de la serie.
-    const fechasExcluidas = [...new Set(serie.flatMap((item: any) => item.fechasExcluidas ?? []))];
     let nuevasPlantillas: any[] = [];
     try {
         nuevasPlantillas = await (PlantillaHorario as any).create(diasOrdenados.map(diaSemana => ({
@@ -475,7 +473,6 @@ export const editarSerieSemanal = async (req: Request, res: Response) => {
             salon,
             vigenteDesde: aplicarDesde,
             vigenteHasta: vigenteHastaNueva,
-            fechasExcluidas,
             visibleReservas,
             listaEsperaHabilitada,
             estatus: 'activo',

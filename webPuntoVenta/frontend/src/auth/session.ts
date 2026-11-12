@@ -10,7 +10,6 @@ export interface SessionUser {
   telefono?: string
   codigoAcceso?: string
   fechaCreacion?: string
-  debeCambiarPassword?: boolean
 }
 
 export const SESSION_KEY = "administrativa_sesion"
@@ -58,10 +57,4 @@ export function getStoredUser(): SessionUser | null {
     clearSession()
     return null
   }
-}
-
-/** Nombre de quien tiene la sesión abierta, para registrar quién hizo cada operación. */
-export function nombreUsuarioSesion(): string {
-  const user = getStoredUser()
-  return user ? `${user.nombre} ${user.apellidos}`.trim() : "Sin registrar"
 }

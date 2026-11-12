@@ -1,4 +1,3 @@
-import { nombreUsuarioSesion } from "./auth/session"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import type {
   Product,
@@ -95,10 +94,10 @@ export default function App() {
    */
   const [cashClosings, setCashClosings] = useState<CashClosingRecord[]>([])
   /**
-   * Guardo el momento del último corte. Las ventas posteriores pertenecen
-   * al turno vigente, aunque la página se recargue.
+   * Cuento cuántas ventas ya quedaron incluidas en un corte.
+   * Así puedo saber cuáles pertenecen al turno vigente.
    */
-  const [lastClosingAt, setLastClosingAt] = useState<string | null>(null)
+  const [closedSalesCount, setClosedSalesCount] = useState(0)
   /**
    * Conservo el fondo inicial y el efectivo contado del turno actual
    * para no perderlos cuando el usuario cambia de módulo.
@@ -160,10 +159,11 @@ export default function App() {
         setCashClosings(loadedClosings)
 
         /**
-         * El turno vigente empieza en el último corte guardado (la lista
-         * viene del más reciente al más antiguo).
+         * Marco las ventas que ya vienen del historial como parte de un
+         * turno cerrado, para que el Corte de caja solo empiece a contar
+         * las ventas nuevas que haga hoy el usuario.
          */
-        setLastClosingAt(loadedClosings[0]?.closedAt ?? null)
+        setClosedSalesCount(loadedSales.length)
       } catch (error) {
         console.error("No fue posible cargar la información:", error)
         addToast(mensajeDeError(error), "error")
@@ -181,14 +181,10 @@ export default function App() {
    * Las ventas anteriores se conservan en el historial general
    * para que los reportes puedan consultarlas más adelante.
    */
-  const shiftSales = useMemo(() => {
-    if (!lastClosingAt) return sales
-
-    const limite = new Date(lastClosingAt).getTime()
-    return sales.filter(
-      (sale) => !sale.soldAt || new Date(sale.soldAt).getTime() > limite,
-    )
-  }, [sales, lastClosingAt])
+  const shiftSales = useMemo(
+    () => sales.slice(closedSalesCount),
+    [sales, closedSalesCount],
+  )
 
   /**
    * Registro el corte de caja en la base de datos.
@@ -218,9 +214,7 @@ export default function App() {
         registeredClosing,
       ])
 
-      setLastClosingAt(
-        registeredClosing.closedAt ?? new Date().toISOString(),
-      )
+      setClosedSalesCount(sales.length)
       setInitialFund(0)
       setCountedCash(0)
 
@@ -399,7 +393,6 @@ export default function App() {
         quantity: wasteData.quantity,
         reason: wasteData.reason,
         observations: wasteData.observations,
-        registeredBy: nombreUsuarioSesion(),
       })
 
       /*

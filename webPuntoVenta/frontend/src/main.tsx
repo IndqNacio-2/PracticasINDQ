@@ -35,9 +35,6 @@ if (isLogin) {
       <WebAdministrativaSection />
     </ModuleGuard>
   )
-} else if (path.replace(/\/$/, '') === '/cobro/asistencia') {
-  // El checador es un kiosco: no pide usuario (requerimientos, punto 3.6.1).
-  content = <WebCobroSection />
 } else if (path.startsWith('/cobro')) {
   content = (
     <ModuleGuard allowedRole="recepcion">

@@ -77,12 +77,6 @@ export const apiCobro = {
   del: <T>(path: string) => request<T>(path, { method: 'DELETE' }, COBRO_BASE_URL),
 };
 
-// Cliente para leer los datos reales del Punto de Venta (PostgreSQL) desde la
-// administrativa. Se usa en los reportes.
-export const apiPos = {
-  get: <T>(path: string) => request<T>(path, {}, '/pos/api'),
-};
-
 // Construye un query string a partir de un objeto, omitiendo valores vacíos.
 export function buildQuery(params: Record<string, string | number | boolean | undefined | null>): string {
   const usable = Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '');

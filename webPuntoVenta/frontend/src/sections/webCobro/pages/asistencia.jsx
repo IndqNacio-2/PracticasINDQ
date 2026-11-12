@@ -2,12 +2,6 @@ import BrandLogo from '../../../components/BrandLogo';
 import { useState, useEffect, useRef } from 'react';
 import MaterialIcon from '../../../components/MaterialIcon';
 
-/*
- * Diseño: sistema visual compartido rx- (src/styles/pos-ui.css), igual que el
- * Punto de Venta y administrativa. El checador es un kiosco sin sesión, por eso
- * no lleva menú lateral: solo la tarjeta central sobre el fondo del sistema.
- */
-
 // Formatos aceptados: EMP-101, CLI-3 o el ID numérico de un socio.
 const listoBuscar = (codigo) =>
   /^\d+$/.test(codigo) ||
@@ -265,10 +259,15 @@ const Attendance = () => {
         setHistorial(obtenerRegistros(historialData));
       }
 
+      const etiquetaEstado = ETIQUETAS_ESTADO[data.estado]?.texto;
+
       setResultado({
         exitoso: true,
+        tipo: data.tipo,
         estado: data.estado || null,
-        msg: `${data.tipo === 'entrada' ? 'Entrada' : 'Salida'} registrada correctamente`,
+        msg:
+          `${data.tipo === 'entrada' ? 'Entrada' : 'Salida'} registrada correctamente` +
+          (etiquetaEstado ? ` · ${etiquetaEstado}` : ''),
       });
     } catch (error) {
       console.error('Error al marcar asistencia:', error);
@@ -458,14 +457,7 @@ const Attendance = () => {
                 </div>
               )}
 
-              {empleado.activo === false && (
-                <div className="rx-alert rx-alert--danger rx-kiosk-mark" role="alert">
-                  <MaterialIcon name="block" className="flex-shrink-0 text-2xl" filled />
-                  <p className="rx-alert-title">Este socio está inactivo: pasa a recepción.</p>
-                </div>
-              )}
-
-              {listoParaMarcar && empleado.activo !== false && (
+              {listoParaMarcar && (
                 <button
                   type="button"
                   onClick={marcar}

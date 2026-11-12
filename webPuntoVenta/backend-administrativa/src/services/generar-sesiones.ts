@@ -32,7 +32,6 @@ interface PlantillaPlana {
     salon: string;
     vigenteDesde: string;
     vigenteHasta: string;
-    fechasExcluidas?: string[];
     visibleReservas: boolean;
     listaEsperaHabilitada: boolean;
 }
@@ -65,7 +64,6 @@ export async function generarSesionesDesdePlantillas(
             if (cursor.getUTCDay() !== plantilla.diaSemana) continue;
             if (fecha < plantilla.vigenteDesde) continue;
             if (plantilla.vigenteHasta && fecha > plantilla.vigenteHasta) continue;
-            if (plantilla.fechasExcluidas?.includes(fecha)) continue;
 
             const idPlantilla = plantilla._id.toString();
             const claveGeneracion = `${idPlantilla}:${fecha}`;

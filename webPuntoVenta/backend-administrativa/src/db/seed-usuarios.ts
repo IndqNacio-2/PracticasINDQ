@@ -31,6 +31,16 @@ const usuariosSeed = [
     rol: 'vendedor' as const,
     estatus: 'activo' as const,
   },
+  {
+    nombre: 'Vendedor',
+    apellidos: 'Punto de Venta',
+    correo: 'vendedor@gymfit.mx',
+    telefono: '',
+    codigoAcceso: 'VEN001',
+    rol: 'vendedor' as const,
+    estatus: 'activo' as const,
+    password: '123',
+  },
 ];
 
 async function main() {

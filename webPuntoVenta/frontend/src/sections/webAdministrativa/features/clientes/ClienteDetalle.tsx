@@ -1,57 +1,46 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { Badge } from '../../components/Badge';
-import { DataState } from '../../components/DataState';
-import { apiCobro } from '../../lib/api';
+import { api, apiCobro } from '../../lib/api';
+import type { Cliente, Reservacion } from '../../types';
 import { MembresiasCliente, type MembresiaComprada } from './MembresiasCliente';
 
-type Tab = 'general' | 'membresia' | 'historial';
+interface ClienteRecepcion {
+  id: number; nombre: string; correo: string | null; telefono: string; activo: boolean;
+  membresiasCompradas?: MembresiaComprada[];
+}
+interface ReservaRecepcion {
+  id: number; clienteId: number | null; class: string; time: string; fecha: string;
+  status: string; horarioId: string; attendanceStatus: string;
+}
+
+type Tab = 'general' | 'salud' | 'actividad' | 'membresia' | 'historial';
 
 const tabs: { value: Tab; label: string }[] = [
   { value: 'general', label: 'Datos Generales' },
+  { value: 'salud', label: 'Perfil de Salud' },
+  { value: 'actividad', label: 'Actividad' },
   { value: 'membresia', label: 'Membresía' },
   { value: 'historial', label: 'Historial' },
 ];
 
-// Socio tal como lo devuelve GET /cobro/api/clientes.
-interface SocioCobro {
-  id: number;
-  nombre: string;
-  membresia?: string;
-  telefono: string;
-  correo: string | null;
-  activo: boolean;
-  vigencia_hasta?: string | null;
-  membresiasCompradas?: MembresiaComprada[];
-}
-
-// Reservación tal como la devuelve GET /cobro/api/reservas.
-interface ReservaCobro {
-  id: number;
-  client: string;
-  type: 'cliente' | 'visitante';
-  clienteId?: number | null;
-  class: string;
-  time: string;
-  status: 'pendiente' | 'pagado' | 'asistido' | 'cancelado' | 'no_asistio';
-  fecha?: string;
-  codigo?: string;
-  price: number;
-}
-
-const estatusReserva: Record<ReservaCobro['status'], { variant: 'confirmada' | 'pendiente' | 'cancelada'; label: string }> = {
-  pendiente: { variant: 'pendiente', label: 'Pendiente' },
-  pagado: { variant: 'confirmada', label: 'Pagada' },
-  asistido: { variant: 'confirmada', label: 'Asistió' },
-  cancelado: { variant: 'cancelada', label: 'Cancelada' },
-  no_asistio: { variant: 'cancelada', label: 'No asistió' },
+const nivelLabels: Record<string, string> = {
+  sedentario: 'Sedentario', ligero: 'Ligero', moderado: 'Moderado',
+  activo: 'Activo', 'muy activo': 'Muy activo',
 };
 
-function InfoRow({ label, value }: { label: string; value?: string | number | null }) {
+const membresiaColors: Record<string, string> = {
+  mensual: 'bg-[#F3F4F6] text-[#6B7280]',
+  trimestral: 'bg-[#F3F4F6] text-[#6B7280]',
+  semestral: 'bg-[#F3F4F6] text-[#6B7280]',
+  anual: 'bg-[#F3F4F6] text-emerald-700',
+};
+
+function InfoRow({ label, value }: { label: string; value?: string | number }) {
   return (
     <div className="flex justify-between py-3 border-b border-gray-50 last:border-0">
       <span className="text-sm text-gray-500">{label}</span>
-      <span className="text-sm font-medium text-gray-800 text-right max-w-xs">{value || '—'}</span>
+      <span className="text-sm font-medium text-gray-800 text-right max-w-xs">{value === '' || value === undefined ? '—' : value}</span>
     </div>
   );
 }
@@ -60,72 +49,104 @@ export function ClienteDetalle() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<Tab>('general');
-  const [socio, setSocio] = useState<SocioCobro | null>(null);
-  const [reservas, setReservas] = useState<ReservaCobro[]>([]);
+
+  const [cliente, setCliente] = useState<Cliente | null>(null);
+  const [reservas, setReservas] = useState<Reservacion[]>([]);
+  const [compras, setCompras] = useState<MembresiaComprada[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  const cargar = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [socios, todas] = await Promise.all([
-        apiCobro.get<SocioCobro[]>('/clientes'),
-        apiCobro.get<ReservaCobro[]>('/reservas'),
-      ]);
-      const encontrado = socios.find(s => String(s.id) === id) ?? null;
-      setSocio(encontrado);
-      // Las reservaciones viejas no tienen ID de socio: se comparan por nombre.
-      setReservas(encontrado
-        ? todas
-          .filter(r => (r.clienteId ? r.clienteId === encontrado.id : r.type === 'cliente' && r.client === encontrado.nombre))
-          .sort((a, b) => `${b.fecha ?? ''} ${b.time}`.localeCompare(`${a.fecha ?? ''} ${a.time}`))
-        : []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo cargar el cliente.');
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
-
   useEffect(() => {
+    let vigente = true;
+    setLoading(true); setCliente(null); setReservas([]); setCompras([]); setError(null);
+    async function cargar() {
+      try {
+        if (!id) throw new Error('El identificador del cliente no es válido.');
+        if (/^[1-9]\d*$/.test(id)) {
+          const [socios, historial] = await Promise.all([
+            apiCobro.get<ClienteRecepcion[]>('/clientes'), apiCobro.get<ReservaRecepcion[]>('/reservas'),
+          ]);
+          if (!vigente) return;
+          const socio = socios.find(c => String(c.id) === id);
+          if (!socio) return;
+          setCliente({ idUsuario: String(socio.id), nombre: socio.nombre, apellidos: '', correo: socio.correo ?? '',
+            telefono: socio.telefono ?? '', codigoAcceso: `CLI-${socio.id}`, estatus: socio.activo ? 'activo' : 'inactivo',
+            rol: 'cliente', fechaCreacion: '', fechaRegistro: '', direccion: '', fechaNacimiento: '' });
+          setCompras(socio.membresiasCompradas ?? []);
+          setReservas(historial.filter(r => r.clienteId === socio.id).map(r => ({
+            idReservacion: String(r.id), idCliente: id!, nombreCliente: socio.nombre, idHorario: r.horarioId,
+            clase: r.class, entrenador: 'Consultar sesión en Horarios', horaClase: r.time, fechaReservacion: r.fecha,
+            estatus: ['cancelado', 'no_asistio'].includes(r.status) ? 'cancelada' : ['pagado', 'asistido'].includes(r.status) ? 'confirmada' : 'pendiente',
+            asistenciaConfirmada: r.attendanceStatus === 'asistido',
+          })));
+        } else {
+          const [detalle, historial] = await Promise.all([
+            api.get<Cliente>(`/clientes/${encodeURIComponent(id)}`),
+            api.get<Reservacion[]>(`/reservaciones?idCliente=${encodeURIComponent(id)}`),
+          ]);
+          if (!vigente) return;
+          setCliente(detalle); setReservas(historial.filter(r => r.idCliente === id));
+        }
+      } catch (e) {
+        if (vigente) setError(e instanceof Error ? e.message : 'No se pudo cargar el perfil del cliente.');
+      } finally { if (vigente) setLoading(false); }
+    }
     void cargar();
-  }, [cargar]);
-
-  if (loading || error) return <DataState loading={loading} error={error} onRetry={() => void cargar()} />;
-
-  if (!socio) return (
+    return () => { vigente = false; };
+  }, [id]);
+  if (loading) return <p className="text-center py-20 text-gray-500" role="status">Cargando perfil del cliente…</p>;
+  if (error) return <div className="text-center py-20"><p role="alert" className="text-red-600">{error}</p><button onClick={() => navigate('/clientes')} className="rx-btn rx-btn--outline mt-4">← Volver a clientes</button></div>;
+  if (!cliente) return (
     <div className="text-center py-20 text-gray-400">
       <p className="text-lg">Cliente no encontrado</p>
       <button onClick={() => navigate('/clientes')} className="rx-btn rx-btn--outline mt-4">← Volver a clientes</button>
     </div>
   );
 
-  const estatus = socio.activo ? 'activo' : 'inactivo';
+
+  const calcEdad = (fecha: string) => {
+    const diff = Date.now() - new Date(fecha).getTime();
+    return Math.floor(diff / (1000 * 60 * 60 * 24 * 365.25));
+  };
 
   return (
-    <div className="space-y-5 max-w-5xl">
-      {/* Encabezado */}
+    <div className="w-full min-w-0 space-y-5">
+      {/* Header */}
       <div className="flex items-center gap-4">
-        <button onClick={() => navigate('/clientes')} className="rx-icon-btn" aria-label="Volver a clientes">
+        <button onClick={() => navigate('/clientes')} className="rx-icon-btn">
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
         </button>
         <div>
-          <h1 className="text-2xl font-bold text-gray-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>{socio.nombre}</h1>
-          <p className="text-gray-500 text-sm">Expediente de cliente · ID {socio.id}</p>
+          <h1 className="text-2xl font-bold text-gray-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>
+            {cliente.nombre} {cliente.apellidos}
+          </h1>
+          <p className="text-gray-500 text-sm">Expediente de cliente · {cliente.codigoAcceso}</p>
         </div>
       </div>
 
-      {/* Tarjeta de perfil */}
+      {/* Profile card */}
       <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
-        <div className="flex items-center gap-3 flex-wrap">
-          <h2 className="text-lg font-semibold text-gray-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>{socio.nombre}</h2>
-          <Badge variant={estatus} />
+        <div className="flex items-start gap-5">
+          {cliente.avatar
+            ? <img src={cliente.avatar} alt="" className="w-16 h-16 rounded-2xl object-cover bg-gray-100 flex-shrink-0" />
+            : <div className="w-16 h-16 rounded-2xl bg-[#F3F4F6] flex items-center justify-center text-emerald-700 text-xl font-bold flex-shrink-0">{cliente.nombre[0]}{cliente.apellidos[0]}</div>
+          }
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-3 flex-wrap">
+              <h2 className="text-lg font-semibold text-gray-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>{cliente.nombre} {cliente.apellidos}</h2>
+              <Badge variant={cliente.estatus} />
+              {cliente.membresia && <Badge variant={cliente.membresia.estatus} label={`Membresía ${cliente.membresia.tipo}`} />}
+            </div>
+            <p className="text-gray-500 text-sm mt-1">{cliente.correo} · {cliente.telefono}</p>
+            <p className="text-gray-500 text-sm">{cliente.direccion}</p>
+          </div>
+          <div className="text-right flex-shrink-0">
+            <p className="text-xs text-gray-400">Registrado</p>
+            <p className="text-sm font-medium text-gray-700">{cliente.fechaRegistro || 'No disponible'}</p>
+          </div>
         </div>
-        <p className="text-gray-500 text-sm mt-1">{socio.correo || 'Sin correo'} · {socio.telefono || 'Sin teléfono'}</p>
       </div>
 
-      {/* Pestañas */}
+      {/* Tabs */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="flex border-b border-gray-100 overflow-x-auto">
           {tabs.map(tab => (
@@ -138,47 +159,152 @@ export function ClienteDetalle() {
 
         <div className="p-6">
           {activeTab === 'general' && (
-            <div className="max-w-xl">
-              <InfoRow label="Nombre completo" value={socio.nombre} />
-              <InfoRow label="Correo electrónico" value={socio.correo} />
-              <InfoRow label="Teléfono" value={socio.telefono} />
-              <InfoRow label="ID Cliente" value={socio.id} />
-              <InfoRow label="Plan" value={socio.membresia} />
-              <InfoRow label="Vigencia" value={socio.vigencia_hasta} />
-              <InfoRow label="Estatus" value={estatus} />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div>
+                <h3 className="font-semibold text-gray-900 mb-3" style={{ fontFamily: 'DM Sans, sans-serif' }}>Información Personal</h3>
+                <InfoRow label="Nombre completo" value={`${cliente.nombre} ${cliente.apellidos}`} />
+                <InfoRow label="Fecha de nacimiento" value={cliente.fechaNacimiento} />
+                <InfoRow label="Edad" value={`${calcEdad(cliente.fechaNacimiento)} años`} />
+                <InfoRow label="Correo electrónico" value={cliente.correo} />
+                <InfoRow label="Teléfono" value={cliente.telefono} />
+                <InfoRow label="Dirección" value={cliente.direccion} />
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-900 mb-3" style={{ fontFamily: 'DM Sans, sans-serif' }}>Datos del Sistema</h3>
+                <InfoRow label="ID Cliente" value={cliente.idUsuario} />
+                <InfoRow label="Código de acceso" value={cliente.codigoAcceso} />
+                <InfoRow label="Fecha de registro" value={cliente.fechaRegistro} />
+                <InfoRow label="Estatus" value={cliente.estatus} />
+              </div>
             </div>
           )}
 
-          {activeTab === 'membresia' && <MembresiasCliente compras={socio.membresiasCompradas} />}
+          {activeTab === 'salud' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              {cliente.perfilSalud ? (
+                <>
+                  <div>
+                    <h3 className="font-semibold text-gray-900 mb-3" style={{ fontFamily: 'DM Sans, sans-serif' }}>Métricas Físicas</h3>
+                    <InfoRow label="Peso" value={`${cliente.perfilSalud.peso} kg`} />
+                    <InfoRow label="Altura" value={`${cliente.perfilSalud.altura} cm`} />
+                    <InfoRow label="IMC" value={`${(cliente.perfilSalud.peso / Math.pow(cliente.perfilSalud.altura / 100, 2)).toFixed(1)}`} />
+                    <InfoRow label="Tipo de sangre" value={cliente.perfilSalud.tipoSangre} />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-900 mb-3" style={{ fontFamily: 'DM Sans, sans-serif' }}>Condición Médica</h3>
+                    <div className="py-3 border-b border-gray-50">
+                      <p className="text-sm text-gray-500 mb-1.5">Alergias</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {cliente.perfilSalud.alergias.length > 0
+                          ? cliente.perfilSalud.alergias.map(a => <span key={a} className="px-2 py-0.5 bg-red-50 text-red-600 text-xs rounded-lg">{a}</span>)
+                          : <span className="text-sm text-gray-400">Ninguna registrada</span>}
+                      </div>
+                    </div>
+                    <div className="py-3 border-b border-gray-50">
+                      <p className="text-sm text-gray-500 mb-1.5">Enfermedades</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {cliente.perfilSalud.enfermedades.length > 0
+                          ? cliente.perfilSalud.enfermedades.map(e => <span key={e} className="px-2 py-0.5 bg-[#F3F4F6] text-[#6B7280] text-xs rounded-lg">{e}</span>)
+                          : <span className="text-sm text-gray-400">Ninguna registrada</span>}
+                      </div>
+                    </div>
+                    <div className="py-3 border-b border-gray-50">
+                      <p className="text-sm text-gray-500 mb-1.5">Lesiones previas</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {cliente.perfilSalud.lesiones.length > 0
+                          ? cliente.perfilSalud.lesiones.map(l => <span key={l} className="px-2 py-0.5 bg-[#F3F4F6] text-[#6B7280] text-xs rounded-lg">{l}</span>)
+                          : <span className="text-sm text-gray-400">Ninguna registrada</span>}
+                      </div>
+                    </div>
+                    {cliente.perfilSalud.observaciones && (
+                      <div className="py-3">
+                        <p className="text-sm text-gray-500 mb-1">Observaciones</p>
+                        <p className="text-sm text-gray-700 bg-[#F3F4F6] p-3 rounded-xl border border-[#6B7280]">{cliente.perfilSalud.observaciones}</p>
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <p className="text-gray-400 col-span-2 text-center py-8">Sin perfil de salud registrado</p>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'actividad' && (
+            <div>
+              {cliente.perfilActividad ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <div>
+                    <h3 className="font-semibold text-gray-900 mb-3" style={{ fontFamily: 'DM Sans, sans-serif' }}>Perfil de Actividad</h3>
+                    <InfoRow label="Nivel de actividad" value={nivelLabels[cliente.perfilActividad.nivelActividad]} />
+                    <InfoRow label="Objetivo principal" value={cliente.perfilActividad.objetivo} />
+                    <InfoRow label="Frecuencia de ejercicio" value={cliente.perfilActividad.frecuenciaEjercicio} />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-900 mb-3" style={{ fontFamily: 'DM Sans, sans-serif' }}>Intereses</h3>
+                    <div className="pt-2">
+                      <p className="text-sm text-gray-500 mb-3">Hobbies y deportes</p>
+                      <div className="flex flex-wrap gap-2">
+                        {cliente.perfilActividad.hobbies.map(h => (
+                          <span key={h} className="px-3 py-1.5 bg-[#F3F4F6] text-emerald-700 text-sm rounded-xl font-medium">{h}</span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : <p className="text-gray-400 text-center py-8">Sin perfil de actividad registrado</p>}
+            </div>
+          )}
+
+          {activeTab === 'membresia' && (
+            <div>
+              {compras.length ? <MembresiasCliente compras={compras} /> : cliente.membresia ? (
+                <div className="space-y-4">
+                  <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium ${membresiaColors[cliente.membresia.tipo]}`}>
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" /></svg>
+                    Membresía {cliente.membresia.tipo}
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    {[
+                      { label: 'Fecha inicio', value: cliente.membresia.fechaInicio },
+                      { label: 'Fecha fin', value: cliente.membresia.fechaFin },
+                      { label: 'Precio', value: `$${cliente.membresia.precio.toLocaleString()}` },
+                      { label: 'Estatus', value: cliente.membresia.estatus },
+                    ].map(item => (
+                      <div key={item.label} className="bg-gray-50 rounded-xl p-4">
+                        <p className="text-xs text-gray-500 mb-1">{item.label}</p>
+                        <p className="font-semibold text-gray-800 capitalize">{item.value}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : <p className="text-gray-400 text-center py-8">Sin membresía activa</p>}
+            </div>
+          )}
 
           {activeTab === 'historial' && (
-            reservas.length === 0
-              ? <p className="text-gray-400 text-center py-6">Sin reservaciones registradas</p>
-              : (
-                <table className="w-full text-sm">
-                  <thead><tr className="border-b border-gray-100">
-                    <th className="pb-3 text-left text-xs font-semibold text-gray-400 uppercase">Fecha</th>
-                    <th className="pb-3 text-left text-xs font-semibold text-gray-400 uppercase">Hora</th>
-                    <th className="pb-3 text-left text-xs font-semibold text-gray-400 uppercase">Clase</th>
-                    <th className="pb-3 text-left text-xs font-semibold text-gray-400 uppercase">Código</th>
-                    <th className="pb-3 text-center text-xs font-semibold text-gray-400 uppercase">Estatus</th>
-                  </tr></thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {reservas.map(r => {
-                      const badge = estatusReserva[r.status] ?? { variant: 'pendiente' as const, label: r.status };
-                      return (
-                        <tr key={r.id}>
-                          <td className="py-3 text-gray-600">{r.fecha || '—'}</td>
-                          <td className="py-3 text-gray-600">{r.time}</td>
-                          <td className="py-3 font-medium text-gray-800">{r.class}</td>
-                          <td className="py-3 text-gray-500">{r.codigo || '—'}</td>
-                          <td className="py-3 text-center"><Badge variant={badge.variant} label={badge.label} /></td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              )
+            <div className="space-y-3">
+              <h3 className="font-semibold text-gray-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>Historial de Reservaciones</h3>
+              {reservas.length === 0 ? (
+                <p className="text-gray-400 text-center py-8">Sin reservaciones registradas</p>
+              ) : reservas.map(r => (
+                <div key={r.idReservacion} className="flex items-center justify-between p-3.5 bg-gray-50 rounded-xl">
+                  <div>
+                    <p className="font-medium text-gray-800 text-sm">{r.clase}</p>
+                    <p className="text-xs text-gray-400">{r.entrenador} · {r.horaClase} · {r.fechaReservacion}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant={r.estatus} />
+                    {r.asistenciaConfirmada && (
+                      <span className="flex items-center gap-1 text-xs text-emerald-600">
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                        Asistió
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       </div>

@@ -658,16 +658,13 @@ app.patch('/api/reservas/:id', async (req, res) => {
     }
 
     await conexion.query('COMMIT');
-    // Una clase cubierta con membresía no tuvo pago propio: su entrada se devuelve.
-    const avisoCancelacion = existente.membresiaCompraId
-      ? ' La entrada regresa a la membresía.'
-      : existente.status === 'pagado' ? ' El pago no se reembolsa.' : '';
+    const sinReembolso = existente.status === 'pagado' ? ' El pago no se reembolsa.' : '';
     res.json({
       mensaje: status === 'asistido'
         ? 'Asistencia confirmada'
         : promovida
-          ? `Reservación cancelada.${avisoCancelacion} ${promovida.client} fue promovido desde la lista de espera.`
-          : `Reservación cancelada.${avisoCancelacion}`,
+          ? `Reservación cancelada.${sinReembolso} ${promovida.client} fue promovido desde la lista de espera.`
+          : `Reservación cancelada.${sinReembolso}`,
       reservacion: decorarReserva(actualizada),
       promovida: decorarReserva(promovida),
     });
@@ -1203,365 +1200,23 @@ app.get('/api/kpis', async (req, res) => {
   });
 });
 
-// Asistencia adaptada del commit 948c1a5, con las reglas de puntualidad del punto 3.6.1.
-// reservasFlujo.test.js corta este archivo en la linea anterior: no cambiar su texto.
-//MODULO PARA ASISTENCIA
-
-// Convierte lo que escriban el checador a un codigo normalizado:
-// EMP-101 (empleado), CLI-3 o 3 (socio). Devuelve null si no es valido.
-const normalizarIdentificador = (valor) => {
-  if (/^EMP-\d{3}$/.test(valor)) return valor;
-  if (/^CLI-\d+$/.test(valor)) return valor;
-  if (/^\d+$/.test(valor)) return `CLI-${valor}`;
-  return null;
-};
-
-// Minutos desde la hora de inicio (requerimientos, punto 3.6.1): a partir de
-// `retardo` cuenta como retardo y a partir de `falta`, como inasistencia.
-const REGLAS_PUNTUALIDAD = {
-  entrenador: { retardo: 1, falta: 5 },
-  recepcion: { retardo: 1, falta: 30 },
-};
-
-// "Recepción" -> "recepcion" y "Coach" -> "entrenador", para buscar su regla.
-const normalizarRol = (rol) => {
-  const limpio = String(rol ?? '')
-    .trim()
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
-  return limpio === 'coach' ? 'entrenador' : limpio;
-};
-
-const reglaDeRol = (rol) => REGLAS_PUNTUALIDAD[normalizarRol(rol)] ?? { retardo: 1, falta: 5 };
-
-// Inicio y fin de HOY en la hora local del servidor. No se usa CURRENT_DATE
-// porque PostgreSQL corre en UTC dentro de Docker: en Mexico su fecha cambia a
-// las 6 pm y la salida de la tarde pareceria de otro dia.
-const rangoDeHoy = () => {
-  const inicio = new Date();
-  inicio.setHours(0, 0, 0, 0);
-  const fin = new Date(inicio);
-  fin.setDate(fin.getDate() + 1);
-  return [inicio, fin];
-};
-
-// Primer turno activo del empleado hoy, con su hora de inicio como fecha local.
-const getTurnoHoy = async (codigo) => {
-  const turno = (
-    await pool.query(
-      `SELECT rol, to_char(hora_inicio, 'HH24:MI') AS hora
-         FROM webcobro.turnos
-        WHERE codigo = $1 AND activo AND dia_semana = $2
-        ORDER BY hora_inicio
-        LIMIT 1`,
-      [codigo, new Date().getDay()],
-    )
-  ).rows[0];
-  if (!turno) return null;
-
-  const [hh, mm] = turno.hora.split(':').map(Number);
-  const horaInicio = new Date();
-  horaInicio.setHours(hh, mm, 0, 0);
-  return { rol: turno.rol, horaInicio };
-};
-
-// Estado de una entrada segun los minutos de retraso contra el inicio del turno.
-const clasificarAsistencia = (ahora, turno) => {
-  if (!turno) return 'sin_turno';
-  const regla = reglaDeRol(turno.rol);
-  const minutosTarde = (ahora.getTime() - turno.horaInicio.getTime()) / 60000;
-  if (minutosTarde >= regla.falta) return 'inasistencia';
-  if (minutosTarde >= regla.retardo) return 'retardo';
-  return 'puntual';
-};
-
-// Consulta la ultima marca de HOY del empleado para saber si le toca
-// registrar entrada o salida. Se decide por dia: si hoy ya marco entrada
-// le toca salida; si no ha marcado hoy su primera marca es entrada (asi
-// quien no cerro la jornada ayer no empieza el dia pidiendo salida).
-// Las inasistencias que registra el sistema no cuentan como marca: quien llega
-// tarde todavia debe poder registrar su entrada.
-const proximaMarca = async (codigo) => {
-  const [inicioHoy, finHoy] = rangoDeHoy();
-  const ultimaHoy = (
-    await pool.query(
-      `SELECT tipo, creado_en
-         FROM webcobro.asistencias
-        WHERE codigo = $1 AND NOT automatica
-          AND creado_en >= $2 AND creado_en < $3
-        ORDER BY creado_en DESC, id DESC
-        LIMIT 1`,
-      [codigo, inicioHoy, finHoy],
-    )
-  ).rows[0];
-  return {
-    marcoHoy: Boolean(ultimaHoy),
-    ultimaHoy: ultimaHoy || null,
-    siguienteTipo: ultimaHoy && ultimaHoy.tipo === 'entrada' ? 'salida' : 'entrada',
-  };
-};
-
-//GET historial de asistencia por codigo (ultimos 10 registros del socio,
-//para que el checador vea si ya registro entrada o salida recientemente)
-app.get('/api/asistencia/historial/:identificador', async (req, res) => {
-  const codigo = normalizarIdentificador((req.params.identificador || '').trim().toUpperCase());
-  if (!codigo) {
-    return res.status(400).json({ error: 'Formato inválido. Ejemplo: EMP-101 o 3' });
-  }
-
-  try {
-    const registros = await pool.query(
-      `SELECT id, codigo, nombre, estado, tipo, automatica, creado_en
-         FROM webcobro.asistencias
-        WHERE codigo = $1
-        ORDER BY creado_en DESC, id DESC
-        LIMIT 10`,
-      [codigo],
-    );
-
-    res.json(
-      registros.rows.map((r) => ({
-        _id: r.id,
-        codigo: r.codigo,
-        nombre: r.nombre,
-        tipo: r.tipo,
-         estado: r.estado, 
-        automatica: r.automatica,
-        fecha: new Date(r.creado_en).toISOString(),
-        ts: new Date(r.creado_en).getTime(),
-      })),
-    );
-  } catch (error) {
-    console.error('Error al obtener historial:', error);
-    res.status(500).json({ error: 'Error al obtener historial' });
-  }
+// Asistencia adaptada del commit 948c1a5, aislada del cobro y las reservas.
+const { montarAsistencia } = require('./asistenciaService');
+const asistencia = montarAsistencia(app, pool, {
+  turnosHabilitados: process.env.ASISTENCIA_TURNOS_HABILITADOS === 'true',
 });
-
-//GET persona por codigo (empleado o socio): valida que exista y devuelve el
-//boton que debe mostrar el checador (entrada o salida) segun su ultima marca
-//de hoy. Acepta EMP-101, CLI-3 o el id del socio a secas.
-app.get('/api/asistencia/empleado/:codigo', async (req, res) => {
-  const codigo = normalizarIdentificador((req.params.codigo || '').trim().toUpperCase());
-
-  if (!codigo) {
-    return res.status(400).json({ error: 'Formato inválido. Ejemplo: EMP-101' });
-  }
-  const esEmpleado = codigo.startsWith('EMP-');
-
-  try {
-    const persona = esEmpleado
-      ? (
-          await pool.query(
-            'SELECT codigo, nombre, rol FROM webcobro.empleados WHERE codigo = $1',
-            [codigo],
-          )
-        ).rows[0]
-      : (
-          await pool.query(
-            'SELECT id, nombre, membresia, activo FROM webcobro.clientes WHERE id = $1',
-            [codigo.slice(4)],
-          )
-        ).rows[0];
-    if (!persona) return res.status(404).json({ error: `Código ${codigo} no registrado` });
-
-    const estadoDia = await proximaMarca(codigo);
-    const turnoHoy = esEmpleado ? await getTurnoHoy(codigo) : null;
-    const ultimo = (
-      await pool.query(
-        `SELECT tipo, creado_en
-           FROM webcobro.asistencias
-          WHERE codigo = $1 AND NOT automatica
-          ORDER BY creado_en DESC, id DESC
-          LIMIT 1`,
-        [codigo],
-      )
-    ).rows[0];
-
-    res.json({
-      tipo: esEmpleado ? 'empleado' : 'cliente',
-      codigo,
-      nombre: persona.nombre,
-      rol: esEmpleado ? persona.rol : null,
-      membresia: esEmpleado ? null : persona.membresia,
-      activo: esEmpleado ? true : persona.activo !== false,
-      marcoHoy: estadoDia.marcoHoy,
-      ultimaMarcaHoy: estadoDia.ultimaHoy ? estadoDia.ultimaHoy.tipo : null,
-      siguienteTipo: estadoDia.siguienteTipo, // 'entrada' | 'salida'
-      ultimoRegistro: ultimo ? ultimo.tipo : null,
-      timestamp: ultimo ? new Date(ultimo.creado_en).toISOString() : null,
-       horaInicio: turnoHoy ? turnoHoy.horaInicio.toISOString() : null,
-
-    });
-  } catch (error) {
-    console.error('Error al buscar empleado:', error);
-    res.status(500).json({ error: 'Error al buscar empleado' });
-  }
-});
-
-// Los registros completos son información del personal: solo para administradores.
-const exigirAdministrador = async (req, res, next) => {
-  const encabezado = req.headers.authorization;
-  if (!encabezado?.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Inicia sesión para consultar los registros.' });
-  }
-  try {
-    const respuesta = await fetch(`${ADMIN_API}/auth/me`, {
-      headers: { Authorization: encabezado },
-      signal: AbortSignal.timeout(5000),
-    });
-    if (!respuesta.ok) {
-      return res.status(respuesta.status === 401 ? 401 : 503).json({ error: 'No se pudo validar tu sesión.' });
-    }
-    const { user } = await respuesta.json();
-    if (user?.rol !== 'administrador') {
-      return res.status(403).json({ error: 'No tienes permiso para consultar los registros.' });
-    }
-    return next();
-  } catch {
-    return res.status(503).json({ error: 'Administración no está disponible para validar tu sesión.' });
-  }
-};
-
-//GET registros del checador en un rango de fechas (YYYY-MM-DD), para los reportes.
-app.get('/api/asistencia/registros', exigirAdministrador, async (req, res) => {
-  const { desde, hasta } = req.query;
-  const esFecha = (valor) => typeof valor === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(valor);
-  if (!esFecha(desde) || !esFecha(hasta)) {
-    return res.status(400).json({ error: 'Las fechas deben tener el formato YYYY-MM-DD.' });
-  }
-
-  // El rango se calcula en la hora local del servidor, igual que el resto del checador.
-  const inicio = new Date(`${desde}T00:00:00`);
-  const fin = new Date(`${hasta}T00:00:00`);
-  fin.setDate(fin.getDate() + 1);
-
-  const { rows } = await pool.query(
-    `SELECT a.id, a.codigo, a.nombre, a.tipo, a.estado, a.automatica, a.creado_en, e.rol
-       FROM webcobro.asistencias a
-       LEFT JOIN webcobro.empleados e ON e.codigo = a.codigo
-      WHERE a.creado_en >= $1 AND a.creado_en < $2
-      ORDER BY a.creado_en, a.id`,
-    [inicio, fin],
-  );
-
-  res.json(rows.map((r) => ({
-    id: Number(r.id),
-    codigo: r.codigo,
-    nombre: r.nombre,
-    rol: r.rol ?? null,
-    tipo: r.tipo,
-    estado: r.estado ?? null,
-    automatica: r.automatica === true,
-    fecha: new Date(r.creado_en).toISOString(),
-  })));
-});
-
-app.post('/api/asistencia/marcar', async (req, res) => {
-  const codigo = normalizarIdentificador((req.body.codigo || '').trim().toUpperCase());
-
-  //validacion 1 formato EMP-XXX (empleado) o CLI-N (socio)
-  if (!codigo) {
-    return res.status(400).json({ error: 'Formato inválido. Ejemplo: EMP-101' });
-  }
-
-  //validacion 2 corroboramos existencia (los socios no generan retardo)
-  const esEmpleado = codigo.startsWith('EMP-');
-  const persona = esEmpleado
-    ? (await pool.query('SELECT codigo, nombre, rol FROM webcobro.empleados WHERE codigo = $1', [codigo])).rows[0]
-    : (await pool.query('SELECT id, nombre, activo FROM webcobro.clientes WHERE id = $1', [codigo.slice(4)])).rows[0];
-  if (!persona) return res.status(404).json({ error: `Código ${codigo} no registrado` });
-
-  // Un socio dado de baja no puede registrar entradas ni salidas.
-  if (!esEmpleado && persona.activo === false) {
-    return res.status(409).json({ error: 'Este socio está inactivo: pasa a recepción.' });
-  }
-
-  //validacion 3 antispam (60 seg)
-  const ultimo = (
-    await pool.query(
-      `SELECT tipo, creado_en FROM webcobro.asistencias
-        WHERE codigo = $1 AND NOT automatica ORDER BY creado_en DESC, id DESC LIMIT 1`,
-      [codigo],
-    )
-  ).rows[0];
-  const tsUltimo = ultimo ? new Date(ultimo.creado_en).getTime() : 0;
-  if (ultimo && (Date.now() - tsUltimo) < 60000) {
-    return res.status(429).json({ error: 'Espera 1 minuto entre marcas' });
-  }
-
-  //logica entrada/salida por dia
-  const estadoDia = await proximaMarca(codigo);
-  const tipo = estadoDia.siguienteTipo;
-
-  // Solo la primera ENTRADA del dia del personal se clasifica; la salida, los
-  // regresos del mismo dia (por ejemplo, de comer) y los socios van null.
-  const evaluar = tipo === 'entrada' && esEmpleado && !estadoDia.marcoHoy;
-  const turno = evaluar ? await getTurnoHoy(codigo) : null;
-  const estado = evaluar ? clasificarAsistencia(new Date(), turno) : null;
-
-  const registro = (
-    await pool.query(
-      `INSERT INTO webcobro.asistencias (codigo, nombre, tipo, estado)
-       VALUES ($1, $2, $3, $4)
-       RETURNING id, codigo, nombre, tipo, estado, creado_en`,
-      [codigo, persona.nombre, tipo, estado],
-    )
-  ).rows[0];
-
-  res.json({
-    _id: Number(registro.id),
-    codigo: registro.codigo,
-    nombre: registro.nombre,
-    tipo: registro.tipo,
-    estado: registro.estado,                                  // <-- lo espera el front
-    horaInicio: turno ? turno.horaInicio.toISOString() : null, // <-- lo espera el front
-    fecha: new Date(registro.creado_en).toISOString(),
-    ts: new Date(registro.creado_en).getTime(),
-  });
-});
-// Marca inasistencia a quien no checó entrada pasado su umbral. Se programa
-// junto con la revisión de reservas, cuando ya hay conexión y esquema.
-const revisarFaltasPersonal = async () => {
-  try {
-    const { rows } = await pool.query(
-      `SELECT DISTINCT t.codigo, e.nombre, t.rol, to_char(min(t.hora_inicio),'HH24:MI') AS hora
-         FROM webcobro.turnos t
-         JOIN webcobro.empleados e ON e.codigo = t.codigo
-        WHERE t.activo AND t.dia_semana = $1
-        GROUP BY t.codigo, e.nombre, t.rol`,
-      [new Date().getDay()],
-    );
-
-    const ahora = new Date();
-    const [inicioHoy, finHoy] = rangoDeHoy();
-    for (const t of rows) {
-      const regla = reglaDeRol(t.rol);
-      const [hh, mm] = t.hora.split(':').map(Number);
-      const vence = new Date(); vence.setHours(hh, mm, 0, 0); vence.setMinutes(vence.getMinutes() + regla.falta);
-      if (ahora < vence) continue;
-
-      // Tambien encuentra la inasistencia automatica de hoy: no se repite.
-      const yaMarco = (
-        await pool.query(
-          `SELECT 1 FROM webcobro.asistencias
-            WHERE codigo = $1 AND tipo = 'entrada'
-              AND creado_en >= $2 AND creado_en < $3 LIMIT 1`,
-          [t.codigo, inicioHoy, finHoy],
-        )
-      ).rows[0];
-      if (yaMarco) continue;
-
-      await pool.query(
-        `INSERT INTO webcobro.asistencias (codigo, nombre, tipo, estado, automatica)
-         VALUES ($1, $2, 'entrada', 'inasistencia', TRUE)`,
-        [t.codigo, t.nombre],
-      );
-    }
-  } catch (e) {
-    console.error('Cron de inasistencias:', e.message);
-  }
-};
+if (process.env.ASISTENCIA_TURNOS_HABILITADOS === 'true' &&
+    process.env.ASISTENCIA_FALTAS_AUTOMATICAS === 'true') {
+  let revisando = false;
+  const timer = setInterval(async () => {
+    if (revisando) return;
+    revisando = true;
+    try { await asistencia.registrarInasistencias(); }
+    catch (error) { console.error('Revisión de inasistencias:', error.message); }
+    finally { revisando = false; }
+  }, 60000);
+  timer.unref();
+}
 
 //Iniciar Servidor
 const PORT = Number(process.env.PORT) || 3002;
@@ -1583,7 +1238,6 @@ const aplicarEsquema = () =>
 // Revisa cada minuto las clases que ya pasaron para marcar inasistencias,
 // aunque nadie tenga abierta la pantalla de recepción.
 const iniciarRevisionInasistencias = () => {
-  setInterval(revisarFaltasPersonal, 60 * 1000).unref();
   setInterval(() => {
     marcarInasistencias({ query: consultaOriginal })
       .then((n) => { if (n > 0) console.log(`Inasistencias marcadas: ${n}`); })

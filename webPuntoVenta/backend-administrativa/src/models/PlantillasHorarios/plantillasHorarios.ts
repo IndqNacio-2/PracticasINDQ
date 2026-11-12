@@ -14,8 +14,6 @@ const plantillaHorarioSchema = new Schema(
         salon: { type: String, required: true },
         vigenteDesde: { type: String, required: true },
         vigenteHasta: { type: String, default: '' },
-        // Fechas cuya sesión se eliminó a mano: el generador ya no las vuelve a crear.
-        fechasExcluidas: { type: [String], default: [] },
         serieId: { type: String, default: '', index: true },
         visibleReservas: { type: Boolean, default: true },
         listaEsperaHabilitada: { type: Boolean, default: false },

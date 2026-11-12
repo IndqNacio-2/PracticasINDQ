@@ -1,6 +1,5 @@
 import { useState } from "react"
 import BrandLogo from "../components/BrandLogo"
-import CambiarPassword from "./CambiarPassword"
 import {
   clearSession,
   getModulePath,
@@ -18,12 +17,6 @@ export default function LoginPage() {
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
-  // Inicio de sesión correcto con contraseña temporal: falta cambiarla.
-  const [pendiente, setPendiente] = useState<{
-    token: string
-    user: SessionUser
-    passwordActual: string
-  } | null>(null)
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -50,12 +43,6 @@ export default function LoginPage() {
       if (!modulePath) {
         clearSession()
         throw new Error("Tu rol todavía no tiene un módulo asignado.")
-      }
-
-      if (data.user.debeCambiarPassword) {
-        setPendiente({ token: data.token, user: data.user, passwordActual: password })
-        setPassword("")
-        return
       }
 
       saveSession(data.token, data.user)
@@ -97,57 +84,53 @@ export default function LoginPage() {
             <p className="rx-label">
               Comienza tu jornada
             </p>
-            <h2 id="login-title">{pendiente ? "Cambia tu contraseña" : "Iniciar sesión"}</h2>
+            <h2 id="login-title">Iniciar sesión</h2>
             <p className="rx-login-description">
-              {pendiente ? "Es la primera vez que entras." : "Ingresa tus credenciales para continuar."}
+              Ingresa tus credenciales para continuar.
             </p>
           </div>
 
-          {pendiente ? (
-            <CambiarPassword {...pendiente} />
-          ) : (
-            <form onSubmit={handleSubmit} className="rx-login-form" aria-busy={loading}>
-              <label className="rx-field">
-                <span className="rx-label">Correo electrónico</span>
-                <input
-                  type="email"
-                  required
-                  autoComplete="username"
-                  value={correo}
-                  onChange={(event) => setCorreo(event.target.value)}
-                  placeholder="Tu correo electrónico"
-                  className="rx-input"
-                />
-              </label>
+          <form onSubmit={handleSubmit} className="rx-login-form" aria-busy={loading}>
+            <label className="rx-field">
+              <span className="rx-label">Correo electrónico</span>
+              <input
+                type="email"
+                required
+                autoComplete="username"
+                value={correo}
+                onChange={(event) => setCorreo(event.target.value)}
+                placeholder="Tu correo electrónico"
+                className="rx-input"
+              />
+            </label>
 
-              <label className="rx-field">
-                <span className="rx-label">Contraseña</span>
-                <input
-                  type="password"
-                  required
-                  autoComplete="current-password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  placeholder="••••••••"
-                  className="rx-input"
-                />
-              </label>
+            <label className="rx-field">
+              <span className="rx-label">Contraseña</span>
+              <input
+                type="password"
+                required
+                autoComplete="current-password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder="••••••••"
+                className="rx-input"
+              />
+            </label>
 
-              {error && (
-                <div className="rx-login-error" role="alert">
-                  {error}
-                </div>
-              )}
+            {error && (
+              <div className="rx-login-error" role="alert">
+                {error}
+              </div>
+            )}
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="rx-btn rx-btn--accent rx-login-submit"
-              >
-                {loading ? "Verificando..." : "Ingresar al sistema"}
-              </button>
-            </form>
-          )}
+            <button
+              type="submit"
+              disabled={loading}
+              className="rx-btn rx-btn--accent rx-login-submit"
+            >
+              {loading ? "Verificando..." : "Ingresar al sistema"}
+            </button>
+          </form>
         </section>
       </div>
     </main>
