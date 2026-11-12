@@ -1,7 +1,18 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { Badge } from '../../components/Badge';
-import { mockClientes, mockReservaciones } from '../../data/mock';
+import { api, apiCobro } from '../../lib/api';
+import type { Cliente, Reservacion } from '../../types';
+import { MembresiasCliente, type MembresiaComprada } from './MembresiasCliente';
+
+interface ClienteRecepcion {
+  id: number; nombre: string; correo: string | null; telefono: string; activo: boolean;
+  membresiasCompradas?: MembresiaComprada[];
+}
+interface ReservaRecepcion {
+  id: number; clienteId: number | null; class: string; time: string; fecha: string;
+  status: string; horarioId: string; attendanceStatus: string;
+}
 
 type Tab = 'general' | 'salud' | 'actividad' | 'membresia' | 'historial';
 
@@ -29,7 +40,7 @@ function InfoRow({ label, value }: { label: string; value?: string | number }) {
   return (
     <div className="flex justify-between py-3 border-b border-gray-50 last:border-0">
       <span className="text-sm text-gray-500">{label}</span>
-      <span className="text-sm font-medium text-gray-800 text-right max-w-xs">{value ?? '—'}</span>
+      <span className="text-sm font-medium text-gray-800 text-right max-w-xs">{value === '' || value === undefined ? '—' : value}</span>
     </div>
   );
 }
@@ -39,7 +50,51 @@ export function ClienteDetalle() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<Tab>('general');
 
-  const cliente = mockClientes.find(c => c.idUsuario === id);
+  const [cliente, setCliente] = useState<Cliente | null>(null);
+  const [reservas, setReservas] = useState<Reservacion[]>([]);
+  const [compras, setCompras] = useState<MembresiaComprada[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let vigente = true;
+    setLoading(true); setCliente(null); setReservas([]); setCompras([]); setError(null);
+    async function cargar() {
+      try {
+        if (!id) throw new Error('El identificador del cliente no es válido.');
+        if (/^[1-9]\d*$/.test(id)) {
+          const [socios, historial] = await Promise.all([
+            apiCobro.get<ClienteRecepcion[]>('/clientes'), apiCobro.get<ReservaRecepcion[]>('/reservas'),
+          ]);
+          if (!vigente) return;
+          const socio = socios.find(c => String(c.id) === id);
+          if (!socio) return;
+          setCliente({ idUsuario: String(socio.id), nombre: socio.nombre, apellidos: '', correo: socio.correo ?? '',
+            telefono: socio.telefono ?? '', codigoAcceso: `CLI-${socio.id}`, estatus: socio.activo ? 'activo' : 'inactivo',
+            rol: 'cliente', fechaCreacion: '', fechaRegistro: '', direccion: '', fechaNacimiento: '' });
+          setCompras(socio.membresiasCompradas ?? []);
+          setReservas(historial.filter(r => r.clienteId === socio.id).map(r => ({
+            idReservacion: String(r.id), idCliente: id!, nombreCliente: socio.nombre, idHorario: r.horarioId,
+            clase: r.class, entrenador: 'Consultar sesión en Horarios', horaClase: r.time, fechaReservacion: r.fecha,
+            estatus: ['cancelado', 'no_asistio'].includes(r.status) ? 'cancelada' : ['pagado', 'asistido'].includes(r.status) ? 'confirmada' : 'pendiente',
+            asistenciaConfirmada: r.attendanceStatus === 'asistido',
+          })));
+        } else {
+          const [detalle, historial] = await Promise.all([
+            api.get<Cliente>(`/clientes/${encodeURIComponent(id)}`),
+            api.get<Reservacion[]>(`/reservaciones?idCliente=${encodeURIComponent(id)}`),
+          ]);
+          if (!vigente) return;
+          setCliente(detalle); setReservas(historial.filter(r => r.idCliente === id));
+        }
+      } catch (e) {
+        if (vigente) setError(e instanceof Error ? e.message : 'No se pudo cargar el perfil del cliente.');
+      } finally { if (vigente) setLoading(false); }
+    }
+    void cargar();
+    return () => { vigente = false; };
+  }, [id]);
+  if (loading) return <p className="text-center py-20 text-gray-500" role="status">Cargando perfil del cliente…</p>;
+  if (error) return <div className="text-center py-20"><p role="alert" className="text-red-600">{error}</p><button onClick={() => navigate('/clientes')} className="rx-btn rx-btn--outline mt-4">← Volver a clientes</button></div>;
   if (!cliente) return (
     <div className="text-center py-20 text-gray-400">
       <p className="text-lg">Cliente no encontrado</p>
@@ -47,7 +102,6 @@ export function ClienteDetalle() {
     </div>
   );
 
-  const reservas = mockReservaciones.filter(r => r.idCliente === id);
 
   const calcEdad = (fecha: string) => {
     const diff = Date.now() - new Date(fecha).getTime();
@@ -55,7 +109,7 @@ export function ClienteDetalle() {
   };
 
   return (
-    <div className="space-y-5 max-w-5xl">
+    <div className="w-full min-w-0 space-y-5">
       {/* Header */}
       <div className="flex items-center gap-4">
         <button onClick={() => navigate('/clientes')} className="rx-icon-btn">
@@ -87,7 +141,7 @@ export function ClienteDetalle() {
           </div>
           <div className="text-right flex-shrink-0">
             <p className="text-xs text-gray-400">Registrado</p>
-            <p className="text-sm font-medium text-gray-700">{cliente.fechaRegistro}</p>
+            <p className="text-sm font-medium text-gray-700">{cliente.fechaRegistro || 'No disponible'}</p>
           </div>
         </div>
       </div>
@@ -204,7 +258,7 @@ export function ClienteDetalle() {
 
           {activeTab === 'membresia' && (
             <div>
-              {cliente.membresia ? (
+              {compras.length ? <MembresiasCliente compras={compras} /> : cliente.membresia ? (
                 <div className="space-y-4">
                   <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium ${membresiaColors[cliente.membresia.tipo]}`}>
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" /></svg>
