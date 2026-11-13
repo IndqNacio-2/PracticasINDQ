@@ -8,7 +8,7 @@ export default function BrandLogo({ variant = "full", className = "" }: BrandLog
   const symbol = variant === "symbol"
   return (
     <img
-      src={symbol ? "/branding/nuucleo-symbol.png" : "/branding/nuucleo-logo.png"}
+      src={symbol ? "/branding/Logotipos Nuucleo negro 1.png" : "/branding/Logotipos Nuucleo negro 1.png"}
       alt={symbol ? "NUUCLEO" : "NUUCLEO — Hybrid Training Club"}
       width={symbol ? 453 : 1507}
       height={322}
