@@ -5,7 +5,7 @@ import bcrypt from 'bcryptjs';
 import { ClienteModel as Cliente } from '../models/Clientes/clienteTipado';
 import { asyncHandler, manejarErrores } from '../lib/asynchandler';
 import { fechaISO, hoyEnZona } from '../lib/edad';
-import { crearClienteConCodigo, errorPassword, normalizarPerfil } from '../services/cliente.service';
+import { errorPassword, normalizarPerfil, registrarCliente } from '../services/cliente.service';
 import { felicitarSiCumple } from '../services/cumpleanos.service';
 
 // Rutas de la plataforma web (staff). Móntalas detrás de tu middleware de autenticación de administrador.
@@ -38,26 +38,15 @@ router.get('/:id', asyncHandler(async (req, res) => {
     res.json(cliente);
 }));
 
-// Registro. La contraseña es opcional: solo sirve para que el cliente entre a la app móvil.
+// Registro desde recepción. La contraseña es opcional: solo sirve para que el cliente entre a la app móvil
+// (si no se pone, la crea después en la app con su código de acceso). Misma lógica que el autorregistro de la app.
 router.post('/', asyncHandler(async (req, res) => {
-    const { error, datos: base } = normalizarPerfil(req.body, { parcial: false, exigirFechaNacimiento: true });
-    if (error) return res.status(400).json({ error });
-    const datos = base as Record<string, any>;
+    const r = await registrarCliente(req.body, 'web');
+    if (!r.ok) return res.status(r.status).json({ error: r.error });
 
-    if (req.body.password !== undefined && req.body.password !== '') {
-        const errPass = errorPassword(req.body.password);
-        if (errPass) return res.status(400).json({ error: errPass });
-        datos.password = await bcrypt.hash(req.body.password, 10);
-    }
-
-    if (await Cliente.exists({ correo: datos.correo })) {
-        return res.status(409).json({ error: 'Ya existe un cliente registrado con ese correo' });
-    }
-
-    const nuevo = await crearClienteConCodigo(datos as any);
-    res.status(201).json(nuevo);
+    res.status(201).json(r.cliente);
     // Si se registra el día de su cumpleaños, se le felicita de inmediato (sin esperar al envío diario).
-    void felicitarSiCumple(nuevo);
+    void felicitarSiCumple(r.cliente);
 }));
 
 // Edición de datos generales. No cambia el estatus: para eso están /baja y /reactivar.
