@@ -1,5 +1,14 @@
 /* Distribución del prototipo de Recepción, aislada de los otros módulos. */
 @layer components {
+  .rx-reception-kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 18px; }
+  .rx-reception-kpi { min-width: 0; padding: 10px; background: var(--rx-surface); border: 1px solid var(--rx-line); border-radius: var(--rx-radius-medium); box-shadow: none; }
+  .rx-reception-kpi-heading { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin-bottom: 8px; }
+  .rx-reception-kpi-heading h2 { min-width: 0; margin: 0; color: var(--rx-ink-secondary); font-size: 12px; line-height: 1.4; font-weight: 600; overflow-wrap: anywhere; }
+  .rx-reception-kpi-icon { display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; flex-shrink: 0; border-radius: var(--rx-radius-small); }
+  .rx-reception-kpi--classes .rx-reception-kpi-icon { color: var(--rx-info-ink); background: var(--rx-info-bg); }
+  .rx-reception-kpi--income .rx-reception-kpi-icon { color: var(--rx-success-ink); background: var(--rx-success-bg); }
+  .rx-reception-kpi-value { margin: 0; color: var(--rx-ink); font-size: 18px; line-height: 1.2; font-weight: 700; overflow-wrap: anywhere; }
+  .rx-reception-kpi-caption { margin: 4px 0 0; color: var(--rx-ink-secondary); font-size: 11px; }
   .rx-reception .rx-admin-topbar { display: none; }
   .rx-reception .rx-admin-content { padding: 0; }
   .rx-reception .rx-admin-main { margin-left: 0; }
