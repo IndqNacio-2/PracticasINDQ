@@ -12,6 +12,8 @@ import movimientoRoutes from './routes/movimientos.routes';
 import usuarioRoutes from './routes/usuarios.routes';
 import ventaRoutes from './routes/ventas.routes';
 import membresiaRoutes from './routes/membresia.routes';
+import reportesRoutes from './routes/reportes.routes';
+import { requireAuth, requireRole } from './middleware/auth';
 import { connectDB } from './lib/mongo';
 import { iniciarMantenimientoHorizonte } from './services/mantener-horizonte-sesiones';
 
@@ -24,7 +26,7 @@ const PORT = Number(process.env.PORT) || 3000;
 
 app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:5173' }));
 // Límite ampliado exclusivamente para usuarios con foto reducida.
-app.use('/api/usuarios', express.json({ limit: '256kb' }));
+app.use('/api/usuarios', express.json({ limit: '25mb' }));
 app.use(express.json());
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
@@ -39,6 +41,7 @@ app.use('/api/movimientos', movimientoRoutes);
 app.use('/api/usuarios', usuarioRoutes);
 app.use('/api/ventas', ventaRoutes);
 app.use('/api/membresias', membresiaRoutes);
+app.use('/api/reportes', requireAuth, requireRole('administrador'), reportesRoutes);
 
 // Exporta la app para que el gateway unificado pueda montarla bajo su prefijo
 // (/admin) en un solo puerto. Con GATEWAY_MODE no abre su propio puerto y un

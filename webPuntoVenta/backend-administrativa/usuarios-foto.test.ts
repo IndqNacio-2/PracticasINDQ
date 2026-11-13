@@ -35,8 +35,12 @@ test('API: autorización, creación, cambio, eliminación y PATCH ajeno a foto s
   let estado: any = { idUsuario: '507f1f77bcf86cd799439011', nombre: 'Ana', foto };
   let escrituras = 0;
   t.mock.method(Usuario, 'findOne', async () => null);
-  t.mock.method(Usuario, 'create', async (datos: any) => { escrituras++; estado = { ...estado, ...datos }; return estado; });
-  t.mock.method(Usuario, 'findByIdAndUpdate', async (_id: any, cambios: any) => { escrituras++; estado = { ...estado, ...cambios }; return estado; });
+  const documento = () => ({ toJSON: () => { const { password, ...publico } = estado; return publico; } });
+  t.mock.method(Usuario, 'create', async (datos: any) => { escrituras++; estado = { ...estado, ...datos }; return documento(); });
+  t.mock.method(Usuario, 'findByIdAndUpdate', async (_id: any, cambios: any, opciones: any) => {
+    assert.equal(opciones.runValidators, true);
+    escrituras++; estado = { ...estado, ...cambios.$set }; return documento();
+  });
   const app = express();
   app.use(express.json({ limit: '256kb' }));
   app.use('/api/usuarios', usuariosRoutes);
@@ -56,6 +60,7 @@ test('API: autorización, creación, cambio, eliminación y PATCH ajeno a foto s
   assert.equal(escrituras, 0);
   const alta = await enviar('POST', { nombre: 'Ana', apellidos: 'Prueba', correo: 'ana@example.test', rol: 'vendedor', codigoAcceso: '123', password: 'abc', foto }, 'administrador', '');
   assert.equal(alta.status, 201);
+  assert.equal('password' in await alta.json(), false);
   assert.notEqual(estado.password, 'abc');
   assert.equal(estado.foto, foto);
   assert.equal((await enviar('PATCH', { nombre: 'Ana editada' })).status, 200);

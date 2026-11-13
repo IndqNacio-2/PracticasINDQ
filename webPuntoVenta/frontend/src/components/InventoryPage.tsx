@@ -1,12 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import type { Product, ToastMessage } from "../types";
 import { CATEGORIES } from "../data";
 import MaterialIcon from "./MaterialIcon";
 import AddStockModal from "./inventory/AddStockModal";
+import InventoryActionMenu from "./inventory/InventoryActionMenu";
 import ProductDetailPanel from "./inventory/ProductDetailPanel";
 import ProductFormModal from "./inventory/ProductFormModal";
 import ProductStatusModal from "./inventory/ProductStatusModal";
+import { exportInventory } from "./inventory/exportInventory";
 
 type SortOption = "name" | "price-asc" | "price-desc" | "stock-asc" | "stock-desc";
 type QuickFilter = "all" | "active" | "low-stock" | "out" | "inactive";
@@ -38,10 +40,10 @@ function getProductState(product: Product): ProductVisualState {
 }
 
 const STATE_BADGES = {
-  available: { label: "Disponible", icon: "check_circle", className: "bg-[#F0FDF4] text-[#166534]" },
-  low: { label: "Stock bajo", icon: "warning", className: "bg-[#FFFBEB] text-[#92400E]" },
-  out: { label: "Agotado", icon: "error", className: "bg-[#FEF2F2] text-[#991B1B]" },
-  inactive: { label: "Inactivo", icon: "cancel", className: "bg-[#F3F4F6] text-[#6B7280]" },
+  available: { label: "Disponible", icon: "check_circle", className: "rx-badge--success" },
+  low: { label: "Stock bajo", icon: "warning", className: "rx-badge--warning" },
+  out: { label: "Agotado", icon: "error", className: "rx-badge--danger" },
+  inactive: { label: "Inactivo", icon: "cancel", className: "rx-badge--neutral" },
 };
 
 export default function InventoryPage({ products, onUpdateProduct, onAddProduct, onAdjustStock, onToggleStatus, addToast }: InventoryPageProps) {
@@ -53,19 +55,17 @@ export default function InventoryPage({ products, onUpdateProduct, onAddProduct,
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const [modal, setModal] = useState<InventoryModal>(null);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const menuAreaRef = useRef<HTMLDivElement>(null);
+  const menuAnchorRef = useRef<HTMLButtonElement | null>(null);
 
-  // Cierra el menú de acciones cuando se hace clic fuera de la tabla.
-  useEffect(() => {
-    const closeMenu = (event: MouseEvent) => {
-      if (menuAreaRef.current && !menuAreaRef.current.contains(event.target as Node)) {
-        setOpenMenuId(null);
-      }
-    };
-
-    document.addEventListener("mousedown", closeMenu);
-    return () => document.removeEventListener("mousedown", closeMenu);
-  }, []);
+  const hasFilters = search !== "" || categoryFilter !== "Todas" || stateFilter !== "all" || quickFilter !== "all" || sortBy !== "name";
+  const clearFilters = () => {
+    setSearch("");
+    setCategoryFilter("Todas");
+    setStateFilter("all");
+    setQuickFilter("all");
+    setSortBy("name");
+    setOpenMenuId(null);
+  };
 
   const inventoryTotals = useMemo(() => ({
     active: products.filter((product) => getProductState(product) === "available").length,
@@ -106,6 +106,15 @@ export default function InventoryPage({ products, onUpdateProduct, onAddProduct,
     setSelectedProduct(product ?? null);
     setModal(nextModal);
     setOpenMenuId(null);
+  };
+
+  const downloadInventory = () => {
+    try {
+      exportInventory(products);
+      addToast("Descarga iniciada. Captura el inventario físico en las columnas vacías del archivo.", "success");
+    } catch {
+      addToast("No se pudo exportar el inventario. Intenta nuevamente.", "error");
+    }
   };
 
   /*
@@ -155,104 +164,110 @@ export default function InventoryPage({ products, onUpdateProduct, onAddProduct,
   };
 
   const quickCards = [
-    { key: "active" as const, icon: "check_circle", label: "Productos activos", value: inventoryTotals.active, color: "#10B981" },
-    { key: "low-stock" as const, icon: "warning", label: "Stock bajo", value: inventoryTotals.lowStock, color: "#F59E0B" },
-    { key: "out" as const, icon: "error", label: "Agotados", value: inventoryTotals.out, color: "#EF4444" },
-    { key: "inactive" as const, icon: "cancel", label: "Inactivos", value: inventoryTotals.inactive, color: "#6B7280" },
+    { key: "active" as const, icon: "check_circle", label: "Productos activos", value: inventoryTotals.active, tone: "success" },
+    { key: "low-stock" as const, icon: "warning", label: "Stock bajo", value: inventoryTotals.lowStock, tone: "warning" },
+    { key: "out" as const, icon: "error", label: "Agotados", value: inventoryTotals.out, tone: "danger" },
+    { key: "inactive" as const, icon: "cancel", label: "Inactivos", value: inventoryTotals.inactive, tone: "neutral" },
   ];
 
   return (
-    <section className="flex h-full flex-col overflow-hidden bg-[#F3F4F6]">
-      <header className="flex flex-shrink-0 items-center justify-between border-b border-[#E5E7EB] bg-white px-7 py-5">
+    <section className="rx-inventory">
+      <header className="rx-page-header">
         <div>
-          <h1 className="text-2xl font-bold text-[#0D0F14]">Inventario</h1>
-          <p className="mt-0.5 text-sm text-[#6B7280]">Gestiona los productos y existencias del punto de venta.</p>
+          <h1 className="rx-page-title">Inventario</h1>
+          <p className="rx-page-subtitle">Gestiona los productos y existencias del punto de venta.</p>
         </div>
-        <button type="button" onClick={() => openModal("add")} className="flex items-center gap-2 rounded-xl bg-[#6B7280] px-4 py-2.5 text-sm font-bold text-white hover:opacity-90 active:scale-[0.98]">
-          <MaterialIcon name="add" className="text-xl" />Agregar producto
-        </button>
+        <div className="rx-inventory-header-actions">
+          <button type="button" onClick={downloadInventory} disabled={products.length === 0} title="Exportar todo el inventario, sin aplicar los filtros, con columnas vacías para el conteo físico y observaciones" className="rx-btn rx-btn--outline">
+            <MaterialIcon name="download" className="text-xl" />Exportar a Excel
+          </button>
+          <button type="button" onClick={() => openModal("add")} className="rx-btn rx-btn--accent">
+            <MaterialIcon name="add" className="text-xl" />Agregar producto
+          </button>
+        </div>
       </header>
 
-      <div className="flex-1 overflow-y-auto p-7">
+      <div className="rx-inventory-content">
         {/* Estas tarjetas también funcionan como filtros rápidos. */}
-        <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="rx-inventory-kpis" role="group" aria-label="Filtros rápidos de inventario">
           {quickCards.map((card) => {
             const isSelected = quickFilter === card.key;
             return (
-              <button key={card.key} type="button" onClick={() => setQuickFilter(isSelected ? "all" : card.key)} className={`rounded-2xl border bg-white p-4 text-left transition-all hover:shadow-md ${isSelected ? "border-[#111827] shadow-md" : "border-[#E5E7EB]"}`}>
-                <div className="mb-3 flex items-center justify-between">
-                  <MaterialIcon name={card.icon} className="text-2xl" filled />
-                  {isSelected && <span className="rounded-full bg-[#111827] px-2 py-0.5 text-[10px] font-bold text-white">Activo</span>}
+              <button key={card.key} type="button" aria-pressed={isSelected} onClick={() => setQuickFilter(isSelected ? "all" : card.key)} className={`rx-inventory-kpi rx-inventory-kpi--${card.tone}`}>
+                <span className="rx-inventory-kpi-icon"><MaterialIcon name={card.icon} className="text-2xl" filled /></span>
+                <div className="rx-inventory-kpi-copy">
+                  <p className="rx-inventory-kpi-value">{card.value}</p>
+                  <p className="rx-inventory-kpi-label">{card.label}</p>
+                  {isSelected && <span className="rx-badge rx-badge--accent">Filtro activo</span>}
                 </div>
-                <p className="text-3xl font-bold text-[#0D0F14]" style={{ color: card.color }}>{card.value}</p>
-                <p className="mt-0.5 text-xs text-[#6B7280]">{card.label}</p>
               </button>
             );
           })}
         </div>
 
-        <div className="mb-4 rounded-2xl border border-[#E5E7EB] bg-white p-4">
-          <div className="flex flex-wrap gap-3">
-            <div className="relative min-w-[220px] flex-1">
-              <MaterialIcon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 text-lg text-[#9CA3AF]" />
-              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar por nombre o código..." className="w-full rounded-xl border border-[#E5E7EB] py-2 pl-9 pr-9 text-sm text-[#0D0F14] outline-none placeholder:text-[#9CA3AF] focus:border-[#111827]" />
-              {search && <button type="button" onClick={() => setSearch("")} aria-label="Limpiar búsqueda" className="absolute right-3 top-1/2 -translate-y-1/2 text-[#9CA3AF] hover:text-[#374151]"><MaterialIcon name="close" className="text-base" /></button>}
+        <div className="rx-filter-bar">
+          <div className="rx-inventory-filters">
+            <div className="rx-search">
+              <MaterialIcon name="search" className="rx-search-icon text-lg" />
+              <input value={search} onChange={(event) => setSearch(event.target.value)} aria-label="Buscar producto por nombre o código" placeholder="Buscar por nombre o código..." className="rx-input" />
+              {search && <button type="button" onClick={() => setSearch("")} aria-label="Limpiar búsqueda" className="rx-inventory-clear"><MaterialIcon name="close" className="text-base" /></button>}
             </div>
 
-            <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} aria-label="Filtrar por categoría" className="rounded-xl border border-[#E5E7EB] bg-white px-3 py-2 text-sm text-[#374151] outline-none focus:border-[#111827]">
+            <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} aria-label="Filtrar por categoría" className="rx-input rx-inventory-select">
               <option value="Todas">Todas</option>
               {CATEGORIES.filter((category) => category !== "Todos").map((category) => <option key={category} value={category}>{category}</option>)}
             </select>
 
-            <select value={stateFilter} onChange={(event) => setStateFilter(event.target.value as ProductStateFilter)} aria-label="Filtrar por estado" className="rounded-xl border border-[#E5E7EB] bg-white px-3 py-2 text-sm text-[#374151] outline-none focus:border-[#111827]">
+            <select value={stateFilter} onChange={(event) => setStateFilter(event.target.value as ProductStateFilter)} aria-label="Filtrar por estado" className="rx-input rx-inventory-select">
               <option value="all">Todos</option><option value="available">Disponible</option><option value="low">Stock bajo</option><option value="out">Agotado</option><option value="inactive">Inactivo</option>
             </select>
 
-            <select value={sortBy} onChange={(event) => setSortBy(event.target.value as SortOption)} aria-label="Ordenar productos" className="rounded-xl border border-[#E5E7EB] bg-white px-3 py-2 text-sm text-[#374151] outline-none focus:border-[#111827]">
+            <select value={sortBy} onChange={(event) => setSortBy(event.target.value as SortOption)} aria-label="Ordenar productos" className="rx-input rx-inventory-select">
               <option value="name">Nombre A–Z</option><option value="price-asc">Precio: menor a mayor</option><option value="price-desc">Precio: mayor a menor</option><option value="stock-asc">Menor existencia</option><option value="stock-desc">Mayor existencia</option>
             </select>
 
-            <span className="self-center whitespace-nowrap text-xs text-[#9CA3AF]">{filteredProducts.length} resultado{filteredProducts.length === 1 ? "" : "s"}</span>
+            {hasFilters && <button type="button" onClick={clearFilters} className="rx-btn rx-btn--outline">Limpiar filtros</button>}
+            <span className="rx-inventory-results" role="status">{filteredProducts.length} resultado{filteredProducts.length === 1 ? "" : "s"}</span>
           </div>
         </div>
 
-        <div ref={menuAreaRef} className="overflow-visible rounded-2xl border border-[#E5E7EB] bg-white">
+        <div className="rx-inventory-list">
           {filteredProducts.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-center">
-              <MaterialIcon name="inventory_2" className="mb-3 text-5xl text-[#D1D5DB]" />
-              <p className="text-sm font-semibold text-[#6B7280]">Sin resultados para esta búsqueda</p>
-              <button type="button" onClick={() => { setSearch(""); setCategoryFilter("Todas"); setStateFilter("all"); setQuickFilter("all"); }} className="mt-2 text-sm font-semibold text-[#111827] hover:underline">Limpiar filtros</button>
+            <div className="rx-empty">
+              <MaterialIcon name="inventory_2" className="text-5xl" />
+              <p>Sin resultados para esta búsqueda</p>
+              <button type="button" onClick={clearFilters} className="rx-btn rx-btn--outline">Limpiar filtros</button>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[900px] text-sm">
-                <thead><tr className="border-b border-[#E5E7EB] bg-[#F9FAFB]">{["Producto", "Código", "Categoría", "Precio", "Existencia", "Stock mín.", "Estado", "Acciones"].map((heading) => <th key={heading} className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-[#6B7280]">{heading}</th>)}</tr></thead>
+            <div className="rx-table-wrap" tabIndex={0} role="region" aria-label="Listado de productos; desplaza horizontalmente para ver todas las columnas">
+              <table className="rx-table rx-inventory-table" aria-label="Productos de inventario">
+                <thead><tr>{["Producto", "Código", "Categoría", "Precio", "Existencia", "Stock mín.", "Estado", "Acciones"].map((heading) => <th key={heading} scope="col">{heading}</th>)}</tr></thead>
                 <tbody>
-                  {filteredProducts.map((product, index) => {
+                  {filteredProducts.map((product) => {
                     const state = getProductState(product);
                     const badge = STATE_BADGES[state];
                     const isMenuOpen = openMenuId === product.id;
-                    const stockColor = state === "out" ? "text-[#EF4444]" : state === "low" ? "text-[#F59E0B]" : "text-[#0D0F14]";
+                    const stockColor = state === "out" ? "rx-inventory-stock--danger" : state === "low" ? "rx-inventory-stock--warning" : "";
 
                     return (
-                      <tr key={product.id} className={`border-b border-[#F3F4F6] transition-colors hover:bg-[#FAFAFA] ${state === "inactive" ? "opacity-60" : ""} ${index === filteredProducts.length - 1 ? "border-none" : ""}`}>
-                        <td className="px-4 py-3"><div className="flex items-center gap-3"><div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl" style={{ backgroundColor: product.bgColor }}><MaterialIcon name={product.icon} className="text-xl text-[#374151]" filled /></div><span className="font-semibold text-[#0D0F14]">{product.name}</span></div></td>
-                        <td className="px-4 py-3"><span className="rounded bg-[#F3F4F6] px-2 py-1 font-mono text-xs font-semibold text-[#6B7280]">{product.code}</span></td>
-                        <td className="px-4 py-3 text-[#6B7280]">{product.category}</td>
-                        <td className="px-4 py-3 font-bold text-[#0D0F14]">{formatCurrency(product.price)}</td>
-                        <td className={`px-4 py-3 font-bold ${stockColor}`}>{product.stock}</td>
-                        <td className="px-4 py-3 text-[#9CA3AF]">{product.minimumStock}</td>
-                        <td className="px-4 py-3"><span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold ${badge.className}`}><MaterialIcon name={badge.icon} className="text-sm" filled />{badge.label}</span></td>
-                        <td className="relative px-4 py-3">
-                          <button type="button" onClick={() => setOpenMenuId(isMenuOpen ? null : product.id)} aria-label={`Acciones para ${product.name}`} className="flex h-8 w-8 items-center justify-center rounded-lg text-[#9CA3AF] hover:bg-[#F3F4F6] hover:text-[#374151]"><MaterialIcon name="more_vert" className="text-xl" /></button>
+                      <tr key={product.id} className={state === "inactive" ? "rx-inventory-row--inactive" : ""} data-active={isMenuOpen}>
+                        <td><div className="rx-inventory-product"><div className="rx-inventory-product-icon"><MaterialIcon name={product.icon} className="text-xl" /></div><span>{product.name}</span></div></td>
+                        <td><span className="rx-inventory-code">{product.code}</span></td>
+                        <td className="rx-inventory-secondary">{product.category}</td>
+                        <td className="rx-inventory-number">{formatCurrency(product.price)}</td>
+                        <td className={`rx-inventory-number ${stockColor}`}>{product.stock}</td>
+                        <td className="rx-inventory-secondary">{product.minimumStock}</td>
+                        <td><span className={`rx-badge ${badge.className}`}><MaterialIcon name={badge.icon} className="text-sm" filled />{badge.label}</span></td>
+                        <td className="rx-inventory-actions">
+                          <button type="button" onClick={(event) => { menuAnchorRef.current = event.currentTarget; setOpenMenuId(isMenuOpen ? null : product.id); }} aria-expanded={isMenuOpen} aria-controls={isMenuOpen ? `inventory-actions-${product.id}` : undefined} aria-label={`Acciones para ${product.name}`} className="rx-inventory-action-button"><MaterialIcon name="more_vert" className="text-xl" /></button>
                           {isMenuOpen && (
-                            <div className="absolute right-4 top-10 z-30 w-48 rounded-xl border border-[#E5E7EB] bg-white py-1 shadow-xl">
+                            <InventoryActionMenu anchor={menuAnchorRef.current} id={`inventory-actions-${product.id}`} label={`Opciones para ${product.name}`} onClose={() => setOpenMenuId(null)}>
                               <MenuAction icon="visibility" label="Ver detalles" onClick={() => openModal("detail", product)} />
                               <MenuAction icon="edit" label="Editar producto" onClick={() => openModal("edit", product)} />
                               <MenuAction icon="add_box" label="Agregar existencias" onClick={() => openModal("stock", product)} disabled={product.status === "inactive"} />
-                              <div className="my-1 border-t border-[#F3F4F6]" />
+                              <div className="rx-inventory-menu-divider" />
                               <MenuAction icon={product.status === "active" ? "toggle_off" : "toggle_on"} label={product.status === "active" ? "Desactivar" : "Activar"} onClick={() => openModal("status", product)} danger={product.status === "active"} />
-                            </div>
+                            </InventoryActionMenu>
                           )}
                         </td>
                       </tr>
@@ -275,7 +290,7 @@ export default function InventoryPage({ products, onUpdateProduct, onAddProduct,
 
 function MenuAction({ icon, label, onClick, disabled, danger }: { icon: string; label: string; onClick: () => void; disabled?: boolean; danger?: boolean }) {
   return (
-    <button type="button" onClick={onClick} disabled={disabled} className={`flex w-full items-center gap-3 px-4 py-2 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${danger ? "text-[#EF4444] hover:bg-[#FEF2F2]" : "text-[#374151] hover:bg-[#F9FAFB]"}`}>
+    <button type="button" onClick={onClick} disabled={disabled} className={`rx-inventory-menu-action ${danger ? "rx-inventory-menu-action--danger" : ""}`}>
       <MaterialIcon name={icon} className="text-lg" />{label}
     </button>
   );

@@ -91,6 +91,9 @@ export interface ToastMessage {
 }
 
 export interface SaleRecord {
+  id: number;
+  sellerId: string | null;
+  cashClosingId: number | null;
   folio: string;
   date: string;
   time: string;
@@ -108,6 +111,7 @@ export interface SaleRecord {
  * Represento un corte de caja realizado al cerrar un turno.
  */
 export interface CashClosingRecord {
+  id?: number;
   // Folio visible para localizar el corte.
   folio: string;
 

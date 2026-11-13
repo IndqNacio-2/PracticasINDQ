@@ -45,6 +45,9 @@ import WastePage from "./components/WastePage"
 import CashClosingPage from "./components/CashClosingPage"
 import ReportsPage from "./components/ReportsPage"
 import type { WasteFormData } from "./components/waste/WasteFormModal"
+import { getStoredUser } from "./auth/session"
+import FondoRecordatorio from "./components/FondoRecordatorio"
+import { guardarFondoVendedor, leerFondoVendedor } from "./services/fondoVendedor"
 
 let _toastId = 0
 
@@ -60,6 +63,7 @@ const mensajeDeError = (error: unknown): string =>
     : "No fue posible conectar con el servidor"
 
 export default function App() {
+  const [sessionUser] = useState(() => getStoredUser())
   const [activeModule, setActiveModule] = useState<AppModule>("sale")
   /**
    * Arranco con las listas vacias: la informacion se carga desde la
@@ -94,15 +98,17 @@ export default function App() {
    */
   const [cashClosings, setCashClosings] = useState<CashClosingRecord[]>([])
   /**
-   * Cuento cuántas ventas ya quedaron incluidas en un corte.
-   * Así puedo saber cuáles pertenecen al turno vigente.
-   */
-  const [closedSalesCount, setClosedSalesCount] = useState(0)
-  /**
    * Conservo el fondo inicial y el efectivo contado del turno actual
    * para no perderlos cuando el usuario cambia de módulo.
    */
-  const [initialFund, setInitialFund] = useState(0)
+  const [initialFund, setInitialFund] = useState<number | null>(() => {
+    try { return sessionUser ? leerFondoVendedor(sessionUser.idUsuario) : null }
+    catch { return null }
+  })
+  const changeInitialFund = (amount: number | null) => {
+    if (sessionUser) guardarFondoVendedor(sessionUser.idUsuario, amount)
+    setInitialFund(amount)
+  }
   const [countedCash, setCountedCash] = useState(0)
 
   /**
@@ -158,12 +164,7 @@ export default function App() {
         setSales(loadedSales)
         setCashClosings(loadedClosings)
 
-        /**
-         * Marco las ventas que ya vienen del historial como parte de un
-         * turno cerrado, para que el Corte de caja solo empiece a contar
-         * las ventas nuevas que haga hoy el usuario.
-         */
-        setClosedSalesCount(loadedSales.length)
+        // El servidor conserva qué ventas siguen pendientes de corte.
       } catch (error) {
         console.error("No fue posible cargar la información:", error)
         addToast(mensajeDeError(error), "error")
@@ -182,8 +183,8 @@ export default function App() {
    * para que los reportes puedan consultarlas más adelante.
    */
   const shiftSales = useMemo(
-    () => sales.slice(closedSalesCount),
-    [sales, closedSalesCount],
+    () => sales.filter(sale => sale.cashClosingId == null),
+    [sales],
   )
 
   /**
@@ -207,6 +208,7 @@ export default function App() {
         countedCash: closing.countedCash,
         difference: closing.difference,
         registeredBy: closing.registeredBy,
+        saleIds: shiftSales.map(sale => sale.id),
       })
 
       setCashClosings((currentClosings) => [
@@ -214,8 +216,18 @@ export default function App() {
         registeredClosing,
       ])
 
-      setClosedSalesCount(sales.length)
-      setInitialFund(0)
+      // Reconsulta el vínculo persistido; si falla la red, no invita a repetir
+      // un corte que el servidor ya confirmó.
+      try { setSales(await getSales()) }
+      catch {
+        const cerradas = new Set(shiftSales.map(sale => sale.id))
+        setSales(actuales => actuales.map(sale => cerradas.has(sale.id) ? { ...sale, cashClosingId: registeredClosing.id! } : sale))
+        addToast("Corte guardado. No fue posible actualizar el historial; recarga para sincronizarlo.", "warning")
+      }
+      // Solo limpia el fondo pendiente después de que el corte se guardó.
+      setInitialFund(null)
+      try { if (sessionUser) guardarFondoVendedor(sessionUser.idUsuario, null) }
+      catch { addToast("Corte guardado, pero no se pudo limpiar el fondo pendiente del navegador.", "warning") }
       setCountedCash(0)
 
       addToast(
@@ -619,6 +631,7 @@ export default function App() {
       <Sidebar activeModule={activeModule} onModuleChange={setActiveModule} />
 
       <main className="rx-main">
+        {sessionUser?.rol === "vendedor" && <FondoRecordatorio userId={sessionUser.idUsuario} amount={initialFund} onChange={changeInitialFund} />}
         {/*
          * Mientras la aplicación carga la información desde la base de
          * datos muestro este aviso para que no se vean listas vacías.
@@ -809,9 +822,9 @@ export default function App() {
           <CashClosingPage
             sales={shiftSales}
             closings={cashClosings}
-            initialFund={initialFund}
+            initialFund={initialFund ?? 0}
             countedCash={countedCash}
-            onInitialFundChange={setInitialFund}
+            onInitialFundChange={changeInitialFund}
             onCountedCashChange={setCountedCash}
             onConfirmClosing={confirmCashClosing}
           />

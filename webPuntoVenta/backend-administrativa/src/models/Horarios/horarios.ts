@@ -1,4 +1,5 @@
 import { Schema, model, InferSchemaType } from 'mongoose';
+import { esEnteroPositivo } from '../../lib/validacion';
 
 const horarioSchema = new Schema(
     {
@@ -9,8 +10,8 @@ const horarioSchema = new Schema(
         fecha: { type: String, required: true },
         horaInicio: { type: String, required: true },
         horaFin: { type: String, required: true },
-        capacidadTotal: { type: Number, required: true },
-        capacidadDisponible: { type: Number, required: true },
+        capacidadTotal: { type: Number, required: true, validate: { validator: esEnteroPositivo, message: 'La capacidad debe ser un número entero mayor que cero.' } },
+        capacidadDisponible: { type: Number, required: true, min: 0, validate: { validator: Number.isInteger, message: 'Los lugares disponibles deben ser enteros.' } },
         estatus: { type: String, enum: ['activo', 'inactivo'], default: 'activo' },
         salon: { type: String, required: true },
         idPlantilla: { type: String, default: '' },

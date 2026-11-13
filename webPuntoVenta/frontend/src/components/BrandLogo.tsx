@@ -3,7 +3,7 @@ interface BrandLogoProps {
   className?: string
 }
 
-/** Marca con símbolo negro sobre lima redondeado, igual en ambas variantes, y letras blancas. */
+/** Marca blanca transparente que se integra con el fondo de cada sección. */
 export default function BrandLogo({ variant = "full", className = "" }: BrandLogoProps) {
   const symbol = variant === "symbol"
   return (

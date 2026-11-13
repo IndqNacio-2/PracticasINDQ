@@ -41,7 +41,7 @@ export default function ClasesHorariosPage() {
   };
 
   return (
-    <div className="max-w-7xl space-y-5">
+    <div className="w-full min-w-0 space-y-5">
       <div>
         <h1
           className="text-2xl font-bold text-gray-900"
