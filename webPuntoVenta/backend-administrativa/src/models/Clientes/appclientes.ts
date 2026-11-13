@@ -5,7 +5,7 @@ import rateLimit from 'express-rate-limit';
 import { ClienteModel as Cliente } from './clienteTipado';
 import { asyncHandler, manejarErrores } from '../../lib/asynchandler';
 import { authCliente, firmarToken, type ClienteRequest } from '../../middleware/authclientes';
-import { crearClienteConCodigo, errorPassword, normalizarPerfil } from '../../services/cliente.service';
+import { errorPassword, normalizarPerfil, registrarCliente } from '../../services/cliente.service';
 import { felicitarSiCumple } from '../../services/cumpleanos.service';
 
 // Endpoints públicos para la app móvil. Montar en /api/app/clientes (sin el middleware de administrador).
@@ -23,29 +23,13 @@ const limiteAuth = rateLimit({
 // Se compara contra este hash cuando el correo no existe, para que el tiempo de respuesta no delate si la cuenta existe.
 const HASH_FALSO = bcrypt.hashSync('contraseña-inexistente', 10);
 
-// POST /registro — el cliente crea su cuenta.
+// POST /registro — el cliente crea su cuenta (misma lógica que POST /api/auth/registro de la app móvil).
 router.post('/registro', limiteAuth, asyncHandler(async (req, res) => {
-    const { error, datos: base } = normalizarPerfil(req.body, {
-        parcial: false,
-        exigirFechaNacimiento: true,
-        permitirPerfiles: true,
-    });
-    if (error) return res.status(400).json({ error });
-    const datos = base as Record<string, any>;
+    const r = await registrarCliente(req.body, 'movil');
+    if (!r.ok) return res.status(r.status).json({ error: r.error, ...(r.codigo ? { codigo: r.codigo } : {}) });
 
-    const errPass = errorPassword(req.body.password);
-    if (errPass) return res.status(400).json({ error: errPass });
-
-    if (await Cliente.exists({ correo: datos.correo })) {
-        return res.status(409).json({ error: 'Ya existe una cuenta con ese correo. Si ya eres cliente, pide a recepción que active tu acceso.' });
-    }
-
-    const cliente: any = await crearClienteConCodigo({
-        ...datos,
-        password: await bcrypt.hash(req.body.password, 10),
-    } as any);
-    res.status(201).json({ token: firmarToken(String(cliente._id), 0), cliente });
-    void felicitarSiCumple(cliente);
+    res.status(201).json({ token: firmarToken(String(r.cliente._id), 0), cliente: r.cliente });
+    void felicitarSiCumple(r.cliente);
 }));
 
 // POST /login

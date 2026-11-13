@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { DataState } from '../../components/DataState';
 import { Modal } from '../../components/Modal';
 import { InputField, SelectField } from '../../components/FormField';
 import { api } from '../../lib/api';
 import { horariosApi } from './horarios.api';
 import { programacionApi } from './programacion.api';
+import './horarios-ui.css';
 import type {
   HorarioClase,
   EditarExcepcionSesion,
@@ -46,7 +47,10 @@ const EMPTY_CREATE_WEEKLY_FORM: CrearProgramacionSemanal = {
 /* Duracion minima de la sesion, en minutos (la misma regla del backend). */
 const DURACION_MINIMA_MINUTOS = 30;
 const DIAS_SEMANA = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
-const DIAS_SEMANA_CORTOS = ['D', 'L', 'M', 'M', 'J', 'V', 'S'];
+/* En pantalla los días empiezan en lunes (igual que el calendario); el valor sigue siendo 0 = domingo. */
+const ORDEN_DIAS = [1, 2, 3, 4, 5, 6, 0];
+const DIAS_ABREVIADOS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+const SIN_ASIGNAR = 'sin-asignar';
 const DIAS_CALENDARIO = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 type VistaCalendario = 'mes' | 'semana' | 'dia' | 'lista';
@@ -158,37 +162,116 @@ function claseTonoInstructor(entrenadorId?: string): string {
   return tono === null ? 'rx-instructor-tone--unassigned' : `rx-instructor-tone--${tono}`;
 }
 
+interface FiltrosHorario {
+  entrenadores: string[];
+  salon: string;
+  idClase: string;
+}
+
+const FILTROS_VACIOS: FiltrosHorario = { entrenadores: [], salon: '', idClase: '' };
+
+function hayFiltrosActivos(filtros: FiltrosHorario): boolean {
+  return filtros.entrenadores.length > 0 || Boolean(filtros.salon) || Boolean(filtros.idClase);
+}
+
+/* Sirve para sesiones y para reglas semanales: ambas tienen sala, clase e instructor. */
+function coincideConFiltros(item: { entrenadorId?: string; salon: string; idClase: string }, filtros: FiltrosHorario): boolean {
+  if (filtros.salon && item.salon !== filtros.salon) return false;
+  if (filtros.idClase && item.idClase !== filtros.idClase) return false;
+  if (filtros.entrenadores.length > 0 && !filtros.entrenadores.includes(item.entrenadorId || SIN_ASIGNAR)) return false;
+  return true;
+}
+
+/* Reloj que se actualiza cada minuto para dibujar la línea de "ahora" en la semana. */
+function useAhora(): Date {
+  const [ahora, setAhora] = useState(() => new Date());
+  useEffect(() => {
+    const temporizador = window.setInterval(() => setAhora(new Date()), 60_000);
+    return () => window.clearInterval(temporizador);
+  }, []);
+  return ahora;
+}
+
 function MarcaClase({ color }: { color: string }) {
   return <i className="rx-calendar-class-color" style={{ backgroundColor: color }} aria-hidden="true" />;
 }
 
-function LeyendaInstructores({ entrenadores, horarios }: { entrenadores: Usuario[]; horarios: HorarioClase[] }) {
-  const idsEnUso = new Set(horarios.map(horario => horario.entrenadorId).filter(Boolean));
-  const visibles = entrenadores
+function BarraFiltros({ entrenadores, horarios, plantillas, clases, filtros, onChange, conteo }: {
+  entrenadores: Usuario[];
+  horarios: HorarioClase[];
+  plantillas: PlantillaHorario[];
+  clases: Clase[];
+  filtros: FiltrosHorario;
+  onChange: (filtros: FiltrosHorario) => void;
+  conteo: string | null;
+}) {
+  const idsEnUso = new Set([...horarios.map(h => h.entrenadorId), ...plantillas.map(p => p.entrenadorId)].filter(Boolean));
+  const instructores = entrenadores
     .filter(entrenador => entrenador.rol === 'entrenador' && (entrenador.estatus === 'activo' || idsEnUso.has(entrenador.idUsuario)))
     .sort((a, b) => `${a.nombre} ${a.apellidos}`.localeCompare(`${b.nombre} ${b.apellidos}`, 'es'));
-  const haySinAsignar = horarios.some(horario => !horario.entrenadorId);
+  const haySinAsignar = horarios.some(h => !h.entrenadorId) || plantillas.some(p => !p.entrenadorId);
+  const salones = Array.from(new Set([...horarios.map(h => h.salon), ...plantillas.map(p => p.salon)].filter(Boolean)))
+    .sort((a, b) => a.localeCompare(b, 'es'));
+  const clasesOrdenadas = [...clases].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+  const activos = hayFiltrosActivos(filtros);
 
-  if (visibles.length === 0 && !haySinAsignar) return null;
+  if (instructores.length === 0 && !haySinAsignar && salones.length === 0) return null;
+
+  const alternarInstructor = (id: string) => onChange({
+    ...filtros,
+    entrenadores: filtros.entrenadores.includes(id)
+      ? filtros.entrenadores.filter(actual => actual !== id)
+      : [...filtros.entrenadores, id],
+  });
 
   return (
-    <div className="rx-calendar-legend" aria-label="Colores por instructor">
-      <strong>Instructores</strong>
-      <div className="rx-calendar-legend-items">
-        {visibles.map(entrenador => (
-          <span key={entrenador.idUsuario} className="rx-calendar-legend-item">
-            <i className={claseTonoInstructor(entrenador.idUsuario)} aria-hidden="true" />
-            {entrenador.nombre} {entrenador.apellidos}
-          </span>
-        ))}
-        {haySinAsignar && (
-          <span className="rx-calendar-legend-item">
-            <i className="rx-instructor-tone--unassigned" aria-hidden="true" />
-            Sin asignar
-          </span>
-        )}
+    <div className="hz-filters">
+      <div className="hz-filters-row">
+        <div className="hz-chips" role="group" aria-label="Filtrar por instructor">
+          {instructores.map(entrenador => (
+            <button
+              type="button"
+              key={entrenador.idUsuario}
+              className={`rx-calendar-legend-item hz-chip ${claseTonoInstructor(entrenador.idUsuario)}`}
+              aria-pressed={filtros.entrenadores.includes(entrenador.idUsuario)}
+              onClick={() => alternarInstructor(entrenador.idUsuario)}
+            >
+              <i aria-hidden="true" />
+              {entrenador.nombre} {entrenador.apellidos}
+            </button>
+          ))}
+          {haySinAsignar && (
+            <button
+              type="button"
+              className="rx-calendar-legend-item hz-chip rx-instructor-tone--unassigned"
+              aria-pressed={filtros.entrenadores.includes(SIN_ASIGNAR)}
+              onClick={() => alternarInstructor(SIN_ASIGNAR)}
+            >
+              <i aria-hidden="true" />
+              Sin asignar
+            </button>
+          )}
+        </div>
+        <div className="hz-filter-selects">
+          <select className="rx-select hz-select" aria-label="Filtrar por sala" value={filtros.salon}
+            onChange={e => onChange({ ...filtros, salon: e.target.value })}>
+            <option value="">Todas las salas</option>
+            {salones.map(salon => <option key={salon} value={salon}>{salon}</option>)}
+          </select>
+          <select className="rx-select hz-select" aria-label="Filtrar por clase" value={filtros.idClase}
+            onChange={e => onChange({ ...filtros, idClase: e.target.value })}>
+            <option value="">Todas las clases</option>
+            {clasesOrdenadas.map(clase => <option key={clase.idClase} value={clase.idClase}>{clase.nombre}</option>)}
+          </select>
+          {activos && (
+            <button type="button" className="hz-link-btn" onClick={() => onChange(FILTROS_VACIOS)}>Limpiar filtros</button>
+          )}
+        </div>
       </div>
-      <span className="rx-calendar-legend-help"><i aria-hidden="true" /> El punto pequeño corresponde al color de la clase.</span>
+      <div className="hz-filters-foot">
+        <span className="rx-calendar-legend-help"><i aria-hidden="true" /> El punto pequeño es el color de la clase.</span>
+        {activos && conteo && <span className="hz-filters-count" aria-live="polite">{conteo}</span>}
+      </div>
     </div>
   );
 }
@@ -197,9 +280,34 @@ function ocupacionHorario(horario: HorarioClase): number {
   return Math.max(0, horario.capacidadTotal - horario.capacidadDisponible);
 }
 
+function porcentajeOcupacion(horario: HorarioClase): number {
+  if (horario.capacidadTotal <= 0) return 0;
+  return Math.min(100, Math.round((ocupacionHorario(horario) / horario.capacidadTotal) * 100));
+}
+
+function estaLlena(horario: HorarioClase): boolean {
+  return horario.estatus === 'activo' && horario.capacidadTotal > 0 && horario.capacidadDisponible <= 0;
+}
+
+/* Barra de lugares ocupados: neutra, ámbar desde 80 % y roja cuando la sesión se llena. */
+function MedidorOcupacion({ horario, variante }: { horario: HorarioClase; variante: 'evento' | 'tarjeta' | 'lista' }) {
+  const porcentaje = porcentajeOcupacion(horario);
+  const nivel = estaLlena(horario) ? 'full' : porcentaje >= 80 ? 'high' : 'ok';
+  return (
+    <i
+      className={`hz-meter hz-meter--${variante} hz-meter--${nivel}`}
+      role="img"
+      aria-label={`${ocupacionHorario(horario)} de ${horario.capacidadTotal} lugares ocupados`}
+    >
+      <b style={{ width: `${porcentaje}%` }} />
+    </i>
+  );
+}
+
 function IndicadoresSesion({ horario }: { horario: HorarioClase }) {
   return (
     <span className="rx-calendar-indicators">
+      {estaLlena(horario) && <span className="rx-calendar-tag hz-tag--full">Llena</span>}
       {horario.esExcepcionPlantilla && <span className="rx-calendar-tag rx-calendar-tag--exception">Modificada</span>}
       {horario.estatus === 'inactivo' && <span className="rx-calendar-tag rx-calendar-tag--cancelled">Cancelada</span>}
     </span>
@@ -223,6 +331,9 @@ function CalendarioSesiones({ horarios, clases, vista, fechaReferencia, onSelect
   onEdit: (horario: HorarioClase) => void;
 }) {
   const ordenados = [...horarios].sort((a, b) => `${a.fecha}${a.horaInicio}`.localeCompare(`${b.fecha}${b.horaInicio}`));
+  const ahora = useAhora();
+  const hoyISO = fechaAISO(ahora);
+  const minutosAhora = ahora.getHours() * 60 + ahora.getMinutes();
 
   if (vista === 'semana') {
     const inicio = inicioSemana(fechaReferencia);
@@ -230,10 +341,13 @@ function CalendarioSesiones({ horarios, clases, vista, fechaReferencia, onSelect
     const sesiones = ordenados.filter(horario => horario.fecha >= inicio && horario.fecha <= dias[6]);
     const inicios = sesiones.map(sesion => minutosDeHora(sesion.horaInicio)).filter((valor): valor is number => valor !== null);
     const finales = sesiones.map(sesion => minutosDeHora(sesion.horaFin)).filter((valor): valor is number => valor !== null);
-    const horaMinima = Math.max(0, Math.min(6, ...inicios.map(minutos => Math.floor(minutos / 60))));
-    const horaMaxima = Math.min(24, Math.max(22, ...finales.map(minutos => Math.ceil(minutos / 60))));
+    /* El rango se ajusta a las clases de la semana (con 1 h de margen); sin clases usa 7:00–21:00. */
+    const primeraHora = inicios.length ? Math.floor(Math.min(...inicios) / 60) - 1 : 7;
+    const ultimaHora = finales.length ? Math.ceil(Math.max(...finales) / 60) + 1 : 21;
+    const horaMinima = Math.max(0, primeraHora);
+    const horaMaxima = Math.min(24, Math.max(ultimaHora, horaMinima + 4));
     const horas = Array.from({ length: horaMaxima - horaMinima + 1 }, (_, indice) => horaMinima + indice);
-    const altoHora = 72;
+    const altoHora = 60;
 
     return (
       <div className="rx-calendar-week-scroll">
@@ -250,6 +364,9 @@ function CalendarioSesiones({ horarios, clases, vista, fechaReferencia, onSelect
           {dias.map(dia => (
             <div key={dia} className={`rx-calendar-day-track${dia === obtenerFechaLocal() ? ' is-today' : ''}`} style={{ height: `${(horaMaxima - horaMinima) * altoHora}px` }}>
               {horas.slice(0, -1).map(hora => <i key={hora} className="rx-calendar-hour-line" style={{ top: `${(hora - horaMinima) * altoHora}px` }} />)}
+              {dia === hoyISO && minutosAhora >= horaMinima * 60 && minutosAhora <= horaMaxima * 60 && (
+                <i className="hz-now-line" style={{ top: `${((minutosAhora - horaMinima * 60) / 60) * altoHora}px` }} aria-hidden="true" />
+              )}
               {sesiones.filter(sesion => sesion.fecha === dia).map(sesion => {
                 const inicioMinutos = minutosDeHora(sesion.horaInicio) ?? horaMinima * 60;
                 const finMinutos = minutosDeHora(sesion.horaFin) ?? inicioMinutos + 30;
@@ -262,6 +379,7 @@ function CalendarioSesiones({ horarios, clases, vista, fechaReferencia, onSelect
                     {height >= 58 && <span>{sesion.nombreEntrenador}</span>}
                     {height >= 78 && <span>{sesion.salon} · {ocupacionHorario(sesion)}/{sesion.capacidadTotal}</span>}
                     <IndicadoresSesion horario={sesion} />
+                    <MedidorOcupacion horario={sesion} variante="evento" />
                   </button>
                 );
               })}
@@ -316,6 +434,7 @@ function CalendarioSesiones({ horarios, clases, vista, fechaReferencia, onSelect
             <div className="rx-calendar-daily-copy">
               <div className="rx-calendar-title-row"><h4><MarcaClase color={colorClaseHorario(sesion, clases)} />{sesion.nombreClase}</h4><IndicadoresSesion horario={sesion} /></div>
               <p>{sesion.nombreEntrenador} · {sesion.salon}</p>
+              <MedidorOcupacion horario={sesion} variante="tarjeta" />
               <div className="rx-calendar-detail-grid">
                 <span><small>Reservaciones</small><strong>{ocupacionHorario(sesion)} de {sesion.capacidadTotal}</strong></span>
                 <span><small>Disponibles</small><strong>{sesion.capacidadDisponible}</strong></span>
@@ -343,7 +462,7 @@ function CalendarioSesiones({ horarios, clases, vista, fechaReferencia, onSelect
               <i className="rx-calendar-list-color" />
               <div className="rx-calendar-list-time"><strong>{sesion.horaInicio}</strong><span>{sesion.horaFin}</span></div>
               <div className="rx-calendar-list-copy"><strong><MarcaClase color={colorClaseHorario(sesion, clases)} />{sesion.nombreClase}</strong><span>{sesion.nombreEntrenador} · {sesion.salon}</span></div>
-              <span className="rx-calendar-list-capacity">{ocupacionHorario(sesion)}/{sesion.capacidadTotal} lugares</span>
+              <span className="rx-calendar-list-capacity hz-capacity"><MedidorOcupacion horario={sesion} variante="lista" />{ocupacionHorario(sesion)}/{sesion.capacidadTotal} lugares</span>
               <IndicadoresSesion horario={sesion} />
               <BotonEditarSesion horario={sesion} onEdit={onEdit} />
             </article>
@@ -354,81 +473,98 @@ function CalendarioSesiones({ horarios, clases, vista, fechaReferencia, onSelect
   );
 }
 
-function ProgramacionSemanal({ plantillas, clases, onCreate, onEdit }: { plantillas: PlantillaHorario[]; clases: Clase[]; onCreate: () => void; onEdit: (plantilla: PlantillaHorario) => void }) {
-  const plantillasActivas = plantillas.filter(p => p.estatus === 'activo');
-  const salas = Array.from(new Set(plantillasActivas.map(p => p.salon)));
+/* Selector de días compartido por "Programar clase" y "Editar programación". */
+function SelectorDias({ value, onChange, etiqueta }: { value: number[]; onChange: (dias: number[]) => void; etiqueta: string }) {
+  const ordenar = (dias: number[]) => [...dias].sort((a, b) => a - b);
+  const alternar = (dia: number) => onChange(ordenar(value.includes(dia) ? value.filter(actual => actual !== dia) : [...value, dia]));
+  const igual = (dias: number[]) => dias.length === value.length && dias.every(dia => value.includes(dia));
+  const ENTRE_SEMANA = [1, 2, 3, 4, 5];
+  const TODOS = [0, 1, 2, 3, 4, 5, 6];
 
   return (
-    <section className="rx-admin-card rx-weekly-card">
-      <div className="rx-section-heading">
-        <div>
-          <h3>Semana fija</h3>
-          <p>
-            Estas reglas se repiten cada semana y generan automáticamente las sesiones fechadas.
-          </p>
-        </div>
-        <div className="rx-section-heading-actions">
-          <span className="rx-badge rx-badge--neutral">
-            {plantillasActivas.length} reglas activas
-          </span>
-          <button type="button" onClick={onCreate} className="rx-btn rx-btn--accent">
-            <span aria-hidden="true">+</span>
-            Programar clase
+    <div>
+      <div className="rx-day-picker" role="group" aria-label={etiqueta}>
+        {ORDEN_DIAS.map(dia => (
+          <button key={dia} type="button" className="rx-day-button" aria-pressed={value.includes(dia)}
+            aria-label={DIAS_SEMANA[dia]} title={DIAS_SEMANA[dia]} onClick={() => alternar(dia)}>
+            {DIAS_ABREVIADOS[dia]}
           </button>
-        </div>
-      </div>
-
-      {plantillasActivas.length === 0 ? (
-        <div className="rx-empty-state">
-          <p>Aún no hay reglas semanales.</p>
-          <small>Programa una clase para generar sus próximas sesiones automáticamente.</small>
-        </div>
-      ) : <div className="rx-weekly-rooms">
-        {salas.map(salon => (
-          <div key={salon} className="rx-weekly-room">
-            <h4>{salon}</h4>
-            <div className="rx-weekly-grid">
-              {DIAS_SEMANA.map((dia, diaSemana) => {
-                const reglasDia = plantillasActivas
-                  .filter(p => p.salon === salon && p.diaSemana === diaSemana)
-                  .sort((a, b) => a.horaInicio.localeCompare(b.horaInicio));
-                return (
-                  <div key={`${salon}-${dia}`} className="rx-weekly-day">
-                    <p className="rx-weekly-day-title">{dia}</p>
-                    <div className="rx-weekly-day-list">
-                      {reglasDia.length === 0 && <p className="rx-weekly-empty">Sin sesiones</p>}
-                      {reglasDia.map(regla => {
-                        const clase = clases.find(c => c.idClase === regla.idClase);
-                        return (
-                          <div key={regla.idPlantilla} className={`rx-schedule-rule ${claseTonoInstructor(regla.entrenadorId)}`}>
-                            <div className="rx-schedule-rule-content">
-                              <div>
-                                <div className="rx-schedule-rule-title">
-                                  <MarcaClase color={clase?.color ?? '#9298a3'} />
-                                  <span>{regla.nombreClase}</span>
-                                </div>
-                                <p>{regla.horaInicio}–{regla.horaFin}</p>
-                                <p>{regla.nombreEntrenador}</p>
-                              </div>
-                              <button type="button" onClick={() => onEdit(regla)} title="Editar horario semanal"
-                                className="rx-icon-btn" aria-label={`Editar programación de ${regla.nombreClase}`}>
-                                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
         ))}
-      </div>}
-      <p className="rx-inline-note rx-inline-note--warning">
-        Los cambios se aplican a las sesiones libres. Las sesiones que ya tienen reservaciones conservan sus datos anteriores.
+      </div>
+      <div className="hz-day-presets">
+        <button type="button" className="hz-link-btn" aria-pressed={igual(ENTRE_SEMANA)} onClick={() => onChange(ENTRE_SEMANA)}>Lunes a viernes</button>
+        <button type="button" className="hz-link-btn" aria-pressed={igual(TODOS)} onClick={() => onChange(TODOS)}>Todos los días</button>
+        <button type="button" className="hz-link-btn" disabled={value.length === 0} onClick={() => onChange([])}>Quitar todos</button>
+      </div>
+      <p className="rx-help-text">
+        {value.length > 0
+          ? ORDEN_DIAS.filter(dia => value.includes(dia)).map(dia => DIAS_SEMANA[dia]).join(', ')
+          : 'Selecciona uno o varios días.'}
       </p>
+    </div>
+  );
+}
+
+/*
+ * Tablero de la semana fija: un solo tablero con los días en columnas (lunes primero).
+ * La sala aparece en cada regla, así no hay que recorrer un tablero por sala.
+ */
+function ProgramacionSemanal({ plantillas, clases, hayFiltros, onCreate, onEdit, onLimpiarFiltros }: {
+  plantillas: PlantillaHorario[];
+  clases: Clase[];
+  hayFiltros: boolean;
+  onCreate: () => void;
+  onEdit: (plantilla: PlantillaHorario) => void;
+  onLimpiarFiltros: () => void;
+}) {
+  const reglas = plantillas.filter(p => p.estatus === 'activo');
+
+  return (
+    <section aria-label="Programación semanal">
+      <p className="hz-board-note">
+        Cada regla se repite todas las semanas y crea sus sesiones automáticamente. Al editar una regla, las sesiones que ya tienen reservaciones no cambian.
+      </p>
+
+      {reglas.length === 0 ? (
+        <div className="hz-empty">
+          <strong>{hayFiltros ? 'Ninguna regla coincide con los filtros' : 'Todavía no hay clases programadas cada semana'}</strong>
+          <p>{hayFiltros ? 'Prueba con otro instructor, sala o clase.' : 'Programa una clase y sus sesiones se crearán solas para las próximas semanas.'}</p>
+          {hayFiltros
+            ? <button type="button" className="rx-btn rx-btn--outline" onClick={onLimpiarFiltros}>Limpiar filtros</button>
+            : <button type="button" className="rx-btn rx-btn--accent" onClick={onCreate}>Programar clase</button>}
+        </div>
+      ) : (
+        <div className="hz-board-scroll">
+          <div className="hz-board-grid">
+            {ORDEN_DIAS.map(dia => {
+              const delDia = reglas.filter(p => p.diaSemana === dia).sort((a, b) => a.horaInicio.localeCompare(b.horaInicio));
+              return (
+                <div key={dia} className="hz-board-day">
+                  <h4>{DIAS_SEMANA[dia]}<span>{delDia.length}</span></h4>
+                  {delDia.length === 0 && <p className="hz-board-empty">Sin clases</p>}
+                  {delDia.map(regla => {
+                    const clase = clases.find(c => c.idClase === regla.idClase);
+                    return (
+                      <button
+                        type="button"
+                        key={regla.idPlantilla}
+                        className={`hz-rule ${claseTonoInstructor(regla.entrenadorId)}`}
+                        onClick={() => onEdit(regla)}
+                        aria-label={`Editar programación de ${regla.nombreClase}, ${DIAS_SEMANA[dia]} de ${regla.horaInicio} a ${regla.horaFin}`}
+                      >
+                        <strong className="hz-rule-time">{regla.horaInicio}–{regla.horaFin}</strong>
+                        <span className="hz-rule-name"><MarcaClase color={clase?.color ?? '#9298a3'} />{regla.nombreClase}</span>
+                        <span className="hz-rule-meta">{regla.nombreEntrenador || 'Sin instructor'}</span>
+                        <span className="hz-rule-room">{regla.salon}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </section>
   );
 }
@@ -457,6 +593,8 @@ export function HorariosPage() {
   const [exceptionError, setExceptionError] = useState<string | null>(null);
   const [calendarView, setCalendarView] = useState<VistaCalendario>('semana');
   const [calendarDate, setCalendarDate] = useState(obtenerFechaLocal);
+  const [vistaPagina, setVistaPagina] = useState<'calendario' | 'semana'>('calendario');
+  const [filtros, setFiltros] = useState<FiltrosHorario>(FILTROS_VACIOS);
   const [weeklyModal, setWeeklyModal] = useState<{ open: boolean; editing?: PlantillaHorario }>({ open: false });
   const [weeklyForm, setWeeklyForm] = useState(EMPTY_WEEKLY_FORM);
   const [weeklyView, setWeeklyView] = useState<'actions' | 'edit' | 'deactivate' | 'delete'>('actions');
@@ -492,6 +630,29 @@ export function HorariosPage() {
 
   useEffect(() => { void cargar(); }, [cargar]);
 
+  const filtrosActivos = hayFiltrosActivos(filtros);
+  const horariosVisibles = useMemo(() => horarios.filter(h => coincideConFiltros(h, filtros)), [horarios, filtros]);
+  const reglasActivas = useMemo(() => plantillas.filter(p => p.estatus === 'activo'), [plantillas]);
+  const reglasVisibles = useMemo(() => reglasActivas.filter(p => coincideConFiltros(p, filtros)), [reglasActivas, filtros]);
+
+  /* Resumen en lenguaje natural para el encabezado: lo que importa hoy y esta semana. */
+  const resumen = useMemo(() => {
+    const hoy = obtenerFechaLocal();
+    const inicio = inicioSemana(hoy);
+    const fin = sumarDiasLocal(inicio, 6);
+    const activas = horarios.filter(h => h.estatus === 'activo');
+    const deHoy = activas.filter(h => h.fecha === hoy);
+    return {
+      hoy: deHoy.length,
+      llenasHoy: deHoy.filter(estaLlena).length,
+      semana: activas.filter(h => h.fecha >= inicio && h.fecha <= fin).length,
+    };
+  }, [horarios]);
+
+  const conteoFiltros = vistaPagina === 'calendario'
+    ? `Mostrando ${horariosVisibles.length} de ${horarios.length} ${horarios.length === 1 ? 'sesión' : 'sesiones'}`
+    : `Mostrando ${reglasVisibles.length} de ${reglasActivas.length} ${reglasActivas.length === 1 ? 'regla' : 'reglas'}`;
+
   const claseOptions = clases.filter(c => c.estatus === 'activo').map(c => ({ value: c.idClase, label: c.nombre }));
   const entrenadorOptions = entrenadores.map(u => ({ value: u.idUsuario, label: `${u.nombre} ${u.apellidos}` }));
 
@@ -526,15 +687,6 @@ export function HorariosPage() {
     setCreateWeeklyError(null);
     setCreateWeeklyResult(null);
     setCreateWeeklyModal(true);
-  };
-
-  const toggleCreateWeeklyDay = (diaSemana: number) => {
-    setCreateWeeklyForm(actual => ({
-      ...actual,
-      diasSemana: actual.diasSemana.includes(diaSemana)
-        ? actual.diasSemana.filter(dia => dia !== diaSemana)
-        : [...actual.diasSemana, diaSemana].sort((a, b) => a - b),
-    }));
   };
 
   const saveCreateWeekly = async () => {
@@ -741,15 +893,6 @@ export function HorariosPage() {
     }
   };
 
-  const toggleWeeklyDay = (diaSemana: number) => {
-    setWeeklyForm(actual => ({
-      ...actual,
-      diasSemana: actual.diasSemana.includes(diaSemana)
-        ? actual.diasSemana.filter(dia => dia !== diaSemana)
-        : [...actual.diasSemana, diaSemana].sort((a, b) => a - b),
-    }));
-  };
-
   const applyWeeklyAction = async (action: 'deactivate' | 'delete') => {
     const plantilla = weeklyModal.editing;
     if (!plantilla) return;
@@ -830,45 +973,79 @@ export function HorariosPage() {
   };
 
   return (
-    <div className="rx-admin-page rx-schedule-page">
-      <div className="rx-page-heading">
-        <div>
-          <span className="rx-page-kicker">Agenda operativa</span>
-          <h2>Horarios de clases</h2>
-          <p>{horarios.length} horarios programados</p>
+    <div className="rx-admin-page rx-schedule-page hz-page">
+      <div className="hz-head">
+        <div className="rx-calendar-view-switch hz-modes" role="tablist" aria-label="Vista de horarios">
+          <button type="button" role="tab" aria-selected={vistaPagina === 'calendario'} onClick={() => setVistaPagina('calendario')}>
+            Calendario
+          </button>
+          <button type="button" role="tab" aria-selected={vistaPagina === 'semana'} onClick={() => setVistaPagina('semana')}>
+            Semana fija
+            {!loading && <span className="hz-count">{reglasActivas.length}</span>}
+          </button>
         </div>
+
+        {!loading && !error && (
+          <p className="hz-today" aria-live="polite">
+            {resumen.hoy === 0
+              ? 'Hoy no hay clases.'
+              : <><strong>{resumen.hoy}</strong> {resumen.hoy === 1 ? 'clase' : 'clases'} hoy{resumen.llenasHoy > 0 && <>, <strong>{resumen.llenasHoy}</strong> {resumen.llenasHoy === 1 ? 'llena' : 'llenas'}</>}.</>}
+            {' '}<strong>{resumen.semana}</strong> en la semana.
+          </p>
+        )}
+
         <div className="rx-page-actions">
-          <button onClick={openNew} className="rx-btn rx-btn--accent">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-            Agregar sesión manual
+          <button type="button" onClick={openNew} className="rx-btn rx-btn--outline">Sesión única</button>
+          <button type="button" onClick={openCreateWeekly} className="rx-btn rx-btn--accent">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+            Programar clase
           </button>
         </div>
       </div>
 
-      <ProgramacionSemanal plantillas={plantillas} clases={clases} onCreate={openCreateWeekly} onEdit={openWeeklyEdit} />
+      {!loading && !error && (
+        <BarraFiltros entrenadores={entrenadores} horarios={horarios} plantillas={reglasActivas} clases={clases}
+          filtros={filtros} onChange={setFiltros} conteo={conteoFiltros} />
+      )}
 
-      <section className="rx-calendar-card">
-        <div className="rx-calendar-toolbar">
-          <div className="rx-calendar-navigation" aria-label="Navegación del calendario">
-            <button type="button" onClick={() => moveCalendar(-1)} aria-label="Periodo anterior">‹</button>
-            <button type="button" className="rx-calendar-today" onClick={() => setCalendarDate(obtenerFechaLocal())}>Hoy</button>
-            <button type="button" onClick={() => moveCalendar(1)} aria-label="Periodo siguiente">›</button>
+      {vistaPagina === 'calendario' ? (
+        <section className="rx-calendar-card">
+          <div className="rx-calendar-toolbar">
+            <div className="rx-calendar-navigation" aria-label="Navegación del calendario">
+              <button type="button" onClick={() => moveCalendar(-1)} aria-label="Periodo anterior">‹</button>
+              <button type="button" className="rx-calendar-today" onClick={() => setCalendarDate(obtenerFechaLocal())}>Hoy</button>
+              <button type="button" onClick={() => moveCalendar(1)} aria-label="Periodo siguiente">›</button>
+            </div>
+            <h3>{tituloPeriodo(calendarView, calendarDate)}</h3>
+            <div className="rx-calendar-view-switch" role="tablist" aria-label="Vista del calendario">
+              {(['mes', 'semana', 'dia', 'lista'] as VistaCalendario[]).map(vista => (
+                <button type="button" role="tab" aria-selected={calendarView === vista} key={vista} onClick={() => setCalendarView(vista)}>
+                  {vista === 'dia' ? 'Día' : vista[0].toUpperCase() + vista.slice(1)}
+                </button>
+              ))}
+            </div>
           </div>
-          <h3>{tituloPeriodo(calendarView, calendarDate)}</h3>
-          <div className="rx-calendar-view-switch" role="tablist" aria-label="Vista del calendario">
-            {(['mes', 'semana', 'dia', 'lista'] as VistaCalendario[]).map(vista => (
-              <button type="button" role="tab" aria-selected={calendarView === vista} key={vista} onClick={() => setCalendarView(vista)}>
-                {vista === 'dia' ? 'Día' : vista[0].toUpperCase() + vista.slice(1)}
-              </button>
-            ))}
-          </div>
-        </div>
-        <LeyendaInstructores entrenadores={entrenadores} horarios={horarios} />
-        <DataState loading={loading} error={error} empty={false} onRetry={() => void cargar()}>
-          <CalendarioSesiones horarios={horarios} clases={clases} vista={calendarView} fechaReferencia={calendarDate}
-            onSelectDay={selectCalendarDay} onEdit={openSessionEdit} />
-        </DataState>
-      </section>
+          <DataState loading={loading} error={error} empty={false} onRetry={() => void cargar()}>
+            {filtrosActivos && horariosVisibles.length === 0 ? (
+              <div className="hz-empty">
+                <strong>Ninguna sesión coincide con los filtros</strong>
+                <p>Prueba con otro instructor, sala o clase.</p>
+                <button type="button" className="rx-btn rx-btn--outline" onClick={() => setFiltros(FILTROS_VACIOS)}>Limpiar filtros</button>
+              </div>
+            ) : (
+              <CalendarioSesiones horarios={horariosVisibles} clases={clases} vista={calendarView} fechaReferencia={calendarDate}
+                onSelectDay={selectCalendarDay} onEdit={openSessionEdit} />
+            )}
+          </DataState>
+        </section>
+      ) : (
+        <section className="rx-admin-card hz-board-card">
+          <DataState loading={loading} error={error} empty={false} onRetry={() => void cargar()}>
+            <ProgramacionSemanal plantillas={reglasVisibles} clases={clases} hayFiltros={filtrosActivos}
+              onCreate={openCreateWeekly} onEdit={openWeeklyEdit} onLimpiarFiltros={() => setFiltros(FILTROS_VACIOS)} />
+          </DataState>
+        </section>
+      )}
 
       <Modal open={createWeeklyModal} onClose={() => !createWeeklySaving && setCreateWeeklyModal(false)} title="Programar clase" size="lg">
         <div className="rx-schedule-form">
@@ -938,36 +1115,14 @@ export function HorariosPage() {
               <strong>{createWeeklyDuration === null ? 'Selecciona un horario válido' : `${createWeeklyDuration} minutos`}</strong>
             </div>
 
-            <div className="rx-repeat-status rx-schedule-span-2">
-              <div>
-                <strong>Repetir semanalmente</strong>
-                <p>Esta programación creará una regla para cada día seleccionado.</p>
-              </div>
-              <span className="rx-badge rx-badge--accent">Activado</span>
-            </div>
-
             <fieldset className="rx-schedule-span-2">
               <legend className="rx-label">Se repite los *</legend>
-              <div className="rx-day-picker">
-                {DIAS_SEMANA.map((dia, index) => {
-                  const selected = createWeeklyForm.diasSemana.includes(index);
-                  return (
-                    <button key={dia} type="button" className="rx-day-button" aria-label={dia} aria-pressed={selected}
-                      title={dia} onClick={() => toggleCreateWeeklyDay(index)}>
-                      {DIAS_SEMANA_CORTOS[index]}
-                    </button>
-                  );
-                })}
-              </div>
-              <p className="rx-help-text">
-                {createWeeklyForm.diasSemana.length > 0
-                  ? createWeeklyForm.diasSemana.map(dia => DIAS_SEMANA[dia]).join(', ')
-                  : 'Selecciona uno o varios días.'}
-              </p>
+              <SelectorDias value={createWeeklyForm.diasSemana} etiqueta="Días en que se repite la clase"
+                onChange={dias => setCreateWeeklyForm(actual => ({ ...actual, diasSemana: dias }))} />
             </fieldset>
 
             <label className="rx-field rx-schedule-span-2">
-              <span className="rx-label">Termina el — opcional</span>
+              <span className="rx-label">Termina el (opcional)</span>
               <input className="rx-input" type="date" min={createWeeklyForm.fechaInicio || obtenerFechaLocal()}
                 value={createWeeklyForm.fechaFin ?? ''}
                 onChange={e => setCreateWeeklyForm(actual => ({ ...actual, fechaFin: e.target.value }))} />
@@ -1004,12 +1159,18 @@ export function HorariosPage() {
           {createWeeklyError && <p className="rx-schedule-message rx-schedule-message--error" role="alert">{createWeeklyError}</p>}
           {createWeeklyResult && <p className="rx-schedule-message rx-schedule-message--success" role="status">{createWeeklyResult}</p>}
           <div className="rx-schedule-actions">
-            <button type="button" onClick={() => setCreateWeeklyModal(false)} disabled={createWeeklySaving} className="rx-btn rx-btn--outline">
-              Cancelar
-            </button>
-            <button type="button" onClick={() => void saveCreateWeekly()} disabled={createWeeklySaving || Boolean(createWeeklyResult)} className="rx-btn rx-btn--accent">
-              {createWeeklySaving ? 'Programando...' : createWeeklyResult ? 'Programación creada' : 'Programar clase'}
-            </button>
+            {createWeeklyResult ? (
+              <button type="button" onClick={() => setCreateWeeklyModal(false)} className="rx-btn rx-btn--accent">Listo</button>
+            ) : (
+              <>
+                <button type="button" onClick={() => setCreateWeeklyModal(false)} disabled={createWeeklySaving} className="rx-btn rx-btn--outline">
+                  Cancelar
+                </button>
+                <button type="button" onClick={() => void saveCreateWeekly()} disabled={createWeeklySaving} className="rx-btn rx-btn--accent">
+                  {createWeeklySaving ? 'Programando...' : 'Programar clase'}
+                </button>
+              </>
+            )}
           </div>
         </div>
       </Modal>
@@ -1065,16 +1226,8 @@ export function HorariosPage() {
                 onChange={e => setWeeklyForm(f => ({ ...f, horaFin: e.target.value }))} />
               <fieldset className="rx-schedule-span-2">
                 <legend className="rx-label">Días de la semana <span className="rx-required-mark">*</span></legend>
-                <div className="rx-day-picker" role="group" aria-label="Días de la programación semanal">
-                  {DIAS_SEMANA.map((dia, index) => {
-                    const selected = weeklyForm.diasSemana.includes(index);
-                    return <button key={dia} type="button" aria-pressed={selected} aria-label={dia}
-                      onClick={() => toggleWeeklyDay(index)} className="rx-day-button">{DIAS_SEMANA_CORTOS[index]}</button>;
-                  })}
-                </div>
-                <p className="rx-help-text">
-                  {weeklyForm.diasSemana.length ? weeklyForm.diasSemana.map(dia => DIAS_SEMANA[dia]).join(', ') : 'Selecciona al menos un día.'}
-                </p>
+                <SelectorDias value={weeklyForm.diasSemana} etiqueta="Días de la programación semanal"
+                  onChange={dias => setWeeklyForm(f => ({ ...f, diasSemana: dias }))} />
               </fieldset>
               <InputField label="Aplicar cambios desde" required type="date" min={obtenerFechaLocal()} value={weeklyForm.aplicarDesde}
                 onChange={e => setWeeklyForm(f => ({ ...f, aplicarDesde: e.target.value }))} className="rx-schedule-span-2" />
@@ -1240,14 +1393,14 @@ export function HorariosPage() {
                 onClick={() => setForm(f => ({ ...f, listaEsperaHabilitada: !f.listaEsperaHabilitada }))}><span /></button>
             </div>
           </section>
-        {formError && <p className="rx-schedule-message rx-schedule-message--error">{formError}</p>}
-        <div className="rx-schedule-actions">
-          <button onClick={() => setModal({ open: false })} disabled={saving} className="rx-btn rx-btn--outline">Cancelar</button>
-          <button onClick={() => void save()} disabled={saving} className="rx-btn rx-btn--dark">
-            {saving && <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" /></svg>}
-            {saving ? 'Guardando...' : modal.editing ? 'Guardar cambios' : 'Crear horario'}
-          </button>
-        </div>
+          {formError && <p className="rx-schedule-message rx-schedule-message--error">{formError}</p>}
+          <div className="rx-schedule-actions">
+            <button onClick={() => setModal({ open: false })} disabled={saving} className="rx-btn rx-btn--outline">Cancelar</button>
+            <button onClick={() => void save()} disabled={saving} className="rx-btn rx-btn--dark">
+              {saving && <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" /></svg>}
+              {saving ? 'Guardando...' : modal.editing ? 'Guardar cambios' : 'Crear horario'}
+            </button>
+          </div>
         </div>
       </Modal>
     </div>

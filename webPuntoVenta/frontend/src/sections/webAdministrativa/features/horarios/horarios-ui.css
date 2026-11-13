@@ -1,0 +1,928 @@
+/*
+ * Estilos de la agenda de horarios (HorariosPage).
+ * Solo clases nuevas con prefijo hz-; el calendario, los modales y los botones
+ * siguen usando las clases rx-* de pos-ui.css y sus mismos tokens de color.
+ * La sección "Calendario moderno" al final reestiliza el calendario (rx-calendar-*)
+ * solo dentro de .hz-page, sin tocar pos-ui.css ni el JSX.
+ */
+@layer components {
+    .hz-page {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+    }
+
+    /* ---- Encabezado: vista, resumen del día y acciones ---- */
+    .hz-head {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 12px 20px;
+    }
+
+    .hz-head .rx-page-actions {
+        margin-left: auto;
+    }
+
+    .hz-modes button {
+        gap: 8px;
+    }
+
+    .hz-count {
+        min-width: 20px;
+        padding: 1px 6px;
+        color: var(--rx-ink-secondary);
+        background: var(--rx-surface-soft);
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 800;
+        line-height: 1.5;
+    }
+
+    .hz-modes button[aria-selected="true"] .hz-count {
+        color: var(--rx-ink);
+        background: var(--rx-accent);
+    }
+
+    .hz-today {
+        margin: 0;
+        color: var(--rx-ink-secondary);
+        font-size: 13px;
+    }
+
+    .hz-today strong {
+        color: var(--rx-ink);
+        font-weight: 800;
+    }
+
+    /* ---- Filtros: instructores como botones de alternar, más sala y clase ---- */
+    .hz-filters {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 12px 14px;
+        background: var(--rx-surface);
+        border: 1px solid var(--rx-line);
+        border-radius: var(--rx-radius-large);
+    }
+
+    .hz-filters-row {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 10px 16px;
+    }
+
+    .hz-chips {
+        min-width: 0;
+        display: flex;
+        flex: 1 1 320px;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .hz-filters .hz-chip {
+        min-height: 32px;
+        padding: 5px 12px;
+        font-family: inherit;
+        font-size: 12px;
+        cursor: pointer;
+    }
+
+    .hz-filters .hz-chip:hover {
+        color: var(--rx-ink);
+        border-color: var(--rx-line-strong);
+    }
+
+    .hz-filters .hz-chip[aria-pressed="true"] {
+        color: var(--rx-ink);
+        background: var(--instructor-bg);
+        border-color: var(--instructor-accent);
+    }
+
+    .hz-filters .hz-chip:focus-visible,
+    .hz-link-btn:focus-visible,
+    .hz-rule:focus-visible {
+        outline: 3px solid rgba(22, 24, 29, 0.2);
+        outline-offset: 2px;
+    }
+
+    .hz-filter-selects {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .hz-filters .hz-select {
+        width: auto;
+        min-width: 150px;
+        min-height: 34px;
+        padding: 6px 12px;
+        font-size: 12px;
+    }
+
+    .hz-filters-foot {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 4px 16px;
+    }
+
+    .hz-filters-count {
+        color: var(--rx-ink-secondary);
+        font-size: 12px;
+        font-weight: 700;
+    }
+
+    .hz-link-btn {
+        padding: 6px 4px;
+        color: var(--rx-ink-secondary);
+        background: none;
+        border: 0;
+        border-radius: 6px;
+        font: inherit;
+        font-size: 12px;
+        font-weight: 700;
+        text-decoration: underline;
+        text-underline-offset: 3px;
+        cursor: pointer;
+    }
+
+    .hz-link-btn:hover:not(:disabled) {
+        color: var(--rx-ink);
+    }
+
+    .hz-link-btn[aria-pressed="true"] {
+        color: var(--rx-ink);
+        text-decoration-color: var(--rx-ink);
+    }
+
+    .hz-link-btn:disabled {
+        opacity: 0.4;
+        cursor: default;
+    }
+
+    .hz-day-presets {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 2px 14px;
+        margin-top: 2px;
+    }
+
+    /* ---- Ocupación: barra de lugares ocupados ---- */
+    .hz-meter {
+        display: block;
+        position: relative;
+        width: 100%;
+        height: 5px;
+        overflow: hidden;
+        background: color-mix(in srgb, var(--rx-ink) 10%, transparent);
+        border-radius: 999px;
+    }
+
+    .hz-meter>b {
+        display: block;
+        height: 100%;
+        background: var(--instructor-accent, var(--rx-ink-secondary));
+        border-radius: inherit;
+    }
+
+    .hz-meter--high>b {
+        background: var(--rx-warning);
+    }
+
+    .hz-meter--full>b {
+        background: var(--rx-danger);
+    }
+
+    .hz-meter--evento {
+        position: absolute;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        height: 4px;
+        border-radius: 0;
+        background: color-mix(in srgb, var(--rx-ink) 8%, transparent);
+    }
+
+    .hz-meter--tarjeta {
+        width: min(260px, 100%);
+        height: 6px;
+        margin: 8px 0 2px;
+    }
+
+    .hz-meter--lista {
+        width: 56px;
+        height: 5px;
+        flex-shrink: 0;
+    }
+
+    .hz-capacity {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .hz-tag--full {
+        color: #fff;
+        background: var(--rx-dark);
+    }
+
+    /* ---- Línea de "ahora" en la vista de semana ---- */
+    .hz-now-line {
+        position: absolute;
+        right: 0;
+        left: 0;
+        z-index: 4;
+        height: 0;
+        display: block;
+        border-top: 2px solid var(--rx-danger);
+        pointer-events: none;
+    }
+
+    .hz-now-line::before {
+        content: "";
+        position: absolute;
+        top: -5px;
+        left: -4px;
+        width: 8px;
+        height: 8px;
+        background: var(--rx-danger);
+        border-radius: 50%;
+    }
+
+    /* ---- Semana fija: un tablero con los días en columnas ---- */
+    .hz-board-card {
+        padding: 18px;
+    }
+
+    .hz-board-note {
+        max-width: 70ch;
+        margin: 0 0 14px;
+        color: var(--rx-ink-secondary);
+        font-size: 13px;
+        line-height: 1.5;
+    }
+
+    .hz-board-scroll {
+        overflow-x: auto;
+    }
+
+    .hz-board-grid {
+        min-width: 1000px;
+        display: grid;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+        gap: 10px;
+    }
+
+    .hz-board-day {
+        min-height: 140px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 10px;
+        background: var(--rx-surface-soft);
+        border: 1px solid var(--rx-line);
+        border-radius: var(--rx-radius-medium);
+    }
+
+    .hz-board-day>h4 {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin: 0;
+        color: var(--rx-ink);
+        font-size: 13px;
+        font-weight: 800;
+    }
+
+    .hz-board-day>h4 span {
+        color: var(--rx-ink-muted);
+        font-size: 11px;
+        font-weight: 700;
+    }
+
+    .hz-board-empty {
+        margin: 0;
+        color: var(--rx-ink-muted);
+        font-size: 12px;
+    }
+
+    .hz-rule {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        padding: 8px 10px;
+        color: var(--rx-ink);
+        text-align: left;
+        font: inherit;
+        background: var(--instructor-bg);
+        border: 1px solid color-mix(in srgb, var(--instructor-accent) 24%, var(--rx-line));
+        border-left: 4px solid var(--instructor-accent);
+        border-radius: 9px;
+        cursor: pointer;
+    }
+
+    .hz-rule:hover {
+        box-shadow: 0 4px 12px rgba(22, 24, 29, 0.1);
+    }
+
+    .hz-rule-time {
+        font-size: 12px;
+        font-weight: 800;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .hz-rule-name {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        font-weight: 700;
+    }
+
+    .hz-rule-meta {
+        color: var(--rx-ink-secondary);
+        font-size: 11px;
+    }
+
+    .hz-rule-room {
+        align-self: flex-start;
+        margin-top: 4px;
+        padding: 1px 8px;
+        color: var(--rx-ink-secondary);
+        background: rgba(255, 255, 255, 0.72);
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 700;
+    }
+
+    /* ---- Estados vacíos ---- */
+    .hz-empty {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+        padding: 56px 24px;
+        text-align: center;
+    }
+
+    .hz-empty strong {
+        color: var(--rx-ink);
+        font-family: var(--rx-font);
+        font-size: 15px;
+        font-weight: 800;
+    }
+
+    .hz-empty p {
+        max-width: 46ch;
+        margin: 0;
+        color: var(--rx-ink-secondary);
+        font-size: 13px;
+        line-height: 1.5;
+    }
+
+    /* ==========================================================================
+       Calendario moderno (tarjetas, esquinas redondeadas, sombras suaves)
+       Todo va con prefijo .hz-page para ganarle a pos-ui.css sin editarlo.
+       ========================================================================== */
+
+    /* ---- Tarjeta contenedora ---- */
+    .hz-page .rx-calendar-card {
+        overflow: hidden;
+        background: var(--rx-surface);
+        border: 1px solid var(--rx-line);
+        border-radius: 22px;
+        box-shadow: 0 1px 2px rgba(22, 24, 29, 0.04), 0 16px 36px -18px rgba(22, 24, 29, 0.16);
+    }
+
+    /* ---- Barra superior: navegación, título y selector de vista ---- */
+    .hz-page .rx-calendar-toolbar {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 12px 18px;
+        padding-bottom: 14px;
+        margin-bottom: 16px;
+        border-bottom: 1px solid var(--rx-line);
+    }
+
+    .hz-page .rx-calendar-toolbar h3 {
+        margin: 0;
+        color: var(--rx-ink);
+        font-size: 18px;
+        font-weight: 800;
+        letter-spacing: -0.01em;
+    }
+
+    .hz-page .rx-calendar-toolbar h3::first-letter {
+        text-transform: uppercase;
+    }
+
+    .hz-page .rx-calendar-navigation {
+        display: inline-flex;
+        align-items: center;
+        gap: 2px;
+        padding: 3px;
+        background: var(--rx-surface-soft);
+        border: 1px solid var(--rx-line);
+        border-radius: 999px;
+    }
+
+    .hz-page .rx-calendar-navigation button {
+        min-width: 32px;
+        height: 32px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 10px;
+        color: var(--rx-ink-secondary);
+        background: transparent;
+        border: 0;
+        border-radius: 999px;
+        font: inherit;
+        font-size: 18px;
+        line-height: 1;
+        cursor: pointer;
+        transition: background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .hz-page .rx-calendar-navigation button:hover {
+        color: var(--rx-ink);
+        background: var(--rx-surface);
+        box-shadow: 0 1px 3px rgba(22, 24, 29, 0.12);
+    }
+
+    .hz-page .rx-calendar-navigation .rx-calendar-today {
+        color: var(--rx-ink);
+        font-size: 12px;
+        font-weight: 800;
+    }
+
+    .hz-page .rx-calendar-toolbar .rx-calendar-view-switch {
+        margin-left: auto;
+        display: inline-flex;
+        gap: 2px;
+        padding: 3px;
+        background: var(--rx-surface-soft);
+        border: 1px solid var(--rx-line);
+        border-radius: 999px;
+    }
+
+    .hz-page .rx-calendar-toolbar .rx-calendar-view-switch button {
+        padding: 6px 14px;
+        color: var(--rx-ink-secondary);
+        background: transparent;
+        border: 0;
+        border-radius: 999px;
+        font: inherit;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .hz-page .rx-calendar-toolbar .rx-calendar-view-switch button:hover {
+        color: var(--rx-ink);
+    }
+
+    .hz-page .rx-calendar-toolbar .rx-calendar-view-switch button[aria-selected="true"] {
+        color: var(--rx-ink);
+        background: var(--rx-surface);
+        box-shadow: 0 1px 3px rgba(22, 24, 29, 0.16);
+    }
+
+    .hz-page .rx-calendar-navigation button:focus-visible,
+    .hz-page .rx-calendar-toolbar .rx-calendar-view-switch button:focus-visible,
+    .hz-page .rx-calendar-event:focus-visible,
+    .hz-page .rx-calendar-week-head:focus-visible,
+    .hz-page .rx-calendar-month-day:focus-visible {
+        outline: 3px solid rgba(22, 24, 29, 0.2);
+        outline-offset: 2px;
+    }
+
+    /* ---- Etiquetas (Llena / Modificada / Cancelada) ---- */
+    .hz-page .rx-calendar-tag {
+        padding: 1px 8px;
+        border-radius: 999px;
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 0.02em;
+    }
+
+    /* ---- Vista semana ---- */
+    .hz-page .rx-calendar-week-scroll {
+        border-radius: 16px;
+    }
+
+    .hz-page .rx-calendar-week-head {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 2px;
+        padding: 8px 4px;
+        color: var(--rx-ink-secondary);
+        background: transparent;
+        border: 0;
+        border-radius: 14px;
+        font: inherit;
+        cursor: pointer;
+        transition: background-color 0.15s ease;
+    }
+
+    .hz-page .rx-calendar-week-head:hover {
+        background: var(--rx-surface-soft);
+    }
+
+    .hz-page .rx-calendar-week-head span {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+    }
+
+    .hz-page .rx-calendar-week-head strong {
+        color: var(--rx-ink);
+        font-size: 20px;
+        font-weight: 800;
+        line-height: 1.15;
+    }
+
+    .hz-page .rx-calendar-week-head.is-today {
+        background: var(--rx-dark);
+    }
+
+    .hz-page .rx-calendar-week-head.is-today span,
+    .hz-page .rx-calendar-week-head.is-today strong {
+        color: #fff;
+    }
+
+    .hz-page .rx-calendar-hours span {
+        color: var(--rx-ink-muted);
+        font-size: 11px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .hz-page .rx-calendar-day-track {
+        border-radius: 14px;
+    }
+
+    .hz-page .rx-calendar-day-track.is-today {
+        background: color-mix(in srgb, var(--rx-accent) 10%, transparent);
+    }
+
+    .hz-page .rx-calendar-hour-line {
+        opacity: 0.55;
+    }
+
+    /* Eventos como tarjetas: color del instructor, esquinas suaves y sombra */
+    .hz-page .rx-calendar-event {
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        padding: 6px 9px 10px;
+        color: var(--rx-ink);
+        text-align: left;
+        font: inherit;
+        background: var(--instructor-bg);
+        border: 1px solid color-mix(in srgb, var(--instructor-accent) 22%, var(--rx-line));
+        border-left: 4px solid var(--instructor-accent);
+        border-radius: 12px;
+        box-shadow: 0 1px 2px rgba(22, 24, 29, 0.06), 0 4px 10px -6px rgba(22, 24, 29, 0.2);
+        cursor: pointer;
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .hz-page .rx-calendar-event:hover {
+        z-index: 3;
+        transform: translateY(-1px);
+        box-shadow: 0 2px 4px rgba(22, 24, 29, 0.08), 0 10px 20px -8px rgba(22, 24, 29, 0.3);
+    }
+
+    .hz-page .rx-calendar-event strong {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        font-weight: 800;
+        line-height: 1.25;
+    }
+
+    .hz-page .rx-calendar-event>span {
+        color: var(--rx-ink-secondary);
+        font-size: 11px;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .hz-page .rx-calendar-event.is-cancelled,
+    .hz-page .rx-calendar-daily-card.is-cancelled,
+    .hz-page .rx-calendar-list-item.is-cancelled {
+        opacity: 0.6;
+        background-image: repeating-linear-gradient(135deg, transparent 0 7px, rgba(22, 24, 29, 0.05) 7px 14px);
+    }
+
+    .hz-page .rx-calendar-event.is-cancelled strong {
+        text-decoration: line-through;
+        text-decoration-thickness: 1px;
+    }
+
+    /* ---- Vista mes: casillas como tarjetas con espacio entre ellas ---- */
+    .hz-page .rx-calendar-month {
+        gap: 6px;
+    }
+
+    .hz-page .rx-calendar-month-label {
+        padding: 4px 0 6px;
+        color: var(--rx-ink-muted);
+        text-align: center;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+    }
+
+    .hz-page .rx-calendar-month-day {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 4px;
+        padding: 8px;
+        color: var(--rx-ink);
+        text-align: left;
+        font: inherit;
+        background: var(--rx-surface);
+        border: 1px solid var(--rx-line);
+        border-radius: 14px;
+        cursor: pointer;
+        transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+    }
+
+    .hz-page .rx-calendar-month-day:hover {
+        border-color: var(--rx-line-strong);
+        box-shadow: 0 8px 18px -10px rgba(22, 24, 29, 0.28);
+        transform: translateY(-1px);
+    }
+
+    .hz-page .rx-calendar-month-day.is-outside {
+        background: var(--rx-surface-soft);
+        border-color: transparent;
+        opacity: 0.55;
+    }
+
+    .hz-page .rx-calendar-month-day.is-today {
+        border-color: var(--rx-dark);
+        box-shadow: inset 0 0 0 1px var(--rx-dark);
+    }
+
+    .hz-page .rx-calendar-month-number {
+        min-width: 26px;
+        height: 26px;
+        display: inline-grid;
+        place-items: center;
+        align-self: flex-start;
+        border-radius: 999px;
+        font-size: 13px;
+        font-weight: 800;
+    }
+
+    .hz-page .rx-calendar-month-day.is-today .rx-calendar-month-number {
+        color: #fff;
+        background: var(--rx-dark);
+    }
+
+    .hz-page .rx-calendar-month-count {
+        align-self: flex-start;
+        padding: 1px 8px;
+        color: var(--rx-ink-secondary);
+        background: var(--rx-surface-soft);
+        border-radius: 999px;
+        font-size: 10px;
+        font-weight: 800;
+    }
+
+    .hz-page .rx-calendar-month-events {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+    }
+
+    .hz-page .rx-calendar-month-events>span {
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        padding: 2px 6px;
+        color: var(--rx-ink);
+        background: var(--instructor-bg);
+        border-left: 3px solid var(--instructor-accent);
+        border-radius: 7px;
+        font-size: 11px;
+        font-weight: 600;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .hz-page .rx-calendar-month-events>small {
+        color: var(--rx-ink-muted);
+        font-size: 11px;
+        font-weight: 700;
+    }
+
+    /* ---- Vista día: tarjetas grandes ---- */
+    .hz-page .rx-calendar-daily-list {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .hz-page .rx-calendar-daily-card {
+        background-color: var(--rx-surface);
+        border: 1px solid var(--rx-line);
+        border-left: 5px solid var(--instructor-accent);
+        border-radius: 18px;
+        box-shadow: 0 1px 2px rgba(22, 24, 29, 0.04), 0 10px 24px -16px rgba(22, 24, 29, 0.22);
+        transition: box-shadow 0.15s ease, transform 0.15s ease;
+    }
+
+    .hz-page .rx-calendar-daily-card:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 2px 4px rgba(22, 24, 29, 0.06), 0 16px 30px -14px rgba(22, 24, 29, 0.3);
+    }
+
+    .hz-page .rx-calendar-daily-time strong {
+        color: var(--rx-ink);
+        font-size: 17px;
+        font-weight: 800;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .hz-page .rx-calendar-daily-time span {
+        color: var(--rx-ink-muted);
+        font-size: 12px;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .hz-page .rx-calendar-daily-copy h4 {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 0;
+        font-size: 16px;
+        font-weight: 800;
+    }
+
+    .hz-page .rx-calendar-daily-copy p {
+        margin: 2px 0 0;
+        color: var(--rx-ink-secondary);
+        font-size: 13px;
+    }
+
+    .hz-page .rx-calendar-detail-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 8px;
+        margin-top: 10px;
+    }
+
+    .hz-page .rx-calendar-detail-grid>span {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        padding: 8px 10px;
+        background: var(--rx-surface-soft);
+        border-radius: 12px;
+    }
+
+    .hz-page .rx-calendar-detail-grid small {
+        color: var(--rx-ink-muted);
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+    }
+
+    .hz-page .rx-calendar-detail-grid strong {
+        color: var(--rx-ink);
+        font-size: 13px;
+        font-weight: 800;
+    }
+
+    /* ---- Vista lista (agenda) ---- */
+    .hz-page .rx-calendar-list {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .hz-page .rx-calendar-list-date {
+        margin: 16px 0 8px;
+        color: var(--rx-ink-secondary);
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+    }
+
+    .hz-page .rx-calendar-list-date::first-letter {
+        text-transform: uppercase;
+    }
+
+    .hz-page .rx-calendar-list>div:first-child .rx-calendar-list-date {
+        margin-top: 0;
+    }
+
+    .hz-page .rx-calendar-list-item {
+        background-color: var(--rx-surface);
+        border: 1px solid var(--rx-line);
+        border-radius: 16px;
+        box-shadow: 0 1px 2px rgba(22, 24, 29, 0.04);
+        transition: box-shadow 0.15s ease, transform 0.15s ease;
+    }
+
+    .hz-page .rx-calendar-list-item:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 10px 22px -14px rgba(22, 24, 29, 0.3);
+    }
+
+    .hz-page .rx-calendar-list-time strong {
+        font-variant-numeric: tabular-nums;
+    }
+
+    .hz-page .rx-calendar-list-copy strong {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-weight: 800;
+    }
+
+    /* ---- Estado vacío del calendario ---- */
+    .hz-page .rx-calendar-empty {
+        padding: 48px 24px;
+        color: var(--rx-ink-secondary);
+        text-align: center;
+        font-size: 13px;
+        background: var(--rx-surface-soft);
+        border: 1px dashed var(--rx-line-strong);
+        border-radius: 18px;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+
+        .hz-page .rx-calendar-event,
+        .hz-page .rx-calendar-month-day,
+        .hz-page .rx-calendar-daily-card,
+        .hz-page .rx-calendar-list-item,
+        .hz-page .rx-calendar-navigation button,
+        .hz-page .rx-calendar-toolbar .rx-calendar-view-switch button {
+            transition: none;
+        }
+
+        .hz-page .rx-calendar-event:hover,
+        .hz-page .rx-calendar-month-day:hover,
+        .hz-page .rx-calendar-daily-card:hover,
+        .hz-page .rx-calendar-list-item:hover {
+            transform: none;
+        }
+    }
+
+    @media (max-width: 720px) {
+        .hz-head .rx-page-actions {
+            width: 100%;
+            margin-left: 0;
+        }
+
+        .hz-head .rx-page-actions .rx-btn {
+            flex: 1;
+        }
+
+        .hz-filters .hz-select {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .hz-page .rx-calendar-toolbar .rx-calendar-view-switch {
+            width: 100%;
+            margin-left: 0;
+        }
+
+        .hz-page .rx-calendar-toolbar .rx-calendar-view-switch button {
+            flex: 1;
+            padding: 6px 8px;
+        }
+
+        .hz-page .rx-calendar-month {
+            gap: 3px;
+        }
+
+        .hz-page .rx-calendar-month-day {
+            padding: 5px;
+            border-radius: 10px;
+        }
+    }
+}
