@@ -1,84 +1,79 @@
 import { Router } from 'express';
-import { Movimiento } from '../models/Movimientos/movimientos';
-import { Producto } from '../models/Productos/productos';
+import { pool } from '../lib/post';
 import { requireAuth, requireRole } from '../middleware/auth';
 import { asyncHandler, manejarErrores } from '../lib/asynchandler';
+import { COLUMNAS_PRODUCTO, aProducto, asegurarInventario } from '../lib/inventario';
 
 const router = Router();
-
-// Todas las rutas de inventario requieren sesión iniciada.
 router.use(requireAuth);
-
-// Solo el administrador puede registrar movimientos (ajusta los roles a tus reglas).
-const escritura = requireRole('administrador');
+// Administrador y vendedor trabajan sobre el mismo inventario.
+const acceso = requireRole('administrador', 'vendedor');
 
 const TIPOS = ['entrada', 'salida', 'merma'] as const;
-type TipoMovimiento = (typeof TIPOS)[number];
 
-// GET /api/movimientos?limit=6
-router.get('/', asyncHandler(async (req, res) => {
-    // Se limita el valor para evitar límites inválidos (NaN, negativos) o consultas enormes.
+const aMovimiento = (r: any) => ({
+    id: String(r.id),
+    idProducto: String(r.product_id),
+    nombreProducto: r.nombre,
+    tipo: r.type,
+    cantidad: r.quantity,
+    fecha: new Date(r.created_at).toISOString().slice(0, 10),
+    motivo: r.reason,
+});
+
+router.get('/', acceso, asyncHandler(async (req, res) => {
+    await asegurarInventario();
     const pedido = Number(req.query.limit);
     const limit = Number.isInteger(pedido) && pedido > 0 ? Math.min(pedido, 100) : 20;
-
-    // Orden por _id descendente = orden real de inserción (el ObjectId trae timestamp),
-    // más confiable que ordenar por "fecha" cuando varios movimientos caen el mismo día.
-    const movimientos = await Movimiento.find().sort({ _id: -1 }).limit(limit);
-    res.json(movimientos);
+    const r = await pool.query(
+        `SELECT m.*, p.name AS nombre FROM webpontoventa.inventory_movements m
+         JOIN webpontoventa.products p ON p.id = m.product_id ORDER BY m.id DESC LIMIT $1`, [limit]);
+    res.json(r.rows.map(aMovimiento));
 }));
 
-// POST /api/movimientos
-// Ajusta el stock del producto y registra el movimiento.
-router.post('/', escritura, asyncHandler(async (req, res) => {
-    const { idProducto, tipo, motivo } = req.body;
+router.post('/', acceso, asyncHandler(async (req, res) => {
+    await asegurarInventario();
+    const { tipo, motivo } = req.body;
+    const idProducto = Number(req.body.idProducto);
     const cantidad = Number(req.body.cantidad);
-
-    if (!idProducto || !TIPOS.includes(tipo) || !Number.isInteger(cantidad) || cantidad <= 0) {
+    if (!Number.isInteger(idProducto) || idProducto <= 0 || !TIPOS.includes(tipo) ||
+        !Number.isInteger(cantidad) || cantidad <= 0) {
         return res.status(400).json({
             error: 'Producto, tipo válido (entrada, salida o merma) y cantidad entera mayor a 0 son obligatorios',
         });
     }
+    const delta = tipo === 'entrada' ? cantidad : -cantidad;
 
-    // Entrada suma; salida y merma restan.
-    const delta = (tipo as TipoMovimiento) === 'entrada' ? cantidad : -cantidad;
-
-    // Ajuste atómico: si resta, solo se aplica cuando hay stock suficiente.
-    // Así dos movimientos simultáneos no se pisan ni dejan el stock en negativo.
-    const producto = await Producto.findOneAndUpdate(
-        { _id: idProducto, ...(delta < 0 ? { stock: { $gte: cantidad } } : {}) },
-        { $inc: { stock: delta } },
-        { new: true }
-    );
-
-    if (!producto) {
-        // No se aplicó: puede ser que no exista o que el stock no alcance.
-        const existe = await Producto.exists({ _id: idProducto });
-        return res.status(existe ? 409 : 404).json({
-            error: existe ? 'Stock insuficiente para este movimiento' : 'Producto no encontrado',
-        });
-    }
-
+    // Ajuste de stock + historial en una transacción; el WHERE evita stock negativo.
+    const cx = await pool.connect();
     try {
-        const movimiento = await Movimiento.create({
-            idProducto,
-            nombreProducto: producto.nombre,
-            tipo,
-            cantidad,
-            motivo: typeof motivo === 'string' ? motivo : '',
+        await cx.query('BEGIN');
+        const u = await cx.query(
+            `UPDATE webpontoventa.products SET stock = stock + $1, updated_at = NOW()
+             WHERE id = $2 AND stock + $1 >= 0 RETURNING ${COLUMNAS_PRODUCTO}`, [delta, idProducto]);
+        if (!u.rows[0]) {
+            const e = await cx.query('SELECT 1 FROM webpontoventa.products WHERE id = $1', [idProducto]);
+            await cx.query('ROLLBACK');
+            return res.status(e.rowCount ? 409 : 404).json({
+                error: e.rowCount ? 'Stock insuficiente para este movimiento' : 'Producto no encontrado',
+            });
+        }
+        const m = await cx.query(
+            `INSERT INTO webpontoventa.inventory_movements (product_id, type, quantity, reason)
+             VALUES ($1,$2,$3,$4) RETURNING *`,
+            [idProducto, tipo, cantidad, typeof motivo === 'string' ? motivo.slice(0, 300) : '']);
+        await cx.query('COMMIT');
+        res.status(201).json({
+            movimiento: aMovimiento({ ...m.rows[0], nombre: u.rows[0].name }),
+            producto: aProducto(u.rows[0]),
         });
-
-        // Devolvemos ambos: el movimiento creado y el producto ya con el stock actualizado,
-        // para que el front no tenga que hacer un segundo fetch.
-        res.status(201).json({ movimiento, producto });
     } catch (err) {
-        // Si no se pudo guardar el movimiento, se revierte el ajuste de stock
-        // para que inventario e historial no queden desfasados.
-        await Producto.updateOne({ _id: idProducto }, { $inc: { stock: -delta } });
+        await cx.query('ROLLBACK').catch(() => {});
         throw err;
+    } finally {
+        cx.release();
     }
 }));
 
-// Manejo de errores del router (ids inválidos, validaciones de Mongoose, etc.).
 router.use(manejarErrores);
-
 export default router;

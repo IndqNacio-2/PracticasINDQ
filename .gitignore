@@ -27,3 +27,5 @@ database/mongo/data/
 
 # Documento de contexto interno del proyecto: nunca se sube al repo.
 webPuntoVenta/CONTEXTO-DEL-PROYECTO.md
+
+*.zip
