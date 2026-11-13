@@ -18,6 +18,12 @@ router.param('id', (_req, res, next, id) => {
 
 const esObjeto = (v: unknown) => typeof v === 'object' && v !== null && !Array.isArray(v);
 
+// Limpia una lista de textos: recorta, quita vacíos y duplicados. Devuelve null si no es una lista.
+const listaTexto = (v: unknown): string[] | null =>
+    Array.isArray(v)
+        ? [...new Set(v.map(x => String(x).trim()).filter(Boolean))]
+        : null;
+
 // Consulta: ?estatus=activo|inactivo & ?q=texto (nombre, apellidos, correo, código)
 router.get('/', asyncHandler(async (req, res) => {
     const filtro: Record<string, any> = {};
@@ -31,7 +37,7 @@ router.get('/', asyncHandler(async (req, res) => {
     res.json(clientes);
 }));
 
-// Perfil completo (datos generales, salud, actividad y membresía).
+// Perfil completo (datos generales, salud y membresía).
 router.get('/:id', asyncHandler(async (req, res) => {
     const cliente = await Cliente.findById(req.params.id);
     if (!cliente) return res.status(404).json({ error: 'Cliente no encontrado' });
@@ -40,6 +46,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
 
 // Registro desde recepción. La contraseña es opcional: solo sirve para que el cliente entre a la app móvil
 // (si no se pone, la crea después en la app con su código de acceso). Misma lógica que el autorregistro de la app.
+// La regla de edad (12 a 99 años) se valida dentro de registrarCliente / normalizarPerfil (clientes-core).
 router.post('/', asyncHandler(async (req, res) => {
     const r = await registrarCliente(req.body, 'web');
     if (!r.ok) return res.status(r.status).json({ error: r.error });
@@ -68,6 +75,12 @@ router.patch('/:id', asyncHandler(async (req, res) => {
         const errPass = errorPassword(req.body.password);
         if (errPass) return res.status(400).json({ error: errPass });
         datos.password = await bcrypt.hash(req.body.password, 10);
+    }
+
+    // El pin, si se envía, debe guardarse hasheado igual que la contraseña.
+    // (Pendiente de definir cuántos dígitos tiene; ver validación en clientes-core.)
+    if (req.body.pin !== undefined && req.body.pin !== '') {
+        datos.pin = await bcrypt.hash(String(req.body.pin), 10);
     }
 
     cliente.set(datos);
@@ -99,8 +112,25 @@ router.patch('/:id/reactivar', asyncHandler(async (req, res) => {
     res.json(cliente);
 }));
 
-// Secciones del perfil completo.
-const actualizarSeccion = (campo: 'perfilSalud' | 'perfilActividad' | 'membresia') =>
+// Perfil de salud: solo dos listas separadas, enfermedades y lesiones.
+router.patch('/:id/salud', asyncHandler(async (req, res) => {
+    if (!esObjeto(req.body)) return res.status(400).json({ error: 'Se esperaba un objeto JSON' });
+    const enfermedades = listaTexto(req.body.enfermedades);
+    const lesiones = listaTexto(req.body.lesiones);
+    if (!enfermedades || !lesiones) {
+        return res.status(400).json({ error: 'enfermedades y lesiones deben ser listas.' });
+    }
+    const cliente = await Cliente.findByIdAndUpdate(
+        req.params.id,
+        { perfilSalud: { enfermedades, lesiones } },
+        { new: true, runValidators: true }
+    );
+    if (!cliente) return res.status(404).json({ error: 'Cliente no encontrado' });
+    res.json(cliente);
+}));
+
+// Membresía.
+const actualizarSeccion = (campo: 'membresia') =>
     asyncHandler(async (req, res) => {
         if (!esObjeto(req.body)) return res.status(400).json({ error: 'Se esperaba un objeto JSON' });
         const cliente = await Cliente.findByIdAndUpdate(
@@ -112,8 +142,6 @@ const actualizarSeccion = (campo: 'perfilSalud' | 'perfilActividad' | 'membresia
         res.json(cliente);
     });
 
-router.patch('/:id/salud', actualizarSeccion('perfilSalud'));
-router.patch('/:id/actividad', actualizarSeccion('perfilActividad'));
 router.patch('/:id/membresia', actualizarSeccion('membresia'));
 
 // Los clientes no se eliminan.

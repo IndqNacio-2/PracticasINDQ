@@ -15,12 +15,17 @@ interface ClienteMongo {
   nombre: string;
   apellidos: string;
   correo: string;
+  // Celular (en la BD el campo sigue llamándose "telefono").
   telefono?: string;
   codigoAcceso?: string;
   estatus: 'activo' | 'inactivo';
   // "AAAA-MM-DD"
   fechaNacimiento?: string | null;
   edad?: number | null;
+  perfilSalud?: {
+    enfermedades?: string[];
+    lesiones?: string[];
+  } | null;
   membresia?: {
     idMembresia: string;
     tipo: string;
@@ -36,6 +41,8 @@ interface ClienteForm {
   correo: string;
   telefono: string;
   fechaNacimiento: string;
+  enfermedades: string[];
+  lesiones: string[];
 }
 
 const FORM_VACIO: ClienteForm = {
@@ -44,9 +51,14 @@ const FORM_VACIO: ClienteForm = {
   correo: '',
   telefono: '',
   fechaNacimiento: '',
+  enfermedades: [],
+  lesiones: [],
 };
 
 const REGEX_CORREO = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const EDAD_MIN = 12;
+const EDAD_MAX = 99;
 
 // Fecha de hoy "AAAA-MM-DD" en la hora local del navegador.
 function hoyISO(): string {
@@ -54,7 +66,22 @@ function hoyISO(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-// Devuelve el mensaje de error o null si la fecha es válida.
+// Edad exacta: compara mes y día para que el cumpleaños cuente el día correcto.
+function calcularEdad(iso: string, hoy = hoyISO()): number {
+  const [y, m, d] = iso.split('-').map(Number);
+  const [hy, hm, hd] = hoy.split('-').map(Number);
+  let edad = hy - y;
+  if (hm < m || (hm === m && hd < d)) edad--;
+  return edad;
+}
+
+// Fecha máxima permitida en el input (la persona cumple 12 años hoy).
+function maxNacimiento(): string {
+  const [y, m, d] = hoyISO().split('-');
+  return `${Number(y) - EDAD_MIN}-${m}-${d}`;
+}
+
+// Devuelve el mensaje de error o null si la fecha es válida (edad de 12 a 99 años, ambos incluidos).
 function errorFecha(valor: string): string | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(valor)) return 'La fecha de nacimiento es obligatoria.';
   const [y, m, d] = valor.split('-').map(Number);
@@ -62,9 +89,10 @@ function errorFecha(valor: string): string | null {
   if (f.getFullYear() !== y || f.getMonth() !== m - 1 || f.getDate() !== d) {
     return 'La fecha de nacimiento no es válida.';
   }
-  const hoy = hoyISO();
-  if (valor > hoy) return 'La fecha de nacimiento no puede ser futura.';
-  if (Number(hoy.slice(0, 4)) - y > 120) return 'La fecha de nacimiento no es válida.';
+  if (valor > hoyISO()) return 'La fecha de nacimiento no puede ser futura.';
+  const edad = calcularEdad(valor);
+  if (edad < EDAD_MIN) return `El cliente debe tener al menos ${EDAD_MIN} años.`;
+  if (edad > EDAD_MAX) return `El cliente no puede tener más de ${EDAD_MAX} años.`;
   return null;
 }
 
@@ -80,6 +108,113 @@ function comprasDe(c: ClienteMongo): MembresiaComprada[] {
   const m = c.membresia;
   if (!m) return [];
   return [{ id: m.idMembresia, nombre: `Membresía ${m.tipo}`, fechaInicio: m.fechaInicio, fechaFin: m.fechaFin }];
+}
+
+// Campo de lista: se escribe un elemento, se agrega con Enter o con el botón "+" y se quita con la ×.
+// Las sugerencias son atajos de un clic (opcionales).
+const TONOS = {
+  rojo: 'bg-red-50 text-red-700 border-red-100',
+  ambar: 'bg-amber-50 text-amber-700 border-amber-100',
+} as const;
+
+function ListaEtiquetas({ label, items, onChange, placeholder, sugerencias = [], tono }: {
+  label: string;
+  items: string[];
+  onChange: (items: string[]) => void;
+  placeholder: string;
+  sugerencias?: string[];
+  tono: keyof typeof TONOS;
+}) {
+  const [texto, setTexto] = useState('');
+
+  const existe = (t: string) => items.some(i => i.toLowerCase() === t.toLowerCase());
+
+  const agregar = (valor = texto) => {
+    const t = valor.trim();
+    if (!t) return;
+    if (!existe(t)) onChange([...items, t]);
+    setTexto('');
+  };
+
+  const sugeridas = sugerencias.filter(s => !existe(s));
+
+  return (
+    <div className="rounded-2xl border border-gray-100 bg-gray-50/70 p-4">
+      <div className="flex items-center justify-between mb-2.5">
+        <p className="text-sm font-semibold text-gray-800">{label}</p>
+        <span className="text-xs text-gray-400">{items.length === 0 ? 'Opcional' : `${items.length} ${items.length === 1 ? 'agregado' : 'agregados'}`}</span>
+      </div>
+
+      <div className="relative">
+        <input
+          value={texto}
+          onChange={e => setTexto(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); agregar(); } }}
+          placeholder={placeholder}
+          maxLength={60}
+          className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-3 pr-11 text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-200"
+        />
+        <button
+          type="button"
+          onClick={() => agregar()}
+          disabled={!texto.trim()}
+          aria-label={`Agregar a ${label.toLowerCase()}`}
+          className="absolute right-1.5 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-lg bg-gray-900 text-white transition-opacity disabled:opacity-30"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+        </button>
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-1.5 min-h-[1.75rem]">
+        {items.length === 0 && <span className="text-xs text-gray-400">Aún no hay elementos. Escribe uno y presiona Enter.</span>}
+        {items.map(i => (
+          <span key={i} className={`inline-flex items-center gap-1 rounded-full border py-1 pl-2.5 pr-1.5 text-xs font-medium ${TONOS[tono]}`}>
+            {i}
+            <button
+              type="button"
+              aria-label={`Quitar ${i}`}
+              onClick={() => onChange(items.filter(x => x !== i))}
+              className="flex h-4 w-4 items-center justify-center rounded-full hover:bg-black/10"
+            >
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+          </span>
+        ))}
+      </div>
+
+      {sugeridas.length > 0 && (
+        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+          <span className="text-xs text-gray-400">Sugeridas:</span>
+          {sugeridas.map(s => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => agregar(s)}
+              className="rounded-full border border-dashed border-gray-300 px-2.5 py-0.5 text-xs text-gray-500 hover:border-gray-400 hover:bg-white"
+            >
+              + {s}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Celda de la tabla: etiquetas en una sola línea (hasta 2) y "+N" si hay más.
+// El texto largo se corta con "…" y la lista completa se ve al pasar el cursor.
+function CeldaLista({ items = [], tono }: { items?: string[]; tono: keyof typeof TONOS }) {
+  if (!items.length) return <span className="text-gray-300">—</span>;
+  const visibles = items.slice(0, 2);
+  const resto = items.length - visibles.length;
+  return (
+    <div className="flex items-center gap-1 whitespace-nowrap" title={items.join(', ')}>
+      {visibles.map(i => (
+        <span key={i} className={`max-w-[8rem] truncate rounded-full border px-2.5 py-0.5 text-xs font-medium ${TONOS[tono]}`}>{i}</span>
+      ))}
+      {resto > 0 && <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">+{resto}</span>}
+    </div>
+  );
 }
 
 export function ClientesPage() {
@@ -128,6 +263,8 @@ export function ClientesPage() {
       correo: c.correo ?? '',
       telefono: c.telefono ?? '',
       fechaNacimiento: c.fechaNacimiento ? c.fechaNacimiento.slice(0, 10) : '',
+      enfermedades: c.perfilSalud?.enfermedades ?? [],
+      lesiones: c.perfilSalud?.lesiones ?? [],
     });
     setFormError(null);
     setModal(true);
@@ -138,6 +275,7 @@ export function ClientesPage() {
   const save = async () => {
     if (guardando) return;
     setFormError(null);
+    setAccionError(null);
     if (form.nombre.trim().length < 2) {
       setFormError('El nombre es obligatorio (mínimo 2 letras).');
       return;
@@ -169,14 +307,25 @@ export function ClientesPage() {
         telefono: form.telefono.trim(),
         fechaNacimiento: form.fechaNacimiento,
       };
-      if (editando) {
-        const cliente = await api.patch<ClienteMongo>(`/clientes/${editando.idUsuario}`, cuerpo);
-        setClientes(lista => lista.map(c => c.idUsuario === cliente.idUsuario ? { ...c, ...cliente } : c));
-      } else {
-        const cliente = await api.post<ClienteMongo>('/clientes', cuerpo);
-        setClientes(lista => [cliente, ...lista]);
+      let cliente = editando
+        ? await api.patch<ClienteMongo>(`/clientes/${editando.idUsuario}`, cuerpo)
+        : await api.post<ClienteMongo>('/clientes', cuerpo);
+
+      // El perfil de salud se guarda aparte (PATCH /:id/salud): solo enfermedades y lesiones.
+      try {
+        cliente = await api.patch<ClienteMongo>(`/clientes/${cliente.idUsuario}/salud`, {
+          enfermedades: form.enfermedades,
+          lesiones: form.lesiones,
+        });
+      } catch {
+        // El cliente ya quedó guardado; solo falló el perfil de salud.
+        setAccionError('El cliente se guardó, pero no se pudo guardar su perfil de salud. Ábrelo con Editar y vuelve a intentarlo.');
       }
-      setAccionError(null);
+
+      const guardado = cliente;
+      setClientes(lista => editando
+        ? lista.map(c => c.idUsuario === guardado.idUsuario ? { ...c, ...guardado } : c)
+        : [guardado, ...lista]);
       setModal(false);
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'No se pudo guardar el cliente.');
@@ -242,16 +391,22 @@ export function ClientesPage() {
                 const ini = `${c.nombre?.[0] ?? ''}${c.apellidos?.[0] ?? ''}`.toUpperCase();
                 return (
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-[#F3F4F6] flex items-center justify-center text-[#6B7280] text-xs font-bold">{ini}</div>
+                    <div className="w-9 h-9 shrink-0 rounded-full bg-[#F3F4F6] flex items-center justify-center text-[#6B7280] text-xs font-bold">{ini}</div>
                     <div>
-                      <p className="font-medium text-gray-800">{c.nombre} {c.apellidos}</p>
-                      <p className="text-xs text-gray-400">{c.correo || 'Sin correo'}</p>
+                      <p className="font-medium text-gray-800 whitespace-nowrap">{c.nombre} {c.apellidos}</p>
+                      <p className="max-w-[16rem] truncate text-xs text-gray-400" title={c.correo}>{c.correo || 'Sin correo'}</p>
                     </div>
                   </div>
                 );
               }
             },
-            { key: 'telefono', header: 'Telefono' },
+            {
+              key: 'telefono', header: 'Celular',
+              render: row => {
+                const t = (row as unknown as ClienteMongo).telefono;
+                return t ? <span className="whitespace-nowrap text-gray-700">{t}</span> : <span className="text-gray-300">—</span>;
+              }
+            },
             {
               key: 'fechaNacimiento', header: 'Cumpleaños',
               render: row => {
@@ -259,17 +414,30 @@ export function ClientesPage() {
                 const texto = formatearFecha(c.fechaNacimiento);
                 return texto
                   ? (
-                    <div>
+                    <div className="whitespace-nowrap">
                       <p className="text-gray-700">{texto}</p>
                       {typeof c.edad === 'number' && <p className="text-xs text-gray-400">{c.edad} años</p>}
                     </div>
                   )
-                  : <span className="text-gray-400">Sin registrar</span>;
+                  : <span className="text-gray-300">—</span>;
               }
             },
             {
-              key: 'membresia', header: 'Membresías compradas',
-              render: row => <MembresiasCliente compras={comprasDe(row as unknown as ClienteMongo)} />
+              key: 'enfermedades', header: 'Enfermedades',
+              render: row => <CeldaLista tono="rojo" items={(row as unknown as ClienteMongo).perfilSalud?.enfermedades} />
+            },
+            {
+              key: 'lesiones', header: 'Lesiones',
+              render: row => <CeldaLista tono="ambar" items={(row as unknown as ClienteMongo).perfilSalud?.lesiones} />
+            },
+            {
+              key: 'membresia', header: 'Membresía',
+              render: row => {
+                const compras = comprasDe(row as unknown as ClienteMongo);
+                return compras.length
+                  ? <MembresiasCliente compras={compras} />
+                  : <span className="whitespace-nowrap text-gray-400">Sin membresía</span>;
+              }
             },
             {
               key: 'estatus', header: 'Estatus',
@@ -301,9 +469,21 @@ export function ClientesPage() {
           <InputField label="Nombre" required value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))} placeholder="Ej. Juan" />
           <InputField label="Apellidos" required value={form.apellidos} onChange={e => setForm(f => ({ ...f, apellidos: e.target.value }))} placeholder="Ej. Perez Lopez" />
           <InputField label="Correo" type="email" required value={form.correo} onChange={e => setForm(f => ({ ...f, correo: e.target.value }))} className="col-span-2" placeholder="Debe ser unico. Se usa para la felicitacion de cumpleaños" />
-          <InputField label="Fecha de nacimiento" type="date" required max={hoyISO()} value={form.fechaNacimiento} onChange={e => setForm(f => ({ ...f, fechaNacimiento: e.target.value }))} />
-          <InputField label="Telefono" value={form.telefono} onChange={e => setForm(f => ({ ...f, telefono: e.target.value }))} />
-          <p className="col-span-2 text-sm text-gray-600">Para dar de baja o reactivar a un cliente usa el botón de la tabla. Las membresías se consultan en la tabla y no se modifican desde este formulario.</p>
+          <InputField label="Fecha de nacimiento" type="date" required max={maxNacimiento()} value={form.fechaNacimiento} onChange={e => setForm(f => ({ ...f, fechaNacimiento: e.target.value }))} />
+          <InputField label="Celular" value={form.telefono} onChange={e => setForm(f => ({ ...f, telefono: e.target.value }))} />
+          <div className="col-span-2 pt-2">
+            <h4 className="text-sm font-semibold text-gray-900 mb-0.5" style={{ fontFamily: 'DM Sans, sans-serif' }}>Perfil de salud</h4>
+            <p className="text-xs text-gray-500 mb-3">Solo se registran enfermedades y lesiones. Las dos listas son opcionales.</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <ListaEtiquetas label="Enfermedades" tono="rojo" items={form.enfermedades} placeholder="Ej. Asma"
+                sugerencias={['Asma', 'Diabetes', 'Hipertensión']}
+                onChange={enfermedades => setForm(f => ({ ...f, enfermedades }))} />
+              <ListaEtiquetas label="Lesiones" tono="ambar" items={form.lesiones} placeholder="Ej. Esguince de tobillo"
+                sugerencias={['Rodilla', 'Hombro', 'Espalda baja']}
+                onChange={lesiones => setForm(f => ({ ...f, lesiones }))} />
+            </div>
+          </div>
+          <p className="col-span-2 text-sm text-gray-600">El cliente debe tener entre {EDAD_MIN} y {EDAD_MAX} años. Para dar de baja o reactivar a un cliente usa el botón de la tabla. Las membresías se consultan en la tabla y no se modifican desde este formulario.</p>
         </div>
         {formError && <p className="text-xs text-red-500 mt-3">{formError}</p>}
         <div className="flex gap-3 mt-6 pt-4 border-t border-gray-100">
