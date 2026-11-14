@@ -11,8 +11,10 @@ import { Router, type Response } from "express";
 import * as saleRepository from "./sale.repository.js";
 import { validateSaleInput } from "./sale.validation.js";
 import type { ValidationIssue } from "./sale.types.js";
+import { requirePosUser, type PosUser } from '../auth.js';
 
 export const saleRouter = Router();
+saleRouter.use(requirePosUser);
 
 /**
  * Respondo los errores de validacion con el mismo formato siempre,
@@ -29,7 +31,7 @@ function sendValidationErrors(response: Response, issues: ValidationIssue[]): vo
 // GET /api/sales  historial de ventas para el corte de caja y los reportes.
 saleRouter.get("/", async (_request, response) => {
   try {
-    response.status(200).json(await saleRepository.listSales());
+    response.status(200).json(await saleRepository.listSales((response.locals.posUser as PosUser).id));
   } catch (error) {
     console.error("Error al consultar las ventas:", error);
     response.status(500).json({ status: "error", message: "No fue posible consultar las ventas" });
@@ -46,7 +48,7 @@ saleRouter.post("/", async (request, response) => {
   }
 
   try {
-    const result = await saleRepository.insertSale(input);
+    const result = await saleRepository.insertSale(input, (response.locals.posUser as PosUser).id);
 
     // Algun producto del carrito ya no existe en el catalogo.
     if (result.outcome === "product-not-found") {

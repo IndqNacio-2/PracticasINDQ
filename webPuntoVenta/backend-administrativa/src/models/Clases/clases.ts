@@ -1,12 +1,13 @@
 import { Schema, model, InferSchemaType } from 'mongoose';
+import { esEnteroPositivo } from '../../lib/validacion';
 
 const claseSchema = new Schema(
     {
-        nombre: { type: String, required: true },
+        nombre: { type: String, required: [true, 'El nombre de la clase es obligatorio.'], trim: true },
         descripcion: { type: String, default: '' },
-        capacidad: { type: Number, required: true },
+        capacidad: { type: Number, required: true, validate: { validator: esEnteroPositivo, message: 'La capacidad debe ser un número entero mayor que cero.' } },
         // Precio de la clase; webCobro lo usa como monto a cobrar en la reservación.
-        precio: { type: Number, default: 0 },
+        precio: { type: Number, default: 0, min: [0, 'El precio no puede ser negativo.'], validate: { validator: Number.isFinite, message: 'El precio debe ser un número finito.' } },
         color: { type: String, default: '#10b981' },
         estatus: { type: String, enum: ['activo', 'inactivo'], default: 'activo' },
         entrenadorId: { type: String, default: '' },

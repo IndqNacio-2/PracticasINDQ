@@ -418,7 +418,7 @@ export default function MembresiasPage() {
         setForm(f => ({ ...f, opciones: f.opciones.map(o => (o.id === id ? { ...o, ...cambios } : o)) }));
 
     return (
-        <div className="space-y-5 max-w-7xl">
+        <div className="w-full min-w-0 space-y-5">
             <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div>
                     <h1 className="text-2xl font-bold text-[color:#111827]">Membresías</h1>

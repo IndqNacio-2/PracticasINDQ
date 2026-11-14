@@ -14,6 +14,7 @@ const cors = require('cors');
 const { Pool } = require('pg');
 const { imprimirTicket } = require('./ticketService');
 const flujoReservas = require('./reservasFlujo');
+const { esCorreoValido } = require('./validacionCliente');
 const membresiasService = require('./membresiasService');
 
 const app = express();
@@ -25,7 +26,7 @@ app.use(express.json());
 // el mismo puerto 3000 que este backend de cobro, por lo que la llamada es
 // interna y no atraviesa el navegador. Cada POST /api/reservas consulta estos
 // horarios para garantizar que la clase + hora elegida existe de verdad.
-const ADMIN_API = 'http://localhost:3000/admin/api';
+const ADMIN_API = process.env.ADMIN_API_URL ?? 'http://localhost:3000/admin/api';
 
 // Conexion con PostgreSQL /////////////////////////////////////
 const pool = new Pool({
@@ -90,7 +91,9 @@ const inicioDeClase = (fecha, hora) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha || '') || !/^\d{2}:\d{2}$/.test(hora || '')) return null;
   const [anio, mes, dia] = fecha.split('-').map(Number);
   const [h, m] = hora.split(':').map(Number);
-  return new Date(anio, mes - 1, dia, h, m);
+  const inicio = new Date(anio, mes - 1, dia, h, m);
+  return inicio.getFullYear() === anio && inicio.getMonth() === mes - 1 && inicio.getDate() === dia
+    && h <= 23 && m <= 59 ? inicio : null;
 };
 
 const MOTIVO_POR_ESTADO = {
@@ -190,8 +193,8 @@ const normalizarCodigoReserva = (valor) => {
  */
 const buscarHorarioActivo = async (fecha, { horarioId, clase, time }) => {
   const [resHorarios, resClases] = await Promise.all([
-    fetch(`${ADMIN_API}/horarios?fecha=${encodeURIComponent(fecha)}&estatus=activo`),
-    fetch(`${ADMIN_API}/clases`),
+    fetch(`${ADMIN_API}/horarios?fecha=${encodeURIComponent(fecha)}&estatus=activo`, { signal: AbortSignal.timeout(10000) }),
+    fetch(`${ADMIN_API}/clases`, { signal: AbortSignal.timeout(10000) }),
   ]);
   if (!resHorarios.ok) throw new Error(`horarios HTTP ${resHorarios.status}`);
   if (!resClases.ok) throw new Error(`clases HTTP ${resClases.status}`);
@@ -209,6 +212,15 @@ const buscarHorarioActivo = async (fecha, { horarioId, clase, time }) => {
   const claseReal = horario && Array.isArray(clases)
     ? clases.find((c) => c.idClase === horario.idClase) ?? null
     : null;
+  if (!horario || !claseReal || claseReal.estatus !== 'activo'
+      || horario.estatus !== 'activo' || horario.visibleReservas === false || horario.fecha !== fecha
+      || !Number.isInteger(horario.capacidadTotal) || horario.capacidadTotal <= 0
+      || !inicioDeClase(fecha, horario.horaInicio) || !inicioDeClase(fecha, horario.horaFin)
+      || horario.horaFin <= horario.horaInicio) return { horario: null, clase: null };
+  // Consulta directa, sin autenticar como usuario ni exponer el listado de empleados.
+  const referencia = await fetch(`${ADMIN_API}/horarios/${encodeURIComponent(horario.idHorario)}/validacion`, { signal: AbortSignal.timeout(10000) });
+  if (referencia.status === 404 || referencia.status === 409 || referencia.status === 400) return { horario: null, clase: null };
+  if (!referencia.ok) throw new Error('No se pudo validar el entrenador de la sesión.');
   return { horario, clase: claseReal };
 };
 
@@ -299,6 +311,7 @@ app.post('/api/reservas', async (req, res) => {
     return res.status(400).json({ error: 'El horario no es valido.' });
   }
   const [horas, minutos] = time.split(':').map(Number);
+  if (horas > 23 || minutos > 59) return res.status(400).json({ error: 'El horario debe estar entre 00:00 y 23:59.' });
 
   if (typeof fecha !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
     return res.status(400).json({ error: 'La fecha es obligatoria (YYYY-MM-DD).' });
@@ -534,6 +547,7 @@ app.get('/api/clientes', async (req, res) => {
  */
 app.post('/api/clientes', async (req, res) => {
   const { nombre, membresia, telefono, correo, activo, vigencia_hasta } = req.body ?? {};
+  if (!esCorreoValido(correo)) return res.status(400).json({ error: 'Introduce un correo electrónico válido.' });
 
   if (typeof nombre !== 'string' || nombre.trim().length < 3) {
     return res.status(400).json({ error: 'El nombre del cliente es obligatorio (mínimo 3 letras).' });
@@ -755,6 +769,10 @@ app.post('/api/reservas/:id/reagendar', async (req, res) => {
       `SELECT ${COLUMNAS_RESERVA} FROM webcobro.reservas WHERE id = $1 FOR UPDATE`,
       [id],
     )).rows[0];
+    if (!bloqueada) {
+      await conexion.query('ROLLBACK');
+      return res.status(404).json({ error: 'La reservación ya no existe.' });
+    }
     const reglas = reglasDeReserva(bloqueada);
     if (reglas.motivoNoReagendar) {
       await conexion.query('ROLLBACK');
@@ -863,7 +881,8 @@ app.patch('/api/clientes/:id', async (req, res) => {
     campos.push(`telefono = $${valores.length}`);
   }
   if (correo !== undefined) {
-    const limpio = String(correo).trim().toLowerCase();
+    if (!esCorreoValido(correo)) return res.status(400).json({ error: 'Introduce un correo electrónico válido.' });
+    const limpio = (correo ?? '').trim().toLowerCase();
     if (limpio) {
       const enUso = (
         await pool.query(`SELECT id FROM webcobro.clientes WHERE LOWER(correo) = $1 AND id <> $2`, [limpio, id])
@@ -902,11 +921,7 @@ app.patch('/api/clientes/:id', async (req, res) => {
   res.json({ mensaje: 'Cliente actualizado', cliente: actualizado });
 });
 
-/*
- * DELETE para borrar un cliente desde el módulo administrativo.
- * Se bloquea si tiene reservaciones o pagos ligados: primero hay que
- * cancelarlas en recepción para no dejar historial huérfano.
- */
+// Compatibilidad con clientes antiguos: DELETE ahora aplica una baja lógica.
 app.delete('/api/clientes/:id', async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) {
@@ -914,22 +929,13 @@ app.delete('/api/clientes/:id', async (req, res) => {
   }
 
   try {
-    const historial = await pool.query(
-      `SELECT 1 FROM webcobro.clientes c WHERE c.id = $1 AND (
-        EXISTS (SELECT 1 FROM webcobro.reservas r WHERE r.cliente_id = c.id
-          OR (r.tipo = 'cliente' AND r.cliente_id IS NULL AND r.cliente = c.nombre))
-        OR EXISTS (SELECT 1 FROM webcobro.asistencias a WHERE a.codigo = 'CLI-' || c.id::text))`, [id],
-    );
-    if (historial.rowCount) {
-      return res.status(409).json({ error: 'El cliente tiene historial de reservas o asistencia. Desactivalo en vez de eliminarlo.' });
-    }
     const borrado = (
-      await pool.query(`DELETE FROM webcobro.clientes WHERE id = $1 RETURNING id`, [id])
+      await pool.query(`UPDATE webcobro.clientes SET activo = FALSE WHERE id = $1 RETURNING id, nombre, activo`, [id])
     ).rows[0];
     if (!borrado) {
       return res.status(404).json({ error: 'El cliente no existe.' });
     }
-    res.json({ mensaje: 'Cliente eliminado' });
+    res.json({ mensaje: 'Cliente desactivado. Su información e historial se conservaron.', cliente: borrado });
   } catch (err) {
     if (err && err.code === '23503') {
       return res.status(409).json({ error: 'No se puede eliminar: el cliente tiene reservaciones o pagos registrados.' });

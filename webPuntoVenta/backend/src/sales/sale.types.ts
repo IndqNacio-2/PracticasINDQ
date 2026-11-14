@@ -40,6 +40,9 @@ export interface SaleItem {
 }
 
 export interface SaleRecord {
+  id: number;
+  sellerId: string | null;
+  cashClosingId: number | null;
   folio: string;
   soldAt: string;
   date: string;

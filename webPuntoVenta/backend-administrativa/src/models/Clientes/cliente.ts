@@ -1,4 +1,5 @@
 import { Schema, model, InferSchemaType } from 'mongoose';
+import { esCorreoValido } from '../../lib/correo';
 
 const membresiaSchema = new Schema(
     {
@@ -39,7 +40,7 @@ const clienteSchema = new Schema(
     {
         nombre: { type: String, required: true },
         apellidos: { type: String, required: true },
-        correo: { type: String, required: true, unique: true, lowercase: true, trim: true },
+        correo: { type: String, required: true, unique: true, lowercase: true, trim: true, validate: { validator: (valor: string) => esCorreoValido(valor, true), message: 'Introduce un correo electrónico válido.' } },
         telefono: { type: String, default: '' },
         codigoAcceso: { type: String, required: true, unique: true },
         estatus: { type: String, enum: ['activo', 'inactivo'], default: 'activo' },

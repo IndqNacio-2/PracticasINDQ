@@ -31,7 +31,7 @@ export default function SaleSuccessModal({ sale, onNewSale, onShowTicket }: Sale
             <Row label="Fecha" value={sale.date} />
             <Row label="Hora" value={sale.time} />
             <Row label="Método" value={METHOD_LABELS[sale.paymentMethod]} />
-            {sale.cashReceived !== undefined && (
+            {sale.paymentMethod === 'efectivo' && sale.cashReceived != null && (
               <>
                 <Row label="Recibido" value={fmt(sale.cashReceived)} />
                 <Row label="Cambio" value={

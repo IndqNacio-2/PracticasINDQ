@@ -6,6 +6,7 @@
  */
 
 import { Router, type Response } from "express";
+import { requirePosUser, type PosUser } from '../auth.js';
 
 import * as cashClosingRepository from "./cash-closing.repository.js";
 import {
@@ -14,6 +15,7 @@ import {
 } from "./cash-closing.types.js";
 
 export const cashClosingRouter = Router();
+cashClosingRouter.use(requirePosUser);
 
 // Respondo los errores de validacion siempre con el mismo formato.
 function sendValidationErrors(response: Response, issues: ValidationIssue[]): void {
@@ -27,7 +29,7 @@ function sendValidationErrors(response: Response, issues: ValidationIssue[]): vo
 // GET /api/cash-closings  historial de cortes para la pantalla de Corte de caja.
 cashClosingRouter.get("/", async (_request, response) => {
   try {
-    response.status(200).json(await cashClosingRepository.listCashClosings());
+    response.status(200).json(await cashClosingRepository.listCashClosings((response.locals.posUser as PosUser).id));
   } catch (error) {
     console.error("Error al consultar los cortes de caja:", error);
     response.status(500).json({ status: "error", message: "No fue posible consultar los cortes de caja" });
@@ -44,7 +46,13 @@ cashClosingRouter.post("/", async (request, response) => {
   }
 
   try {
-    const closing = await cashClosingRepository.insertCashClosing(input);
+    const ids = request.body.saleIds;
+    if (!Array.isArray(ids) || ids.some(id => !Number.isInteger(id) || id <= 0) || new Set(ids).size !== ids.length || ids.length !== input.salesCount) {
+      response.status(400).json({ message: 'La lista de ventas del corte no es válida.' });
+      return;
+    }
+    const sellerId = (response.locals.posUser as PosUser).id;
+    const closing = await cashClosingRepository.insertCashClosing({ ...input, registeredBy: sellerId }, sellerId, ids);
 
     response.status(201).json({
       status: "ok",

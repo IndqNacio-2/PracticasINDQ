@@ -25,10 +25,16 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
   }
 }
 
+const normalizar = (valor: unknown): string =>
+  typeof valor === 'string' ? valor.trim().toLowerCase() : '';
+
 export const requireRole =
   (...roles: UserRole[]) =>
   (req: Request, res: Response, next: NextFunction) => {
-    if (!req.auth || !roles.includes(req.auth.rol)) {
+    const rolUsuario = normalizar(req.auth?.rol);
+    const permitidos = roles.map(normalizar);
+
+    if (!req.auth || !rolUsuario || !permitidos.includes(rolUsuario)) {
       return res.status(403).json({ message: 'No tienes permiso para esta acción.' });
     }
     next();

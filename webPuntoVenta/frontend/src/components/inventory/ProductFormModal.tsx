@@ -81,36 +81,36 @@ export default function ProductFormModal({
   const categories = CATEGORIES.filter((category) => category !== "Todos");
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="modal-enter flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+    <div className="rx-modal-overlay">
+      <section className="rx-modal rx-modal--scroll rx-product-form modal-enter" role="dialog" aria-modal="true" aria-labelledby="product-form-title">
         {/* Encabezado del formulario. */}
-        <div className="flex flex-shrink-0 items-center justify-between border-b border-[#E5E7EB] px-6 py-5">
+        <div className="rx-modal-header">
           <div>
-            <h2 className="text-xl font-bold text-[#0D0F14]">
+            <h2 id="product-form-title" className="rx-modal-title">
               {isEditing ? "Editar producto" : "Nuevo producto"}
             </h2>
-            <p className="mt-0.5 text-xs text-[#9CA3AF]">
+            <p className="rx-modal-subtitle rx-modal-subtitle--plain">
               {isEditing
                 ? "Modifica la información del producto"
                 : "Completa la información del nuevo producto"}
             </p>
           </div>
 
-          <button type="button" onClick={onCancel} aria-label="Cerrar formulario" className="flex h-8 w-8 items-center justify-center rounded-lg text-[#9CA3AF] hover:bg-[#F3F4F6] hover:text-[#374151]">
+          <button type="button" onClick={onCancel} aria-label="Cerrar formulario" className="rx-modal-close">
             <MaterialIcon name="close" className="text-xl" />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto">
-          <div className="grid grid-cols-1 divide-[#E5E7EB] md:grid-cols-2 md:divide-x">
-            <div className="flex flex-col gap-5 p-6">
+        <div className="rx-modal-body">
+          <div className="rx-form-columns">
+            <div className="rx-form-column">
               <FormSection title="Información general" icon="package_2">
                 <FormField label="Nombre del producto" error={errors.name} required>
-                  <input value={form.name} onChange={(event) => updateField("name", event.target.value)} placeholder="Ej. Agua 1 L" className={inputClass(Boolean(errors.name))} />
+                  <input value={form.name} onChange={(event) => updateField("name", event.target.value)} placeholder="Ej. Agua 1 L" aria-invalid={Boolean(errors.name)} className={inputClass(Boolean(errors.name))} />
                 </FormField>
 
                 <FormField label="Código" error={errors.code} required>
-                  <input value={form.code} onChange={(event) => updateField("code", event.target.value.toUpperCase())} placeholder="Ej. AG-001" className={inputClass(Boolean(errors.code))} />
+                  <input value={form.code} onChange={(event) => updateField("code", event.target.value.toUpperCase())} placeholder="Ej. AG-001" aria-invalid={Boolean(errors.code)} className={inputClass(Boolean(errors.code))} />
                 </FormField>
 
                 <FormField label="Categoría" required>
@@ -130,23 +130,23 @@ export default function ProductFormModal({
               </FormSection>
             </div>
 
-            <div className="flex flex-col gap-5 p-6">
+            <div className="rx-form-column">
               <FormSection title="Inventario" icon="inventory_2">
                 {!isEditing && (
                   <NumberField label="Existencia inicial" value={form.stock} error={errors.stock} onChange={(value) => updateField("stock", value)} required />
                 )}
                 <NumberField label="Stock mínimo" value={form.minimumStock} error={errors.minimumStock} onChange={(value) => updateField("minimumStock", value)} required />
-                <p className="text-xs leading-5 text-[#9CA3AF]">Se mostrará una alerta cuando la existencia sea igual o menor al stock mínimo.</p>
+                <p className="rx-product-form-help">Se mostrará una alerta cuando la existencia sea igual o menor al stock mínimo.</p>
               </FormSection>
 
               <FormSection title="Apariencia" icon="palette">
-                <p className="text-xs text-[#6B7280]">Selecciona un icono y color para el producto.</p>
-                <div className="grid grid-cols-4 gap-2">
+                <p className="rx-product-form-help">Selecciona un icono y color para el producto.</p>
+                <div className="rx-appearance-options">
                   {APPEARANCE_OPTIONS.map((option) => {
                     const isSelected = form.icon === option.icon;
                     return (
-                      <button key={option.icon} type="button" onClick={() => setForm((currentForm) => ({ ...currentForm, ...option }))} className={`flex h-12 items-center justify-center rounded-xl border-2 transition-all ${isSelected ? "border-[#FF5C00] shadow-md" : "border-transparent hover:border-[#E5E7EB]"}`} style={{ backgroundColor: option.bgColor }}>
-                        <MaterialIcon name={option.icon} className="text-2xl text-[#374151]" filled />
+                      <button key={option.icon} type="button" onClick={() => setForm((currentForm) => ({ ...currentForm, ...option }))} aria-label={`Apariencia: ${option.icon}`} aria-pressed={isSelected} className="rx-appearance-option">
+                        <MaterialIcon name={option.icon} className="text-2xl" filled />
                       </button>
                     );
                   })}
@@ -154,13 +154,13 @@ export default function ProductFormModal({
               </FormSection>
 
               <FormSection title="Estado" icon="toggle_on">
-                <div className="flex items-center justify-between py-1">
+                <div className="rx-status-control">
                   <div>
-                    <p className="text-sm font-medium text-[#374151]">Activo</p>
-                    <p className="text-xs text-[#9CA3AF]">El producto estará disponible en el Punto de Venta.</p>
+                    <p className="rx-card-title">{form.status === "active" ? "Activo" : "Inactivo"}</p>
+                    <p className="rx-product-form-help">{form.status === "active" ? "El producto estará disponible en el Punto de Venta." : "El producto no estará disponible para la venta."}</p>
                   </div>
-                  <button type="button" onClick={() => updateField("status", form.status === "active" ? "inactive" : "active")} aria-label="Cambiar estado del producto">
-                    <MaterialIcon name={form.status === "active" ? "toggle_on" : "toggle_off"} className={`text-4xl ${form.status === "active" ? "text-[#FF5C00]" : "text-[#D1D5DB]"}`} filled />
+                  <button type="button" onClick={() => updateField("status", form.status === "active" ? "inactive" : "active")} role="switch" aria-checked={form.status === "active"} aria-label="Cambiar estado del producto" className="rx-status-switch">
+                    <MaterialIcon name={form.status === "active" ? "toggle_on" : "toggle_off"} className="text-4xl" filled />
                   </button>
                 </div>
               </FormSection>
@@ -168,37 +168,37 @@ export default function ProductFormModal({
           </div>
         </div>
 
-        <div className="flex flex-shrink-0 justify-end gap-3 border-t border-[#E5E7EB] px-6 py-4">
-          <button type="button" onClick={onCancel} className="rounded-xl border border-[#E5E7EB] px-5 py-2.5 text-sm font-semibold text-[#374151] hover:bg-[#F9FAFB]">Cancelar</button>
-          <button type="button" onClick={handleSave} className="rounded-xl bg-[#FF5C00] px-5 py-2.5 text-sm font-bold text-white hover:opacity-90">{isEditing ? "Guardar cambios" : "Guardar producto"}</button>
+        <div className="rx-modal-footer">
+          <button type="button" onClick={onCancel} className="rx-btn rx-btn--outline">Cancelar</button>
+          <button type="button" onClick={handleSave} className="rx-btn rx-btn--dark">{isEditing ? "Guardar cambios" : "Guardar producto"}</button>
         </div>
-      </div>
+      </section>
     </div>
   );
 }
 
 function inputClass(hasError: boolean): string {
-  return `w-full rounded-lg border px-3 py-2 text-sm text-[#0D0F14] outline-none transition-colors ${hasError ? "border-[#EF4444]" : "border-[#E5E7EB] focus:border-[#FF5C00]"}`;
+  return `rx-input${hasError ? " rx-input--error" : ""}`;
 }
 
 function FormSection({ title, icon, children }: { title: string; icon: string; children: ReactNode }) {
   return (
     <section>
-      <div className="mb-3 flex items-center gap-2 border-b border-[#F3F4F6] pb-2">
-        <MaterialIcon name={icon} className="text-base text-[#9CA3AF]" />
-        <p className="text-xs font-bold uppercase tracking-wide text-[#6B7280]">{title}</p>
+      <div className="rx-form-section-heading">
+        <MaterialIcon name={icon} className="text-base" />
+        <h3 className="rx-label">{title}</h3>
       </div>
-      <div className="flex flex-col gap-3">{children}</div>
+      <div className="rx-stack">{children}</div>
     </section>
   );
 }
 
 function FormField({ label, required, error, children }: { label: string; required?: boolean; error?: string; children: ReactNode }) {
   return (
-    <label className="block">
-      <span className="mb-1 block text-sm font-medium text-[#374151]">{label} {required && <span className="text-[#EF4444]">*</span>}</span>
+    <label className="rx-field">
+      <span className="rx-label">{label} {required && <span className="rx-text-danger">*</span>}</span>
       {children}
-      {error && <span className="mt-1 block text-xs text-[#EF4444]">{error}</span>}
+      {error && <span className="rx-error-text" role="alert">{error}</span>}
     </label>
   );
 }
@@ -206,9 +206,9 @@ function FormField({ label, required, error, children }: { label: string; requir
 function NumberField({ label, value, error, onChange, required, currency }: { label: string; value: number; error?: string; onChange: (value: number) => void; required?: boolean; currency?: boolean }) {
   return (
     <FormField label={label} error={error} required={required}>
-      <div className="relative">
-        {currency && <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-[#6B7280]">$</span>}
-        <input type="number" min="0" step={currency ? "0.01" : "1"} value={value || ""} onChange={(event) => onChange(Number(event.target.value) || 0)} placeholder="0" className={`${inputClass(Boolean(error))} ${currency ? "pl-7" : ""}`} />
+      <div className="rx-input-affix">
+        {currency && <span className="rx-input-prefix">$</span>}
+        <input type="number" min="0" step={currency ? "0.01" : "1"} value={value || ""} onChange={(event) => onChange(Number(event.target.value) || 0)} placeholder="0" aria-invalid={Boolean(error)} className={`${inputClass(Boolean(error))} ${currency ? "rx-input--currency" : ""}`} />
       </div>
     </FormField>
   );

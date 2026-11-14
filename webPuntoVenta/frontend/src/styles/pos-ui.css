@@ -1,5 +1,51 @@
 /* Mantengo aquí la identidad visual del Punto de Venta. */
 @layer components {
+  .rx-brand-image { background-color: transparent; }
+}
+@layer components {
+  .rx-closing { display: flex; flex-direction: column; height: 100%; min-width: 0; overflow: hidden; color: var(--rx-ink); background: var(--rx-page); font-family: var(--rx-font); }
+  .rx-closing > .rx-page-header { padding: 18px 28px; flex-wrap: wrap; }
+  .rx-closing .rx-page-title { font-size: 20px; font-weight: 700; letter-spacing: -.02em; }
+  .rx-closing-content { flex: 1; min-height: 0; min-width: 0; overflow-y: auto; padding: 22px 28px; scrollbar-width: thin; scrollbar-color: var(--rx-line-strong) var(--rx-page); }
+  .rx-closing-kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-bottom: 22px; }
+  .rx-closing .rx-card { padding: 14px; background: var(--rx-surface); border: 1px solid var(--rx-line); border-radius: var(--rx-radius-large); }
+  .rx-closing .rx-closing-kpi { display: flex; align-items: center; gap: 14px; min-width: 0; }
+  .rx-closing-kpi-icon { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 40px; height: 40px; border-radius: var(--rx-radius-medium); }
+  .rx-closing-kpi-copy { min-width: 0; }
+  .rx-closing-kpi-value { margin: 0; color: var(--rx-ink); font-size: 22px; font-weight: 800; line-height: 1.25; letter-spacing: -.02em; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+  .rx-closing-kpi-label { margin: 4px 0 0; color: var(--rx-ink-secondary); font-size: 12px; line-height: 1.4; }
+  .rx-closing .rx-closing-panel { padding: 0; margin-bottom: 22px; overflow: hidden; }
+  .rx-closing-panel-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--rx-line); }
+  .rx-closing-panel-header:has(> div:first-child > .material-symbols-rounded) { justify-content: flex-start; }
+  .rx-closing-arqueo { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; padding: 20px; }
+  .rx-closing-arqueo > div { min-width: 0; }
+  .rx-closing .rx-label { color: var(--rx-ink-secondary); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+  .rx-closing .rx-closing-amount { min-height: 52px; padding-left: 36px; padding-right: 14px; background: var(--rx-surface-soft); font-size: 22px; font-weight: 800; }
+  .rx-closing .rx-closing-amount:focus { background: var(--rx-surface); }
+  .rx-closing-reconciliation { padding: 16px; background: var(--rx-surface-soft); border: 1px solid var(--rx-line); border-radius: var(--rx-radius-extra-large); }
+  .rx-closing-submit { min-height: 48px; margin-top: 16px; }
+  .rx-closing .rx-closing-table-wrap { padding: 12px 16px; border-radius: 0; }
+  .rx-closing-table.rx-table { min-width: 700px; border-spacing: 0 6px; }
+  .rx-closing-table--history.rx-table { min-width: 1060px; }
+  .rx-closing-table.rx-table th { padding: 6px 12px; background: transparent; border: 0; }
+  .rx-closing-table.rx-table th.text-right { text-align: right; }
+  .rx-closing-table.rx-table td { padding: 12px; border-top: 1.5px solid var(--rx-line); border-bottom: 1.5px solid var(--rx-line); font-size: 14px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .rx-closing-table.rx-table td:first-child { padding-left: 18px; border-left: 1.5px solid var(--rx-line); border-radius: var(--rx-radius-large) 0 0 var(--rx-radius-large); }
+  .rx-closing-table.rx-table td:last-child { border-right: 1.5px solid var(--rx-line); border-radius: 0 var(--rx-radius-large) var(--rx-radius-large) 0; }
+  .rx-closing-table.rx-table tbody tr:hover td { background: var(--rx-surface); border-color: var(--rx-line-strong); }
+  .rx-closing-modal { max-height: calc(100dvh - 32px); overflow-y: auto; padding: 24px; font-family: var(--rx-font); }
+  .rx-closing :is(button, input, [tabindex]):focus-visible, .rx-closing-modal button:focus-visible { outline: 3px solid var(--rx-accent); outline-offset: 2px; }
+  @media (max-width: 1399px) { .rx-closing-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  @media (max-width: 899px) {
+    .rx-closing > .rx-page-header { padding: 16px; }
+    .rx-closing-content { padding: 16px; }
+    .rx-closing-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .rx-closing-arqueo { grid-template-columns: minmax(0, 1fr); gap: 20px; padding: 16px; }
+    .rx-closing-panel-header { padding: 16px; }
+  }
+  @media (max-width: 479px) { .rx-closing-kpis { grid-template-columns: minmax(0, 1fr); } .rx-closing-modal { padding: 18px; } }
+}
+@layer components {
   .rx-waste { display: flex; flex-direction: column; height: 100%; min-width: 0; overflow: hidden; }
   .rx-waste .rx-page-title { font-size: 20px; font-weight: 700; letter-spacing: -.02em; }
   .rx-waste .rx-waste-content { min-height: 0; min-width: 0; flex: 1; overflow-y: auto; }
@@ -227,11 +273,14 @@
   }
 
   .rx-main {
+    display: flex;
+    flex-direction: column;
     position: relative;
     min-width: 0;
     flex: 1;
     overflow: hidden;
   }
+  .rx-main > :is(.rx-sale-layout, .rx-inventory, .rx-page) { flex: 1; min-height: 0; }
 
   .rx-loading {
     position: absolute;
@@ -1057,15 +1106,21 @@
 
 /* Inventario compone los controles compartidos sin alterar otros módulos. */
 @layer components {
+  .rx-admin-content:has(> .rx-admin-inventory) { display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+  .rx-admin-inventory { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; }
   .rx-inventory { display: flex; flex-direction: column; min-width: 0; height: 100%; overflow: hidden; color: var(--rx-ink); background: var(--rx-page); font-family: var(--rx-font); }
-  .rx-inventory > .rx-page-header { padding: 18px 28px; }
+  .rx-inventory > .rx-page-header { padding: 18px 28px; flex-wrap: wrap; }
+  .rx-inventory-header-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
   .rx-inventory .rx-page-title { font-size: 20px; font-weight: 700; letter-spacing: -.02em; }
   .rx-inventory-content { min-height: 0; min-width: 0; flex: 1; overflow-y: auto; padding: 22px 28px; scrollbar-width: thin; scrollbar-color: var(--rx-line-strong) var(--rx-page); }
   .rx-inventory-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 22px; }
   .rx-inventory-kpi { min-width: 0; padding: 14px; color: var(--rx-ink); background: var(--rx-surface); border: 1.5px solid var(--rx-line); border-radius: var(--rx-radius-extra-large); font-family: var(--rx-font); text-align: left; cursor: pointer; transition: border-color 150ms ease, box-shadow 150ms ease; }
   .rx-inventory-kpi:hover { border-color: var(--rx-line-strong); }
   .rx-inventory-kpi[aria-pressed="true"] { border-color: var(--rx-ink); box-shadow: var(--rx-selected-shadow); }
-  .rx-inventory-kpi-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; min-height: 44px; margin-bottom: 12px; }
+  .rx-inventory-kpi { display: flex; align-items: center; gap: 14px; }
+  .rx-inventory-kpi-icon { flex: 0 0 44px; }
+  .rx-inventory-kpi-copy { min-width: 0; }
+  .rx-inventory-kpi-copy > .rx-badge { margin-top: 6px; }
   .rx-inventory-kpi-value { margin: 0; font-size: 22px; font-weight: 800; line-height: 1.2; letter-spacing: -.02em; }
   .rx-inventory-kpi-label { margin: 4px 0 0; color: var(--rx-ink-secondary); font-size: 12px; line-height: 1.4; }
   .rx-inventory .rx-filter-bar { margin-bottom: 18px; }
@@ -1098,7 +1153,8 @@
   .rx-inventory-table .rx-badge { font-size: 12px; }
   .rx-inventory-action-button { display: grid; place-items: center; width: 40px; height: 40px; color: var(--rx-ink-secondary); background: transparent; border: 1px solid var(--rx-line); border-radius: var(--rx-radius-medium); cursor: pointer; }
   .rx-inventory-action-button:hover, .rx-inventory-action-button[aria-expanded="true"] { color: var(--rx-ink); background: var(--rx-surface-soft); border-color: var(--rx-line-strong); }
-  .rx-inventory-action-menu { display: flex; flex-direction: column; gap: 2px; min-width: 190px; margin-top: 8px; padding: 6px; color: var(--rx-ink); background: var(--rx-surface); border: 1px solid var(--rx-line); border-radius: var(--rx-radius-medium); }
+  .rx-inventory-action-menu { position: fixed; z-index: 100; display: flex; flex-direction: column; gap: 2px; width: 210px; max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); overflow-y: auto; padding: 6px; color: var(--rx-ink); background: var(--rx-surface); border: 1px solid var(--rx-line); border-radius: var(--rx-radius-medium); font-family: var(--rx-font); box-shadow: 0 8px 24px rgb(0 0 0 / .12); }
+  .rx-inventory-action-menu button:focus-visible { outline: 3px solid var(--rx-accent); outline-offset: -2px; }
   .rx-inventory-menu-action { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 40px; padding: 8px; color: var(--rx-ink-secondary); background: transparent; border: 0; border-radius: var(--rx-radius-small); font-family: var(--rx-font); font-size: 12px; text-align: left; cursor: pointer; }
   .rx-inventory-menu-action:hover:not(:disabled) { color: var(--rx-ink); background: var(--rx-surface-soft); }
   .rx-inventory-menu-action--danger { color: var(--rx-danger-ink); }
@@ -1113,6 +1169,7 @@
     .rx-inventory-filters .rx-search { max-width: none; flex-basis: 100%; }
   }
   @media (max-width: 479px) {
+    .rx-inventory-header-actions { flex-direction: column; align-items: stretch; }
     .rx-inventory-kpis { grid-template-columns: 1fr; }
     .rx-inventory-select.rx-input { max-width: none; flex-basis: 100%; }
     .rx-inventory-results { margin-left: 0; }

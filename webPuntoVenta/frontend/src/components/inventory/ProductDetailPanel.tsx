@@ -1,3 +1,4 @@
+import { useEffect, useId, useRef } from "react";
 import type { Product } from "../../types";
 import MaterialIcon from "../MaterialIcon";
 
@@ -12,67 +13,97 @@ const formatCurrency = (value: number): string =>
   new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(value);
 
 export default function ProductDetailPanel({ product, onClose, onEdit, onAddStock }: ProductDetailPanelProps) {
+  const titleId = useId();
+  const panelRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const previousFocus = document.activeElement;
+    panelRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    return () => {
+      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
+    };
+  }, []);
+
   const isInactive = product.status === "inactive";
   const isOut = product.stock === 0;
   const isLow = product.stock > 0 && product.stock <= product.minimumStock;
   const statusLabel = isInactive ? "Inactivo" : isOut ? "Agotado" : isLow ? "Stock bajo" : "Disponible";
   const statusIcon = isInactive ? "cancel" : isOut ? "error" : isLow ? "warning" : "check_circle";
-  const statusClass = isInactive ? "bg-[#F3F4F6] text-[#6B7280]" : isOut ? "bg-[#FEF2F2] text-[#991B1B]" : isLow ? "bg-[#FFFBEB] text-[#92400E]" : "bg-[#F0FDF4] text-[#166534]";
+  const statusClass = isInactive ? "rx-badge--neutral" : isOut ? "rx-badge--danger" : isLow ? "rx-badge--warning" : "rx-badge--success";
   const stockPercentage = product.minimumStock > 0 ? Math.min((product.stock / (product.minimumStock * 3)) * 100, 100) : 100;
-  const stockColor = isOut ? "#EF4444" : isLow ? "#F59E0B" : "#10B981";
+  const stockClass = isOut ? "rx-stock-meter--danger" : isLow ? "rx-stock-meter--warning" : "rx-stock-meter--success";
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end">
-      <button type="button" aria-label="Cerrar detalles" onClick={onClose} className="absolute inset-0 bg-black/40" />
-      <aside className="panel-enter relative flex h-full w-full max-w-[400px] flex-col overflow-y-auto bg-white shadow-2xl">
-        <div className="flex flex-shrink-0 items-center justify-between border-b border-[#E5E7EB] px-6 py-5">
-          <h2 className="text-lg font-bold text-[#0D0F14]">Detalle del producto</h2>
-          <button type="button" onClick={onClose} aria-label="Cerrar" className="flex h-8 w-8 items-center justify-center rounded-lg text-[#9CA3AF] hover:bg-[#F3F4F6] hover:text-[#374151]"><MaterialIcon name="close" className="text-xl" /></button>
-        </div>
+    <div className="rx-modal-layer rx-detail-layer">
+      <button type="button" tabIndex={-1} aria-label="Cerrar detalles" onClick={onClose} className="rx-modal-backdrop" />
+      <aside ref={panelRef} role="dialog" aria-modal="true" aria-labelledby={titleId} className="rx-detail-panel" onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.stopPropagation();
+          onClose();
+        }
+        if (event.key === "Tab") {
+          const buttons = panelRef.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)");
+          const first = buttons?.[0];
+          const last = buttons?.[buttons.length - 1];
+          if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last?.focus();
+          } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first?.focus();
+          }
+        }
+      }}>
+        <header className="rx-modal-header">
+          <div>
+            <h2 id={titleId}>Detalle del producto</h2>
+            <p className="rx-product-detail-subtitle">Información y disponibilidad</p>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Cerrar" className="rx-modal-close"><MaterialIcon name="close" className="text-xl" /></button>
+        </header>
 
-        <div className="flex flex-1 flex-col gap-5 p-6">
-          <div className="flex flex-col items-center rounded-2xl p-6 text-center" style={{ backgroundColor: product.bgColor }}>
-            <MaterialIcon name={product.icon} className="mb-3 text-6xl text-[#374151]" filled />
-            <h3 className="mb-1 text-xl font-bold text-[#0D0F14]">{product.name}</h3>
-            <p className="text-sm text-[#6B7280]">{product.code}</p>
-            <span className={`mt-3 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ${statusClass}`}>
+        <div className="rx-modal-body rx-product-detail-body">
+          <div className="rx-product-identity">
+            <div className="rx-product-identity-icon"><MaterialIcon name={product.icon} className="text-4xl" /></div>
+            <h3>{product.name}</h3>
+            <p className="rx-product-code">{product.code}</p>
+            <span className={`rx-badge ${statusClass}`}>
               <MaterialIcon name={statusIcon} className="text-sm" filled />
               {statusLabel}
             </span>
           </div>
 
-          <div className="rounded-xl border border-[#E5E7EB] bg-[#F9FAFB] p-4">
-            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[#9CA3AF]">Información</p>
-            <div className="space-y-3 text-sm">
+          <section className="rx-card rx-detail-card" aria-label="Información del producto">
+            <h3 className="rx-label">Información</h3>
+            <dl className="rx-detail-info">
               <InfoRow icon="category" label="Categoría" value={product.category} />
               <InfoRow icon="payments" label="Precio de venta" value={formatCurrency(product.price)} />
               <InfoRow icon="sell" label="Costo" value={formatCurrency(product.cost)} />
-              {product.description && <div className="border-t border-[#E5E7EB] pt-2"><p className="mb-1 text-xs text-[#9CA3AF]">Descripción</p><p className="text-[#374151]">{product.description}</p></div>}
-            </div>
-          </div>
+              {product.description && <div className="rx-detail-description"><dt>Descripción</dt><dd>{product.description}</dd></div>}
+            </dl>
+          </section>
 
-          <div className="rounded-xl border border-[#E5E7EB] bg-[#F9FAFB] p-4">
-            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[#9CA3AF]">Estado de inventario</p>
-            <div className="mb-3 flex items-end justify-between">
-              <div><p className="text-xs text-[#9CA3AF]">Existencia actual</p><p className="text-3xl font-bold text-[#0D0F14]">{product.stock}</p></div>
-              <div className="text-right"><p className="text-xs text-[#9CA3AF]">Stock mínimo</p><p className="text-lg font-bold text-[#374151]">{product.minimumStock}</p></div>
-            </div>
-            <div className="mb-2 h-2 overflow-hidden rounded-full bg-[#E5E7EB]"><div className="h-full rounded-full" style={{ width: `${stockPercentage}%`, backgroundColor: stockColor }} /></div>
-            {isLow && <p className="text-xs font-medium text-[#F59E0B]">Este producto tiene pocas existencias.</p>}
-            {isOut && <p className="text-xs font-medium text-[#EF4444]">Sin existencias disponibles.</p>}
-            {isInactive && <p className="text-xs font-medium text-[#6B7280]">Producto inactivo, no disponible en Venta.</p>}
-          </div>
+          <section className="rx-card rx-detail-card" aria-label="Estado de inventario">
+            <h3 className="rx-label">Estado de inventario</h3>
+            <dl className="rx-stock-summary">
+              <div><dt>Existencia actual</dt><dd className="rx-stock-current">{product.stock}</dd></div>
+              <div><dt>Stock mínimo</dt><dd>{product.minimumStock}</dd></div>
+            </dl>
+            <meter className={`rx-stock-meter ${stockClass}`} min={0} max={100} value={stockPercentage} aria-label="Nivel de existencias respecto a tres veces el stock mínimo" aria-valuetext={`${product.stock} unidades; stock mínimo: ${product.minimumStock}`} />
+            {isLow && <p className="rx-alert rx-alert--warning"><MaterialIcon name="warning" className="text-lg" />Este producto tiene pocas existencias.</p>}
+            {isOut && <p className="rx-alert rx-alert--danger"><MaterialIcon name="error" className="text-lg" />Sin existencias disponibles.</p>}
+            {isInactive && <p className="rx-alert"><MaterialIcon name="info" className="text-lg" />Producto inactivo, no disponible en Venta.</p>}
+          </section>
         </div>
 
-        <div className="flex flex-shrink-0 flex-col gap-2 border-t border-[#E5E7EB] px-6 py-4">
-          <button type="button" onClick={onEdit} className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-[#FF5C00] py-2.5 text-sm font-semibold text-[#FF5C00] hover:bg-[#FFF5F0]"><MaterialIcon name="edit" className="text-lg" />Editar producto</button>
-          <button type="button" onClick={onAddStock} disabled={isInactive} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#FF5C00] py-2.5 text-sm font-bold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"><MaterialIcon name="add_box" className="text-lg" />Agregar existencias</button>
-        </div>
+        <footer className="rx-modal-footer rx-detail-footer">
+          <button type="button" onClick={onEdit} className="rx-btn rx-btn--outline rx-btn--block"><MaterialIcon name="edit" className="text-lg" />Editar producto</button>
+          <button type="button" onClick={onAddStock} disabled={isInactive} className="rx-btn rx-btn--accent rx-btn--block"><MaterialIcon name="add_box" className="text-lg" />Agregar existencias</button>
+        </footer>
       </aside>
     </div>
   );
 }
 
 function InfoRow({ icon, label, value }: { icon: string; label: string; value: string }) {
-  return <div className="flex items-center justify-between"><div className="flex items-center gap-2 text-[#6B7280]"><MaterialIcon name={icon} className="text-base" /><span>{label}</span></div><strong className="text-[#0D0F14]">{value}</strong></div>;
+  return <div className="rx-detail-info-row"><dt><MaterialIcon name={icon} className="text-base" /><span>{label}</span></dt><dd>{value}</dd></div>;
 }

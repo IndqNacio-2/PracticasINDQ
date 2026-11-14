@@ -82,7 +82,7 @@ export function ReservacionesPage() {
   const enEspera = reservaciones.filter(r => r.capacityStatus === 'espera' && r.status !== 'cancelado').length;
 
   return (
-    <div className="space-y-5 max-w-7xl">
+    <div className="w-full min-w-0 space-y-5">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>Reservaciones</h1>
