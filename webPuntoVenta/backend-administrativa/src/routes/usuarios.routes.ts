@@ -5,6 +5,7 @@ import { Usuario, MAX_RESUMEN, type UserRole } from '../models/Usuarios/usuarios
 import { validarFoto as validarFotoOriginal } from '../lib/foto-usuario';
 import { validarFormaciones } from '../lib/usuarios';
 import { requireAuth, requireRole } from '../middleware/auth';
+import { numeroDeCodigo, validarCodigoUsuario } from '../../../shared/codigoUsuario';
 
 const router = Router();
 
@@ -30,9 +31,26 @@ const soloAdmin = requireRole('administrador');
 function errorDuplicado(err: any): string | null {
     if (err?.code !== 11000) return null;
     if (err?.keyPattern?.correo) return 'Ya existe un usuario con ese correo';
+    if (err?.keyPattern?.numeroAcceso) return 'Ese número ya está en uso por otro usuario';
     if (err?.keyPattern?.codigoAcceso) return 'Ya existe un usuario con ese código de acceso';
     return 'Ya existe un usuario con esos datos';
 }
+
+async function numeroOcupado(numero: string, excluir?: string) {
+    // Incluye cuentas antiguas sin numeroAcceso, ceros iniciales e inactivos.
+    return Usuario.exists({
+        ...(excluir ? { _id: { $ne: excluir } } : {}),
+        $or: [{ numeroAcceso: numero }, { codigoAcceso: { $regex: `^(?:[A-Z]+-?)?0*${numero}$`, $options: 'i' } }],
+    });
+}
+
+router.get('/codigo-disponible', soloAdmin, async (req, res) => {
+    const numero = numeroDeCodigo(req.query.codigo);
+    if (numero === null) return res.status(400).json({ error: 'Escribe un código con número válido' });
+    const excluir = typeof req.query.excluir === 'string' ? req.query.excluir : undefined;
+    if (excluir && !isValidObjectId(excluir)) return res.status(400).json({ error: 'Id de usuario inválido' });
+    res.json({ disponible: !await numeroOcupado(numero, excluir) });
+});
 
 // GET /api/usuarios?rol=entrenador&estatus=activo
 // Lo usan también los selects de clases y horarios (entrenadores): basta con estar autenticado.
@@ -71,6 +89,13 @@ router.post('/', soloAdmin, async (req, res) => {
         return res.status(400).json({ error: 'Estatus inválido' });
     }
 
+    const codigo = typeof codigoAcceso === 'string' ? codigoAcceso.trim().toUpperCase() : '';
+    const errorCodigo = validarCodigoUsuario(codigo, rol);
+    if (errorCodigo) return res.status(400).json({ error: errorCodigo });
+    await Usuario.init(); // Espera el índice único antes de aceptar escrituras concurrentes.
+    const numero = numeroDeCodigo(codigo)!;
+    if (await numeroOcupado(numero)) return res.status(409).json({ error: 'Ese número ya está en uso por otro usuario' });
+
     const f = validarFoto(b.foto);
     if (!f.ok) return res.status(400).json({ error: f.error });
 
@@ -79,7 +104,8 @@ router.post('/', soloAdmin, async (req, res) => {
         apellidos: String(apellidos).trim(),
         correo: String(correo).trim().toLowerCase(),
         telefono: telefono ? String(telefono).trim() : '',
-        codigoAcceso: String(codigoAcceso).trim().toUpperCase(),
+        codigoAcceso: codigo,
+        numeroAcceso: numero,
         rol,
         estatus: estatus ?? 'activo',
         foto: f.valor ?? '',
@@ -115,7 +141,7 @@ router.post('/', soloAdmin, async (req, res) => {
 
 // PATCH /api/usuarios/:id  (solo administrador) — editar y baja/alta lógica (estatus)
 router.patch('/:id', soloAdmin, async (req, res) => {
-    const id = req.params.id;
+    const id = String(req.params.id);
     if (!isValidObjectId(id)) return res.status(400).json({ error: 'Id de usuario inválido' });
 
     const b = req.body ?? {};
@@ -136,6 +162,20 @@ router.patch('/:id', soloAdmin, async (req, res) => {
     if (b.rol !== undefined) {
         if (!esRol(b.rol)) return res.status(400).json({ error: 'Rol inválido' });
         cambios.rol = b.rol;
+    }
+
+    if (b.codigoAcceso !== undefined || b.rol !== undefined) {
+        const actual = await Usuario.findById(id).select('codigoAcceso rol');
+        if (!actual) return res.status(404).json({ error: 'Usuario no encontrado' });
+        // Conservar códigos antiguos al guardar otros campos o cambiar solo el rol.
+        if (cambios.codigoAcceso !== undefined && cambios.codigoAcceso !== actual.codigoAcceso) {
+            const errorCodigo = validarCodigoUsuario(cambios.codigoAcceso, cambios.rol ?? actual.rol);
+            if (errorCodigo) return res.status(400).json({ error: errorCodigo });
+            await Usuario.init();
+            const numero = numeroDeCodigo(cambios.codigoAcceso)!;
+            if (await numeroOcupado(numero, id)) return res.status(409).json({ error: 'Ese número ya está en uso por otro usuario' });
+            cambios.numeroAcceso = numero;
+        }
     }
 
     if (b.estatus !== undefined) {

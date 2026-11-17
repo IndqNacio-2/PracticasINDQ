@@ -26,6 +26,28 @@ function nodos(n, lista = []) {
   return lista;
 }
 
+test('detalle abre y cierra sin perder la reserva ni ejecutar acciones', () => {
+  let colapsado = false;
+  const render = reservaActual => Detalle({ ...props, reserva: reservaActual, colapsado, onAlternar() { colapsado = !colapsado; } });
+  for (const actual of [undefined, reserva]) {
+    let tree = render(actual);
+    let boton = nodos(tree).find(n => n.props?.['aria-label'] === 'Cerrar detalle de reservación');
+    assert.equal(boton.props['aria-expanded'], true);
+    boton.props.onClick();
+    tree = render(actual);
+    assert.match(tree.props.className, /rx-reception-detail--collapsed/);
+    assert.doesNotMatch(renderToStaticMarkup(tree), /Selecciona una reservación|Cobrar reservación|Ana Real/);
+    boton = nodos(tree).find(n => n.props?.['aria-label'] === 'Abrir detalle de reservación');
+    assert.equal(boton.props['aria-expanded'], false);
+    boton.props.onClick();
+    tree = render(actual);
+    assert.match(renderToStaticMarkup(tree), actual ? /Ana Real/ : /Selecciona una reservación/);
+  }
+  const dashboard = fs.readFileSync(path.resolve(__dirname, '../src/sections/webCobro/pages/dashboard.jsx'), 'utf8');
+  assert.match(dashboard, /colapsado=\{detalleColapsado\} onAlternar=\{\(\) => setDetalleColapsado\(valor => !valor\)\}/);
+  assert.match(dashboard, /rx-reception-workspace--detail-collapsed/);
+});
+
 test('detalle vacío solicita seleccionar reservación sin datos de demostración', () => {
   const html = renderToStaticMarkup(Detalle(props));
   assert.match(html, /Selecciona una reservación/);
@@ -42,6 +64,24 @@ test('detalle pendiente conserva el flujo de cobro y las acciones existentes', (
   assert.equal(cobrada, 17);
   assert.equal(reagendada, reserva);
   assert.doesNotMatch(renderToStaticMarkup(tree), /Confirmar asistencia/);
+});
+
+test('detalle muestra lesiones actuales y conserva compatibilidad sin revivir lesiones eliminadas', () => {
+  for (const [cliente, esperado, resaltado] of [
+    [{ lesiones: ['Rodilla', 'Tobillo'], telefono: '6682433048' }, 'Rodilla, Tobillo', true],
+    [{ lesiones: [], perfilSalud: { lesiones: ['Lesión eliminada'] } }, 'Ninguna', false],
+    [{ lesiones: [] }, 'Ninguna', false],
+    [{ perfilSalud: { lesiones: ['Espalda'] } }, 'Espalda', true],
+    [{ telefono: '6682433048' }, 'Sin dato', false],
+    [undefined, 'Sin dato', false],
+  ]) {
+    const tree = Detalle({ ...props, reserva, cliente });
+    const fila = nodos(tree).find(n => n.type === 'div' && React.Children.toArray(n.props.children).some(hijo => hijo.type === 'dt' && hijo.props.children === 'Lesiones'));
+    const valor = nodos(fila).find(n => n.type === 'dd');
+    assert.equal(valor.props.children, esperado);
+    assert.equal(valor.props.className === 'rx-value--danger', resaltado);
+    assert.ok(renderToStaticMarkup(tree).includes(esperado));
+  }
 });
 
 test('detalle pagado ofrece asistencia; lista de espera no permite cobro ni asistencia', () => {
@@ -78,6 +118,29 @@ vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.resolve(__dirname, '.
   throw new Error(`Import inesperado: ${name}`);
 } });
 
+test('seleccionar una reservación abre el detalle incluso al repetir la misma selección', () => {
+  const dashboard = fs.readFileSync(path.resolve(__dirname, '../src/sections/webCobro/pages/dashboard.jsx'), 'utf8');
+  const handler = dashboard.match(/onSeleccionar=\{(id => \{[^}]+\})\}/);
+  assert.ok(handler, 'La tabla debe seleccionar la reserva y abrir su detalle');
+  let seleccion = null;
+  let colapsado = true;
+  const seleccionar = vm.runInNewContext(`(${handler[1]})`, {
+    setReservaVistaId(id) { seleccion = id; },
+    setDetalleColapsado(valor) { colapsado = valor; },
+  });
+  const tree = tablaModule.default({ reservas: [reserva], clientes: [], hoy: props.hoy, onSeleccionar: seleccionar });
+  nodos(tree).find(n => n.type === 'tr' && n.props.onClick).props.onClick();
+  assert.equal(seleccion, reserva.id);
+  assert.equal(colapsado, false);
+  colapsado = true;
+  nodos(tree).find(n => n.type === 'button').props.onClick();
+  assert.equal(seleccion, reserva.id);
+  assert.equal(colapsado, false);
+  seleccionar(18);
+  assert.equal(seleccion, 18);
+  assert.equal(colapsado, false);
+});
+
 test('tabla reproduce columnas del diseño con datos reales y permite seleccionar la reserva', () => {
   let id;
   const tree = tablaModule.default({ reservas: [{ ...reserva, clienteId: 2 }], clientes: [{ id: 2, fechaNacimiento: '2011-11-13', perfilSalud: { lesiones: ['Rodilla'] } }], seleccion: 17, hoy: props.hoy, onSeleccionar: valor => { id = valor; } });
@@ -86,6 +149,60 @@ test('tabla reproduce columnas del diseño con datos reales y permite selecciona
   assert.match(html, /aria-selected="true"/);
   nodos(tree).find(n => n.type === 'button').props.onClick();
   assert.equal(id, 17);
+});
+
+test('tabla muestra código del checador sin confundirlo con la reservación', () => {
+  const tree = tablaModule.default({ reservas: [
+    { ...reserva, clienteId: 2, codigo: 'RES-17' },
+    { ...reserva, id: 18, clienteId: 3, codigo: 'RES-18' },
+    { ...reserva, id: 19, clienteId: null, type: 'visitante', codigo: 'RES-19' },
+    { ...reserva, id: 20, clienteId: 99, codigo: 'RES-20' },
+    { ...reserva, id: 21, clienteId: 2, type: 'visitante', codigo: 'RES-21' },
+  ], clientes: [{ id: 3, nombre: reserva.client }, { id: 2, nombre: reserva.client }], hoy: props.hoy, onSeleccionar() {} });
+  const filas = nodos(tree).filter(n => n.type === 'tr' && n.props.onClick);
+  const primera = fila => nodos(fila).find(n => n.type === 'td').props.children.props.children;
+  assert.deepEqual(filas.map(primera), ['CLI-2', 'CLI-3', '—', '—', '—']);
+  const html = renderToStaticMarkup(tree);
+  assert.match(html, /Código Usuario/);
+  assert.match(html, /RES-17/);
+  assert.equal(nodos(filas[0]).filter(n => n.type === 'td').length, 8);
+});
+
+test('tabla muestra lesiones actuales por ID sin mezclar clientes con el mismo nombre', () => {
+  const tree = tablaModule.default({
+    reservas: [{ ...reserva, clienteId: '2' }, { ...reserva, id: 18, clienteId: 3 }],
+    clientes: [
+      { id: 3, nombre: reserva.client, lesiones: ['Hombro'] },
+      { id: 2, nombre: reserva.client, lesiones: ['Rodilla', 'Tobillo'] },
+    ], hoy: props.hoy, onSeleccionar() {},
+  });
+  const celdas = nodos(tree).filter(n => n.type === 'td' && n.props.className?.includes('rx-reception-injuries'));
+  assert.equal(celdas[0].props.children, 'Rodilla, Tobillo');
+  assert.equal(celdas[1].props.children, 'Hombro');
+  assert.match(celdas[0].props.className, /rx-value--danger/);
+});
+
+test('tabla distingue lesiones eliminadas de datos ausentes y conserva el formato histórico', () => {
+  for (const [cliente, esperado] of [
+    [{ id: 2, lesiones: [], perfilSalud: { lesiones: ['Lesión eliminada'] } }, 'Ninguna'],
+    [{ id: 2, lesiones: [] }, 'Ninguna'],
+    [{ id: 2 }, 'Sin dato'],
+    [{ id: 2, perfilSalud: { lesiones: ['Espalda'] } }, 'Espalda'],
+  ]) {
+    const tree = tablaModule.default({ reservas: [{ ...reserva, clienteId: 2 }], clientes: [cliente], hoy: props.hoy, onSeleccionar() {} });
+    const celda = nodos(tree).find(n => n.type === 'td' && n.props.className?.includes('rx-reception-injuries'));
+    assert.equal(celda.props.children, esperado);
+    assert.equal(celda.props.className.includes('rx-value--danger'), esperado === 'Espalda');
+  }
+});
+
+test('tabla no atribuye lesiones a visitantes ni a reservas sin cliente registrado', () => {
+  for (const clienteId of [null, undefined, 99]) {
+    const tree = tablaModule.default({ reservas: [{ ...reserva, clienteId }],
+      clientes: [{ lesiones: ['Ajena'] }, { id: 2, nombre: reserva.client, lesiones: ['Ajena'] }], hoy: props.hoy, onSeleccionar() {} });
+    const celda = nodos(tree).find(n => n.type === 'td' && n.props.className?.includes('rx-reception-injuries'));
+    assert.equal(celda.props.children, 'Sin dato');
+  }
 });
 
 test('edad respeta cumpleaños y no inventa datos ausentes o inválidos', () => {

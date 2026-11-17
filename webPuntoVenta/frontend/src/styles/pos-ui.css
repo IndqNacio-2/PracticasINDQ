@@ -193,6 +193,11 @@
   .rx-product-form-help { margin: 0; color: var(--rx-ink-secondary); font-size: 12px; line-height: 1.6; }
   .rx-product-form .rx-input { background: var(--rx-surface-soft); }
   .rx-product-form .rx-input:focus { background: var(--rx-surface); }
+  .rx-login-password { position: relative; }
+  .rx-login-password .rx-input { padding-right: 52px; }
+  .rx-login-password-toggle { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 40px; height: 36px; display: inline-flex; align-items: center; justify-content: center; padding: 0; color: var(--rx-ink-secondary); background: transparent; border: 0; border-radius: var(--rx-radius-medium); cursor: pointer; }
+  .rx-login-password-toggle:hover { color: var(--rx-ink); background: var(--rx-surface-soft); }
+  .rx-login-password-toggle:focus-visible { outline: 2px solid var(--rx-ink); outline-offset: 2px; }
   .rx-input-affix { position: relative; }
   .rx-input-prefix { position: absolute; top: 50%; left: 14px; color: var(--rx-ink-secondary); font-size: 14px; transform: translateY(-50%); pointer-events: none; }
   .rx-product-form .rx-input--currency { padding-left: 30px; }

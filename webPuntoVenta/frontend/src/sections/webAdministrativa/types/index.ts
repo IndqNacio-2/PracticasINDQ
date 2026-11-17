@@ -55,6 +55,8 @@ export interface Membresia {
 }
 
 export interface Cliente extends Usuario {
+  enfermedades?: string[];
+  lesiones?: string[];
   fechaNacimiento: string;
   direccion: string;
   fechaRegistro: string;

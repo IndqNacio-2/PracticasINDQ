@@ -4,13 +4,14 @@ import MaterialIcon from '../../../components/MaterialIcon';
 
 // Formatos aceptados: EMP-101, CLI-3 o el ID numérico de un socio.
 const listoBuscar = (codigo) =>
-  /^\d+$/.test(codigo) ||
-  /^CLI-\d+$/.test(codigo) ||
-  /^EMP-\d{3}$/.test(codigo);
+  /^\d+$/.test(codigo) || /^[A-Z0-9][A-Z0-9-]{2,29}$/.test(codigo);
 
 // Normaliza el ID numérico de un socio: "3" -> "CLI-3".
 const normalizar = (codigo) =>
   /^\d+$/.test(codigo) ? `CLI-${codigo}` : codigo;
+
+const coincidePersona = (codigo, persona) => Boolean(persona &&
+  (normalizar(codigo) === persona.codigo || codigo === persona.codigoIngresado));
 
 // Traducción y estilo para el estado que devuelve el backend.
 const ETIQUETAS_ESTADO = {
@@ -205,7 +206,7 @@ const Attendance = () => {
   };
 
   const marcar = async () => {
-    if (!empleado || marcando || normalizar(codigo.trim().toUpperCase()) !== empleado.codigo) return;
+    if (!empleado || marcando || !coincidePersona(codigo.trim().toUpperCase(), empleado)) return;
 
     const codigoMarcado = empleado.codigo;
     const busquedaMarcada = busqRef.current;
@@ -248,8 +249,8 @@ const Attendance = () => {
         if (busquedaMarcada !== busqRef.current) return;
 
         // Evita cambiar la tarjeta si ya se está consultando otro código.
-        if (normalizar(codigo.trim().toUpperCase()) === codigoMarcado) {
-          setEmpleado(personaActualizada);
+        if (coincidePersona(codigo.trim().toUpperCase(), empleado)) {
+          setEmpleado({ ...personaActualizada, codigoIngresado: empleado.codigoIngresado });
         }
       }
 
@@ -299,7 +300,7 @@ const Attendance = () => {
   const listoParaMarcar = Boolean(
     empleado &&
       codActual &&
-      normalizar(codActual) === empleado.codigo
+      coincidePersona(codActual, empleado)
   );
 
   const horaFormateada = currentTime.toLocaleTimeString('es-MX', {
@@ -342,8 +343,8 @@ const Attendance = () => {
                 setCodigo(e.target.value);
                 setResultado(null);
               }}
-              placeholder="Escanea o captura tu código (EMP-101 o ID del socio)"
-              aria-label="Código de empleado o ID del socio"
+              placeholder="Código de usuario o cliente (A101, SOC-ANA, EMP-101)"
+              aria-label="Código de usuario o cliente"
               autoComplete="off"
               className="rx-input rx-input--kiosk"
               onKeyDown={(e) => {

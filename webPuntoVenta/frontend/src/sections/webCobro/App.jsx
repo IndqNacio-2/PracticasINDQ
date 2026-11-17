@@ -22,6 +22,15 @@ function App() {
             }
           />
 
+          <Route
+            path="/front-desk/clientes/:id"
+            element={
+              <ProtectedRoute allowedRoles={['recepcion']}>
+                <Dashboard vista="cliente-detalle" />
+              </ProtectedRoute>
+            }
+          />
+
           {/* Ruta protegida*/}
           <Route
             path="/front-desk/dashboard"

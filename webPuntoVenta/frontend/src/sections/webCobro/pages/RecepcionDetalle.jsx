@@ -2,9 +2,22 @@ import MaterialIcon from '../../../components/MaterialIcon';
 
 const dinero = valor => Number(valor ?? 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
 
-export default function RecepcionDetalle({ reserva, cliente, horario, compra, claseId, cargando, error, onCobrar, onAsistencia, onReagendar, onCancelar, hoy }) {
+export default function RecepcionDetalle({ reserva, cliente, horario, compra, claseId, cargando, error, onCobrar, onAsistencia, onReagendar, onCancelar, hoy, colapsado = false, onAlternar }) {
+  const control = onAlternar && <button type="button" className="rx-icon-btn rx-reception-detail-toggle" onClick={onAlternar}
+    aria-label={colapsado ? 'Abrir detalle de reservación' : 'Cerrar detalle de reservación'}
+    title={colapsado ? 'Abrir detalle de reservación' : 'Cerrar detalle de reservación'}
+    aria-expanded={!colapsado}>
+    <MaterialIcon name={colapsado ? 'chevron_left' : 'chevron_right'} className="text-xl" />
+  </button>;
+
+  if (colapsado) return (
+    <aside className="rx-reception-detail rx-reception-detail--collapsed" aria-label="Detalle de reservación cerrado">
+      {control}
+    </aside>
+  );
   if (!reserva) return (
     <aside className="rx-reception-detail rx-reception-detail--empty" aria-label="Detalle de reservación">
+      {control}
       <MaterialIcon name="person_search" className="text-3xl" />
       <h2>Selecciona una reservación</h2>
       <p>O busca un código para recibir al cliente.</p>
@@ -17,7 +30,8 @@ export default function RecepcionDetalle({ reserva, cliente, horario, compra, cl
   const cobrable = !pagada && ['pendiente', 'asistido'].includes(reserva.status) && !espera;
   const confirmar = pagada && vigente && reserva.fecha === hoy && !espera;
   const iniciales = (reserva.client || '').split(' ').filter(Boolean).slice(0, 2).map(p => p[0]).join('');
-  const lesiones = cliente?.perfilSalud?.lesiones;
+  // Priorizar el registro actual de Cobro, incluso cuando se vació la lista.
+  const lesiones = Array.isArray(cliente?.lesiones) ? cliente.lesiones : cliente?.perfilSalud?.lesiones;
   const paquete = reserva.membresiaCompraId ? `Compra #${reserva.membresiaCompraId}` : null;
   const saldo = compra?.saldos?.find(s => !s.claseId || String(s.claseId) === String(claseId));
   const ilimitado = saldo?.disponibles === null;
@@ -26,6 +40,7 @@ export default function RecepcionDetalle({ reserva, cliente, horario, compra, cl
 
   return (
     <aside className="rx-reception-detail" aria-label={`Detalle de ${reserva.client}`} aria-live="polite">
+      {control}
       <header className="rx-reception-profile">
         <span className="rx-reception-profile-avatar">{iniciales}</span>
         <div><h2>{reserva.client}</h2><p>{reserva.type === 'visitante' ? 'Visitante' : 'Socio'} · <span className="rx-code">{reserva.codigo || `#${reserva.id}`}</span></p></div>
@@ -38,7 +53,7 @@ export default function RecepcionDetalle({ reserva, cliente, horario, compra, cl
           <div><dt>Cupo</dt><dd>{espera ? 'Lista de espera' : 'Confirmado'}</dd></div>
           <div><dt>Asistencia</dt><dd>{reserva.status === 'asistido' ? 'Confirmada' : reserva.status === 'no_asistio' ? 'No asistió' : reserva.status === 'cancelado' ? 'Cancelada' : 'Por confirmar'}</dd></div>
           {cliente?.telefono && <div><dt>Teléfono</dt><dd>{cliente.telefono}</dd></div>}
-          <div><dt>Lesiones</dt><dd className={lesiones?.length ? 'rx-value--danger' : undefined}>{Array.isArray(lesiones) && lesiones.length > 0 ? lesiones.join(', ') : cliente?.perfilSalud ? 'Ninguna' : 'Sin dato'}</dd></div>
+          <div><dt>Lesiones</dt><dd className={Array.isArray(lesiones) && lesiones.length ? 'rx-value--danger' : undefined}>{Array.isArray(lesiones) && lesiones.length > 0 ? lesiones.join(', ') : Array.isArray(lesiones) || cliente?.perfilSalud ? 'Ninguna' : 'Sin dato'}</dd></div>
         </dl>
       </section>
       <section className="rx-reception-detail-card" aria-label="Cobertura de la reservación">

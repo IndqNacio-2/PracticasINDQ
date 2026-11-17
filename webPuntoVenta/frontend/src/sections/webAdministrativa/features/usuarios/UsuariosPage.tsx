@@ -10,6 +10,7 @@ import { DataState } from '../../components/DataState';
 import { api } from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
 import type { Usuario, Estatus, Formacion } from '../../types';
+import { PREFIJOS_USUARIO, numeroDeCodigo, validarCodigoUsuario } from '../../../../../shared/codigoUsuario';
 
 // Roles de PLATAFORMA (staff). "Cliente" no aplica aquí:
 // los clientes se gestionan en el módulo Clientes y no inician sesión en esta web.
@@ -175,6 +176,7 @@ export function UsuariosPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [procesandoFoto, setProcesandoFoto] = useState(false);
+  const [codigoRemoto, setCodigoRemoto] = useState<{ clave: string; error: string } | null>(null);
   const lecturaFoto = useRef(0);
   const inputFoto = useRef<HTMLInputElement>(null);
   useEffect(() => () => { lecturaFoto.current += 1; }, []);
@@ -221,11 +223,13 @@ export function UsuariosPage() {
   const filtered = filter === 'todos' ? usuarios : usuarios.filter(u => u.rol === filter);
 
   const openNew = () => {
+    setCodigoRemoto(null);
     setForm(EMPTY_FORM);
     setFormError(null);
     setModal({ open: true });
   };
   const openEdit = (u: Usuario) => {
+    setCodigoRemoto(null);
     setForm({
       nombre: u.nombre, apellidos: u.apellidos, correo: u.correo, telefono: u.telefono, codigoAcceso: u.codigoAcceso,
       rol: u.rol as PlatformRole, estatus: u.estatus, password: '', foto: u.foto || '',
@@ -238,11 +242,43 @@ export function UsuariosPage() {
   };
 
   const esEntrenador = form.rol === 'entrenador';
+  const codigoNuevo = !modal.editing || form.codigoAcceso !== modal.editing.codigoAcceso;
+  const numeroCodigo = numeroDeCodigo(form.codigoAcceso);
+  const claveCodigo = `${modal.editing?.idUsuario ?? ''}:${form.codigoAcceso}`;
+  const errorCodigoLocal = !codigoNuevo ? '' :
+    validarCodigoUsuario(form.codigoAcceso, form.rol) ||
+    (numeroCodigo !== null && usuarios.some(u => u.idUsuario !== modal.editing?.idUsuario && numeroDeCodigo(u.codigoAcceso) === numeroCodigo)
+      ? 'Ese número ya está en uso por otro usuario.' : '');
+  const verificandoCodigo = modal.open && codigoNuevo && !errorCodigoLocal && codigoRemoto?.clave !== claveCodigo;
+  const errorCodigo = errorCodigoLocal || (codigoRemoto?.clave === claveCodigo ? codigoRemoto.error : '');
+
+  useEffect(() => {
+    if (!modal.open || !codigoNuevo || errorCodigoLocal) return;
+    let vigente = true;
+    const timer = window.setTimeout(async () => {
+      try {
+        const consulta = new URLSearchParams({ codigo: form.codigoAcceso });
+        if (modal.editing) consulta.set('excluir', modal.editing.idUsuario);
+        const resultado = await api.get<{ disponible: boolean }>(`/usuarios/codigo-disponible?${consulta}`);
+        if (vigente) setCodigoRemoto({ clave: claveCodigo, error: resultado.disponible ? '' : 'Ese número ya está en uso por otro usuario.' });
+      } catch (e) {
+        if (vigente) setCodigoRemoto({ clave: claveCodigo, error: e instanceof Error ? e.message : 'No se pudo verificar el número. Vuelve a intentarlo.' });
+      }
+    }, 300);
+    return () => { vigente = false; window.clearTimeout(timer); };
+  }, [modal.open, modal.editing?.idUsuario, codigoNuevo, errorCodigoLocal, form.codigoAcceso, claveCodigo]);
+
+  const cambiarRol = (rol: PlatformRole | '') => {
+    setCodigoRemoto(null);
+    setForm(f => ({ ...f, rol, codigoAcceso:
+      `${rol ? PREFIJOS_USUARIO[rol] : ''}${f.codigoAcceso.match(/\d+$/)?.[0] ?? ''}` }));
+  };
 
   // Crea (POST) o actualiza (PATCH) en el backend. La contraseña solo se envía
   // cuando se escribió una (al crear es obligatoria; al editar es opcional).
   const save = async () => {
-    if (saving || procesandoFoto) return;
+    if (saving || procesandoFoto || verificandoCodigo) return;
+    if (errorCodigo) { setFormError(errorCodigo); return; }
     if (!form.nombre || !form.apellidos || !form.correo || !form.rol || !form.codigoAcceso) {
       setFormError('Nombre, apellidos, correo, código de acceso y rol son obligatorios.');
       return;
@@ -409,8 +445,25 @@ export function UsuariosPage() {
           <InputField label="Apellidos" required value={form.apellidos} onChange={e => setForm(f => ({ ...f, apellidos: e.target.value }))} />
           <InputField label="Correo electrónico" required type="email" value={form.correo} onChange={e => setForm(f => ({ ...f, correo: e.target.value }))} className="col-span-2" />
           <InputField label="Teléfono" value={form.telefono} onChange={e => setForm(f => ({ ...f, telefono: e.target.value }))} />
-          <InputField label="Código de Acceso" required value={form.codigoAcceso} onChange={e => setForm(f => ({ ...f, codigoAcceso: e.target.value }))} />
-          <SelectField label="Rol" required value={form.rol} onChange={e => setForm(f => ({ ...f, rol: e.target.value as PlatformRole }))} options={roleOptions} />
+          <SelectField label="Rol" required value={form.rol} onChange={e => cambiarRol(e.target.value as PlatformRole | '')} options={roleOptions} disabled={saving} />
+            <div className="rx-field">
+              <label className="rx-label" htmlFor="numero-acceso">Código de Acceso <span className="rx-required-mark">*</span></label>
+              <div className="flex items-center gap-2">
+                <span className="rounded-xl bg-gray-100 px-3 py-2 font-semibold" aria-label="Prefijo automático">{modal.editing && !codigoNuevo ? form.codigoAcceso.replace(/\d+$/, '') || '—' : form.rol ? PREFIJOS_USUARIO[form.rol] : '—'}</span>
+                <input id="numero-acceso" className="rx-input" type="text" inputMode="numeric" pattern="[0-9]+" maxLength={27}
+                  aria-label="Número de acceso" aria-describedby="ayuda-numero-acceso" aria-invalid={Boolean(form.codigoAcceso && errorCodigo)}
+                  disabled={!form.rol || saving} value={form.codigoAcceso.match(/\d+$/)?.[0] ?? ''}
+                  placeholder="Elige un número" onChange={e => {
+                    setCodigoRemoto(null);
+                    setForm(f => ({ ...f, codigoAcceso: `${f.rol ? PREFIJOS_USUARIO[f.rol] : ''}${e.target.value.replace(/\D/g, '')}` }));
+                  }} />
+              </div>
+              <p id="ayuda-numero-acceso" className="mt-1 text-xs text-gray-500">El prefijo depende del rol. El número no puede repetirse entre usuarios, aunque tengan otro rol.</p>
+              {modal.editing && !codigoNuevo && validarCodigoUsuario(form.codigoAcceso, form.rol) &&
+                <p className="mt-1 text-xs text-gray-500">Código anterior: {form.codigoAcceso}. Se conserva mientras no cambies el rol o el número; al cambiarlos se aplicará el prefijo del rol.</p>}
+              {form.codigoAcceso && errorCodigo && <p role="alert" className="rx-error-text">{errorCodigo}</p>}
+            </div>
+          {verificandoCodigo && <p role="status" className="text-xs text-gray-500">Verificando número de acceso...</p>}
           <SelectField label="Estatus" value={form.estatus} onChange={e => setForm(f => ({ ...f, estatus: e.target.value as Estatus }))} options={[{ value: 'activo', label: 'Activo' }, { value: 'inactivo', label: 'Inactivo' }]} />
           {/* Contraseña: obligatoria al crear; al editar, si se deja en blanco no se cambia. */}
           <InputField
@@ -470,7 +523,7 @@ export function UsuariosPage() {
         {formError && <p role="alert" className="mt-3 text-sm text-red-500">{formError}</p>}
         <div className="flex gap-3 mt-6 pt-4 border-t border-gray-100">
           <button onClick={cerrarModal} disabled={saving} className="rx-btn rx-btn--outline flex-1">Cancelar</button>
-          <button onClick={save} disabled={saving || procesandoFoto} className="rx-btn rx-btn--dark flex-1">
+          <button onClick={save} disabled={saving || procesandoFoto || verificandoCodigo || Boolean(errorCodigo)} className="rx-btn rx-btn--dark flex-1">
             {saving && <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" /></svg>}
             {saving ? 'Guardando...' : modal.editing ? 'Guardar cambios' : 'Crear usuario'}
           </button>

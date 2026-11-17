@@ -27,6 +27,8 @@ const usuarioSchema = new Schema(
         telefono: { type: String, default: '' },
         foto: { type: String, default: '' },
         codigoAcceso: { type: String, required: true, unique: true },
+        // Solo se asigna al crear/cambiar código; no transforma cuentas anteriores.
+        numeroAcceso: { type: String, unique: true, sparse: true, select: false },
         rol: { type: String, enum: ['administrador', 'entrenador', 'recepcion', 'vendedor'], required: true },
         estatus: { type: String, enum: ['activo', 'inactivo'], default: 'activo' },
 
@@ -49,6 +51,7 @@ const usuarioSchema = new Schema(
                 delete ret._id;
                 delete ret.__v;
                 delete ret.password;
+                delete ret.numeroAcceso;
                 return ret;
             },
         },

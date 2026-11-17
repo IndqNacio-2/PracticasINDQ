@@ -9,6 +9,7 @@ import { EVENTO_CAMBIO_APLICACION, CLAVE_CAMBIO_APLICACION } from '../../../serv
 import RecepcionDetalle from './RecepcionDetalle';
 import RecepcionTabla from './RecepcionTabla';
 import { ClientesPage } from '../../webAdministrativa/features/clientes/ClientesPage';
+import { ClienteDetalle } from '../../webAdministrativa/features/clientes/ClienteDetalle';
 import '../../../styles/recepcion-workspace.css';
 
 /*
@@ -150,6 +151,7 @@ export default function Dashboard({ vista = 'recepcion' }) {
   const [reservations, setReservations] = useState([]);
   const [horarioVistaId, setHorarioVistaId] = useState(null);
   const [reservaVistaId, setReservaVistaId] = useState(null);
+  const [detalleColapsado, setDetalleColapsado] = useState(false);
   const [comprasDetalle, setComprasDetalle] = useState([]);
   const [errorDetalle, setErrorDetalle] = useState('');
   const [cargandoDetalle, setCargandoDetalle] = useState(false);
@@ -1231,7 +1233,7 @@ export default function Dashboard({ vista = 'recepcion' }) {
         </header>
 
         <main className="rx-admin-content">
-          {vista === 'clientes' ? <ClientesPage soloRegistro /> : (
+          {vista === 'cliente-detalle' ? <ClienteDetalle rutaClientes="/front-desk/clientes" /> : vista === 'clientes' ? <ClientesPage rutaClientes="/front-desk/clientes" /> : (
           <section className="rx-admin-dashboard">
             <header className="rx-page-header rx-admin-dashboard-header">
               <div className="rx-page-heading rx-page-heading--stacked">
@@ -1252,7 +1254,7 @@ export default function Dashboard({ vista = 'recepcion' }) {
                 }} />}
 
 
-              <div className="rx-reception-workspace">
+              <div className={`rx-reception-workspace${detalleColapsado ? ' rx-reception-workspace--detail-collapsed' : ''}`}>
                 <section className="rx-reception-schedule" aria-labelledby="reception-schedule-title">
                   <div className="rx-reception-section-heading">
                     <h2 id="reception-schedule-title">Clases programadas</h2>
@@ -1397,11 +1399,12 @@ export default function Dashboard({ vista = 'recepcion' }) {
                     )}
                   </div>
                 ) : (
-                  <RecepcionTabla reservas={reservasVisibles} clientes={clientes} seleccion={reservaVistaId} onSeleccionar={setReservaVistaId} hoy={hoyISO()} />
+                  <RecepcionTabla reservas={reservasVisibles} clientes={clientes} seleccion={reservaVistaId} onSeleccionar={id => { setReservaVistaId(id); setDetalleColapsado(false); }} hoy={hoyISO()} />
                 )}
               </div>
                 </section>
                 <RecepcionDetalle reserva={reservaVista} cliente={clienteVista}
+                  colapsado={detalleColapsado} onAlternar={() => setDetalleColapsado(valor => !valor)}
                   compra={comprasDetalle.find(c => String(c.id) === String(reservaVista?.membresiaCompraId))}
                   cargando={cargandoDetalle} error={errorDetalle}
                   claseId={clases.find(c => c.nombre === reservaVista?.class)?.idClase}

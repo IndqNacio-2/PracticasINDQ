@@ -78,7 +78,9 @@
   .rx-reception .rx-reservations-table tr { cursor: pointer; }
   .rx-reception .rx-reservations-table tr[aria-selected='true'] td { border-color: var(--rx-ink); }
   .rx-reception-client-link { background: transparent; border: 0; padding: 0; color: var(--rx-ink); font-size: 16px; font-weight: 700; text-align: left; cursor: pointer; }
-  .rx-reception-detail { min-width: 0; padding: 22px 18px; background: var(--rx-surface); border-left: 1px solid var(--rx-line); }
+  .rx-reception-detail { position: relative; min-width: 0; padding: 60px 18px 22px; background: var(--rx-surface); border-left: 1px solid var(--rx-line); }
+  .rx-reception-detail-toggle { position: absolute; top: 12px; right: 12px; }
+  .rx-reception-detail--collapsed { padding: 12px; min-height: 64px; }
   .rx-reception-detail--empty { display: flex; align-items: center; justify-content: center; flex-direction: column; text-align: center; gap: 12px; color: var(--rx-ink-secondary); }
   .rx-reception-detail--empty h2 { font-size: 17px; margin: 0; }
   .rx-reception-detail--empty p { font-size: 13px; line-height: 1.7; margin: 0; }
@@ -138,4 +140,11 @@
   .rx-reception-schedule-list { flex-direction: row; max-height: none; overflow-x: auto; overflow-y: hidden; scrollbar-gutter: auto; padding: 4px; }
   .rx-reception-class { flex: 0 0 200px; }
   .rx-reception .rx-admin-dashboard-header { padding: 18px 16px; }
+}
+
+@media (min-width: 1200px) {
+  .rx-reception-workspace.rx-reception-workspace--detail-collapsed { grid-template-columns: 270px minmax(0, 1fr) 60px; }
+}
+@media (min-width: 1600px) {
+  .rx-reception-workspace.rx-reception-workspace--detail-collapsed { grid-template-columns: 324px minmax(0, 1fr) 60px; }
 }
