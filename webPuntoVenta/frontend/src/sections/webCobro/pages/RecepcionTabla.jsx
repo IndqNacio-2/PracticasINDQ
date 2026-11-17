@@ -13,7 +13,7 @@ export default function RecepcionTabla({ reservas, clientes, seleccion, onSelecc
   return (
     <div className="rx-table-wrap">
       <table className="rx-table rx-reservations-table">
-        <thead><tr>{['Cliente', 'Código', 'Edad', 'Lesiones', 'Cobro', 'Estatus', 'Hora'].map(titulo => <th key={titulo} scope="col">{titulo}</th>)}</tr></thead>
+        <thead><tr>{['Código Usuario', 'Cliente', 'Código', 'Edad', 'Lesiones', 'Cobro', 'Estatus', 'Hora'].map(titulo => <th key={titulo} scope="col">{titulo}</th>)}</tr></thead>
         <tbody>{reservas.map(reserva => {
           const cliente = clientes.find(c => String(c.id) === String(reserva.clienteId));
           const edad = edadCliente(cliente, hoy);
@@ -27,6 +27,7 @@ export default function RecepcionTabla({ reservas, clientes, seleccion, onSelecc
             : reserva.reagendada ? ['info', 'Reagendado'] : null;
           return (
             <tr key={reserva.id} aria-selected={seleccion === reserva.id} onClick={() => onSeleccionar(reserva.id)}>
+              <td><span className="rx-code">{cliente?.codigo ?? reserva.codigo ?? `#${reserva.id}`}</span></td>
               <td><button type="button" className="rx-reception-client-link" onClick={() => onSeleccionar(reserva.id)} aria-label={`Ver detalle de ${reserva.client}`}>{reserva.client}</button>
                 <span className="rx-cell-caption">{reserva.membresiaCompraId ? 'Con paquete' : 'Sin paquete'}</span>
               </td>
