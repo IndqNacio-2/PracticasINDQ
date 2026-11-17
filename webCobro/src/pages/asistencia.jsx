@@ -17,7 +17,7 @@ const Attendance = () => {
     return () => clearInterval(timer);
   }, []);
 
-  // Buscar usuario por código
+  // Buscar usuario por código (cliente por 'codigo' o empleado por 'codigo_acceso')
   const buscarUsuario = async (codigoIngresado) => {
     if (!codigoIngresado.trim()) {
       setUsuarioActual(null);
@@ -25,35 +25,49 @@ const Attendance = () => {
       return;
     }
 
+    const codigoLimpio = codigoIngresado.trim();
+
     setLoadingSearch(true);
     try {
-      // Buscar en clientes
+      // Buscar en clientes por campo 'codigo'
       const clientesRes = await fetch(`${API}/api/clientes`);
       const clientes = await clientesRes.json();
-      const clienteEncontrado = clientes.find(c => String(c.id) === codigoIngresado.trim());
+      const clienteEncontrado = clientes.find(c => String(c.codigo) === codigoLimpio);
 
       if (clienteEncontrado) {
         setUsuarioActual({
           tipo: 'cliente',
           id: clienteEncontrado.id,
-          codigo: `CLI-${clienteEncontrado.id}`,
+          codigo: clienteEncontrado.codigo,
           nombre: clienteEncontrado.nombre,
           membresia: clienteEncontrado.membresia
         });
-        cargarHistorialUsuario(`CLI-${clienteEncontrado.id}`);
+        cargarHistorialUsuario(clienteEncontrado.codigo);
         return;
       }
 
-      // Buscar empleado por código (formato EMP-XXX)
-      if (codigoIngresado.toUpperCase().startsWith('EMP-')) {
-        setUsuarioActual({
-          tipo: 'empleado',
-          codigo: codigoIngresado.toUpperCase(),
-          nombre: 'Empleado Registrado',
-          rol: 'Empleado'
-        });
-        cargarHistorialUsuario(codigoIngresado.toUpperCase());
-        return;
+      // Buscar empleado por campo 'codigo_acceso'
+      try {
+        const empleadosRes = await fetch(`${API}/api/empleados`);
+        if (empleadosRes.ok) {
+          const empleados = await empleadosRes.json();
+          const empleadoEncontrado = empleados.find(e => String(e.codigo_acceso) === codigoLimpio);
+
+          if (empleadoEncontrado) {
+            setUsuarioActual({
+              tipo: 'empleado',
+              id: empleadoEncontrado.id,
+              codigo: empleadoEncontrado.codigo_acceso,
+              nombre: empleadoEncontrado.nombre || 'Empleado Registrado',
+              rol: empleadoEncontrado.rol || 'Empleado'
+            });
+            cargarHistorialUsuario(empleadoEncontrado.codigo_acceso);
+            return;
+          }
+        }
+      } catch (empErr) {
+        // Si el endpoint de empleados no existe, continuar con error de no encontrado
+        console.warn('No se pudo consultar empleados:', empErr);
       }
 
       setUsuarioActual(null);
@@ -187,7 +201,7 @@ const Attendance = () => {
                   buscarUsuario(e.target.value.toUpperCase());
                   setResultado(null);
                 }}
-                placeholder="Ej: 1 (cliente) o EMP-101 (empleado)"
+                placeholder="Ej: C001 (cliente) o A101 (empleado)"
                 className="w-full pl-10 pr-4 py-3 text-lg border-2 border-slate-200 rounded-lg 
                            focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 
                            transition-all uppercase placeholder:text-xs placeholder:uppercase"
