@@ -14,6 +14,7 @@ import { MembresiasCliente, type MembresiaComprada } from './MembresiasCliente';
 interface SocioCobro {
   id: number;
   nombre: string;
+  codigo?: string | null;
   membresiasCompradas?: MembresiaComprada[];
   telefono: string;
   correo: string | null;
@@ -224,10 +225,19 @@ export function ClientesPage({ soloRegistro = false }: { soloRegistro?: boolean 
         <DataTable
           variant="spaced"
           searchPlaceholder="Buscar por nombre, correo o teléfono…"
-          searchKeys={['nombre', 'correo', 'telefono']}
+          searchKeys={['codigo', 'nombre', 'correo', 'telefono']}
           data={clientes as unknown as Record<string, unknown>[]}
           emptyMessage="No hay clientes que mostrar"
           columns={[
+            {
+              key: 'codigo', header: 'Código Usuario',
+              render: row => {
+                const s = row as unknown as SocioCobro;
+                return (
+                  <span className="rx-code">{s.codigo || `—`}</span>
+                );
+              }
+            },
             {
               key: 'nombre', header: 'Cliente',
               render: row => {
