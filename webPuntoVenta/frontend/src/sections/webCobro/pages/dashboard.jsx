@@ -132,6 +132,16 @@ const fechaDeHoyLarga = () => {
   return texto.charAt(0).toUpperCase() + texto.slice(1);
 };
 
+// Normaliza texto para búsqueda: minúsculas, sin acentos ni diacríticos.
+// "Pedro Páramo" -> "pedro paramo", "PÉDRÓ PÁRÁMÓ" -> "pedro paramo"
+const normalizarTexto = (texto = '') =>
+  String(texto)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // elimina tildes y otros diacríticos combinados
+    .replace(/ñ/g, 'n')
+    .replace(/ü/g, 'u');
+
 // Botón "Cambiar método" igual al del modal de cobro del Punto de Venta.
 function BotonCambiarMetodo({ onClick }) {
   return (
@@ -1055,9 +1065,9 @@ export default function Dashboard({ vista = 'recepcion' }) {
   };
 
   const filteredReservations = reservations.filter(res => {
-    const term = searchTerm.toLowerCase();
+    const term = normalizarTexto(searchTerm);
     return (
-      res.client.toLowerCase().includes(term) ||
+      normalizarTexto(res.client).includes(term) ||
       (res.codigo || '').toLowerCase().includes(term) ||
       res.class.toLowerCase().includes(term) ||
       res.time.toLowerCase().includes(term) ||
@@ -1083,10 +1093,11 @@ export default function Dashboard({ vista = 'recepcion' }) {
   const nombreUsuario = user ? `${user.nombre ?? ''} ${user.apellidos ?? ''}`.trim() : '';
   const inicialesUsuario = iniciales(nombreUsuario);
 
-  // Socios que coinciden con lo escrito en "Buscar socio" (por nombre o ID).
+  // Socios que coinciden con lo escrito en "Buscar socio" (solo por nombre y/o apellido).
   const textoSocio = newReservation.client || '';
+  const termSocio = normalizarTexto(textoSocio);
   const sociosFiltrados = clientes.filter(
-    c => c.nombre.toLowerCase().includes(textoSocio.toLowerCase()) || String(c.id).includes(textoSocio)
+    c => normalizarTexto(c.nombre).includes(termSocio)
   );
 
   const limpiarFiltros = () => {
