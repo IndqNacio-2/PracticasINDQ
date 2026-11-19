@@ -38,9 +38,9 @@ export default defineConfig(({ mode }) => {
       // Solo se proxya lo que empieza con /api para no interferir con las
       // rutas del frontend (/cobro y /administrativa siguen siendo pantallas).
       proxy: {
-        '/pos/api': 'http://localhost:3000',
-        '/admin/api': 'http://localhost:3000',
-        '/cobro/api': 'http://localhost:3000',
+        '/pos/api': 'http://localhost:3003',
+        '/admin/api': 'http://localhost:3003',
+        '/cobro/api': 'http://localhost:3003',
       },
       watch: {
         ignored: [

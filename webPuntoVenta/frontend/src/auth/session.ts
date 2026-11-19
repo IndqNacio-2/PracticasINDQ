@@ -36,6 +36,11 @@ export function clearSession() {
   localStorage.removeItem(SESSION_KEY)
 }
 
+export function nombreUsuarioSesion(): string {
+  const user = getStoredUser()
+  return user ? user.nombre : ''
+}
+
 export function getStoredUser(): SessionUser | null {
   try {
     const token = localStorage.getItem(TOKEN_KEY)
