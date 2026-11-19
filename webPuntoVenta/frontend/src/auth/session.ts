@@ -1,4 +1,4 @@
-export type StaffRole = "administrador" | "recepcion" | "vendedor" | "entrenador"
+export type StaffRole = "administrador" | "recepcion" | "vendedor" | "entrenador" | "checador"
 
 export interface SessionUser {
   idUsuario: string
@@ -20,6 +20,7 @@ export const MODULE_BY_ROLE: Partial<Record<StaffRole, string>> = {
   administrador: "/administrativa/dashboard",
   recepcion: "/cobro/front-desk/dashboard",
   vendedor: "/",
+  checador: "/cobro/asistencia",
 }
 
 export function getModulePath(role: StaffRole): string | null {

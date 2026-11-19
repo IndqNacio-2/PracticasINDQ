@@ -8,7 +8,12 @@ import MembresiasRecepcion, { membresiasRequest, SaldosMembresias } from './Memb
 import { EVENTO_CAMBIO_APLICACION, CLAVE_CAMBIO_APLICACION } from '../../../services/cambiosAplicacion';
 import RecepcionDetalle from './RecepcionDetalle';
 import RecepcionTabla from './RecepcionTabla';
+import InventarioRecepcion from './InventarioRecepcion';
+import ClasesHorariosPage from '../../webAdministrativa/features/clasesHorarios/ClasesHorariosPage';
+import MembresiasPage from '../../webAdministrativa/features/membresia/membresia';
+import { coincideNombre } from '../../../services/busquedaClientes';
 import { ClientesPage } from '../../webAdministrativa/features/clientes/ClientesPage';
+import { ClienteDetalle } from '../../webAdministrativa/features/clientes/ClienteDetalle';
 import '../../../styles/recepcion-workspace.css';
 
 /*
@@ -60,11 +65,6 @@ const hoyISO = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
-/*
- * Código de reserva que da el cliente en recepción (lo genera el backend al
- * reservar, también desde la app móvil): RSV-7K2M9Q o solo 7K2M9Q.
- */
-const pareceCodigoReserva = (valor) => /^(RSV-)?[A-Z0-9]{6}$/i.test((valor || '').trim());
 
 // Estados que ya no apartan lugar ni cuentan como reservación activa.
 const ESTADOS_INACTIVOS = ['cancelado', 'no_asistio'];
@@ -160,6 +160,7 @@ export default function Dashboard({ vista = 'recepcion' }) {
   const [reservations, setReservations] = useState([]);
   const [horarioVistaId, setHorarioVistaId] = useState(null);
   const [reservaVistaId, setReservaVistaId] = useState(null);
+  const [detalleColapsado, setDetalleColapsado] = useState(false);
   const [comprasDetalle, setComprasDetalle] = useState([]);
   const [errorDetalle, setErrorDetalle] = useState('');
   const [cargandoDetalle, setCargandoDetalle] = useState(false);
@@ -289,7 +290,7 @@ export default function Dashboard({ vista = 'recepcion' }) {
      * cargamos los socios registrados desde el backend de cobro
      * estos clientes se utilizan para validar su estado, membresia y vigencia.
      */
-    fetch(`${API}/api/clientes`)
+    fetch(`${API}/api/clientes`, { headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` } })
       .then(res => {
         if (!res.ok) {
           throw new Error(`No se pudieron consultar los clientes. HTTP ${res.status}`);
@@ -420,7 +421,7 @@ export default function Dashboard({ vista = 'recepcion' }) {
       consultando = true;
       const consultar = async (url, aplicar) => {
         try {
-          const respuesta = await fetch(url, { signal: controller.signal, cache: 'no-store' });
+          const respuesta = await fetch(url, { signal: controller.signal, cache: 'no-store', headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` } });
           if (!respuesta.ok) throw new Error(`HTTP ${respuesta.status}`);
           const datos = await respuesta.json();
           if (!controller.signal.aborted) aplicar(datos);
@@ -624,7 +625,7 @@ export default function Dashboard({ vista = 'recepcion' }) {
 
   /*
    * Abre el modal de cobro de una reservación. Lo usan el botón "Cobrar" de
-   * la tabla y la búsqueda por nombre o código de reserva (reservas de la app).
+   * la tabla y la búsqueda por nombre o apellido (reservas de la app).
    */
   const abrirCobro = (reservation) => {
     if (!reservation) {
@@ -805,13 +806,11 @@ export default function Dashboard({ vista = 'recepcion' }) {
     }
   };
 
-  // ========== BÚSQUEDA POR CÓDIGO O NOMBRE (reservas de la app móvil) ==========
+  // ========== BÚSQUEDA POR NOMBRE O APELLIDO ==========
 
   /*
    * Con Enter (o el botón Buscar) en el buscador:
-   *  - Código de reserva: se busca directo en el backend (puede ser una reserva
-   *    recién hecha en la app) y, si se puede cobrar, se abre el cobro.
-   *  - Nombre: se recarga la lista para incluir las reservas nuevas de la app;
+   *  - Se recarga la lista para incluir las reservas nuevas de la app;
    *    si el cliente tiene una sola reservación por cobrar, se abre el cobro.
    */
   const handleBuscarReserva = async () => {
@@ -819,39 +818,13 @@ export default function Dashboard({ vista = 'recepcion' }) {
     if (!termino) return;
     setBuscandoCodigo(true);
     try {
-      if (pareceCodigoReserva(termino)) {
-        const response = await fetch(`${API}/api/reservas/codigo/${encodeURIComponent(termino)}`);
-        const body = await response.json().catch(() => null);
-        if (response.ok) {
-          const encontrada = body;
-          setReservations(prev => {
-            if (encontrada.status === 'cancelado') return prev.filter(r => r.id !== encontrada.id);
-            return prev.some(r => r.id === encontrada.id)
-              ? prev.map(r => (r.id === encontrada.id ? encontrada : r))
-              : [...prev, encontrada];
-          });
-          if (encontrada.paymentStatus === 'pagado') {
-            showNotification(`La reservación ${encontrada.codigo} de ${encontrada.client} ya está pagada.`, 'success');
-            return;
-          }
-          abrirCobro(encontrada);
-          return;
-        }
-        // Sin el prefijo RSV- también puede ser un nombre de 6 letras
-        // ("Carlos"): en ese caso se sigue con la búsqueda por nombre.
-        if (response.status !== 404 || /^RSV-/i.test(termino)) {
-          throw new Error(body?.error || 'No se encontró la reservación.');
-        }
-      }
-
       const lista = await recargarReservas();
-      const nombre = termino.toLowerCase();
-      const delCliente = lista.filter(r => r.client.toLowerCase().includes(nombre));
+      const delCliente = lista.filter(r => coincideNombre(r.client, termino));
       const porCobrar = delCliente.filter(
         r => r.paymentStatus !== 'pagado' && (r.status === 'pendiente' || r.status === 'asistido') && r.capacityStatus !== 'espera'
       );
       if (delCliente.length === 0) {
-        throw new Error(`No hay reservaciones con el nombre o código "${termino}".`);
+        throw new Error(`No hay reservaciones con el nombre o apellido "${termino}".`);
       }
       if (porCobrar.length === 1) {
         abrirCobro(porCobrar[0]);
@@ -1093,11 +1066,11 @@ export default function Dashboard({ vista = 'recepcion' }) {
   const nombreUsuario = user ? `${user.nombre ?? ''} ${user.apellidos ?? ''}`.trim() : '';
   const inicialesUsuario = iniciales(nombreUsuario);
 
-  // Socios que coinciden con lo escrito en "Buscar socio" (solo por nombre y/o apellido).
+  // Socios que coinciden por nombre o apellido, nunca por ID ni código.
   const textoSocio = newReservation.client || '';
   const termSocio = normalizarTexto(textoSocio);
   const sociosFiltrados = clientes.filter(
-    c => normalizarTexto(c.nombre).includes(termSocio)
+    c => coincideNombre(c.nombre, textoSocio)
   );
 
   const limpiarFiltros = () => {
@@ -1109,7 +1082,7 @@ export default function Dashboard({ vista = 'recepcion' }) {
   // ========== RETORNO DEL JSX ==========
 
   return (
-    <div className="rx-admin-shell rx-reception">
+    <div className={`rx-admin-shell rx-reception${vista === 'membresias' ? ' rx-reception--catalogo' : ''}`}>
 
       {/* ========== MENÚ LATERAL (igual que administrativa y Punto de Venta) ========== */}
       <aside className={`rx-sidebar ${menuColapsado ? 'rx-sidebar--collapsed' : 'rx-sidebar--expanded'}`}>
@@ -1145,6 +1118,21 @@ export default function Dashboard({ vista = 'recepcion' }) {
         </div>
 
         <nav className="rx-sidebar-nav" aria-label="Navegación de recepción">
+          <NavLink to="/front-desk/membresias" title={menuColapsado ? 'Membresías' : undefined}
+            className={({ isActive }) => `rx-nav-item ${menuColapsado ? 'rx-nav-item--collapsed' : ''} ${isActive ? 'rx-nav-item--active' : ''}`}>
+            <MaterialIcon name="card_membership" className="flex-shrink-0 text-xl" />
+            {!menuColapsado && <span className="truncate">Membresías</span>}
+          </NavLink>
+          <NavLink to="/front-desk/clases-horarios" title={menuColapsado ? 'Clases y horarios' : undefined}
+            className={({ isActive }) => `rx-nav-item ${menuColapsado ? 'rx-nav-item--collapsed' : ''} ${isActive ? 'rx-nav-item--active' : ''}`}>
+            <MaterialIcon name="calendar_month" className="flex-shrink-0 text-xl" />
+            {!menuColapsado && <span className="truncate">Clases y horarios</span>}
+          </NavLink>
+          <NavLink to="/front-desk/inventario" title={menuColapsado ? 'Inventario' : undefined}
+            className={({ isActive }) => `rx-nav-item ${menuColapsado ? 'rx-nav-item--collapsed' : ''} ${isActive ? 'rx-nav-item--active' : ''}`}>
+            <MaterialIcon name="inventory_2" className="flex-shrink-0 text-xl" />
+            {!menuColapsado && <span className="truncate">Inventario</span>}
+          </NavLink>
           <NavLink
             to="/front-desk/dashboard"
             title={menuColapsado ? 'Recepción' : undefined}
@@ -1189,17 +1177,6 @@ export default function Dashboard({ vista = 'recepcion' }) {
             <MaterialIcon name="sell" className="flex-shrink-0 text-xl" filled />
             {!menuColapsado && <span className="truncate">Vender paquetes</span>}
           </button>
-          {/* El checador es un kiosco aparte: se abre en otra pestaña. */}
-          <Link
-            to="/asistencia"
-            target="_blank"
-            rel="noreferrer"
-            title={menuColapsado ? 'Reloj checador' : 'Abre el reloj checador en otra pestaña'}
-            className={`rx-nav-item ${menuColapsado ? 'rx-nav-item--collapsed' : ''}`}
-          >
-            <MaterialIcon name="badge" className="flex-shrink-0 text-xl" />
-            {!menuColapsado && <span className="truncate">Reloj checador</span>}
-          </Link>
         </nav>
 
         <div className="rx-sidebar-footer">
@@ -1241,8 +1218,8 @@ export default function Dashboard({ vista = 'recepcion' }) {
           </div>
         </header>
 
-        <main className="rx-admin-content">
-          {vista === 'clientes' ? <ClientesPage soloRegistro /> : (
+        <main className={`rx-admin-content${vista === 'clases-horarios' ? ' rx-reception-content--schedule' : vista === 'membresias' ? ' rx-reception-content--schedule' : ''}`}>
+          {vista === 'membresias' ? <MembresiasPage /> : vista === 'clases-horarios' ? <ClasesHorariosPage recepcion /> : vista === 'inventario' ? <InventarioRecepcion /> : vista === 'cliente-detalle' ? <ClienteDetalle rutaClientes="/front-desk/clientes" /> : vista === 'clientes' ? <ClientesPage rutaClientes="/front-desk/clientes" /> : (
           <section className="rx-admin-dashboard">
             <header className="rx-page-header rx-admin-dashboard-header">
               <div className="rx-page-heading rx-page-heading--stacked">
@@ -1257,13 +1234,13 @@ export default function Dashboard({ vista = 'recepcion' }) {
               {verMembresias && <MembresiasRecepcion clientes={clientes} clases={clases} onClose={() => setVerMembresias(false)} onTicket={nuevoTicket => { setVerMembresias(false); setTicket(nuevoTicket); }}
                 onVenta={() => {
                   cargarKpis();
-                  fetch(`${API}/api/clientes`).then(r => { if (!r.ok) throw Error('No se pudieron actualizar los clientes.'); return r.json(); })
+                    fetch(`${API}/api/clientes`, { headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` } }).then(r => { if (!r.ok) throw Error('No se pudieron actualizar los clientes.'); return r.json(); })
                     .then(datos => { setClientes(datos); setSelectedClient(null); })
                     .catch(e => showNotification(e.message, 'error'));
                 }} />}
 
 
-              <div className="rx-reception-workspace">
+              <div className={`rx-reception-workspace${detalleColapsado ? ' rx-reception-workspace--detail-collapsed' : ''}`}>
                 <section className="rx-reception-schedule" aria-labelledby="reception-schedule-title">
                   <div className="rx-reception-section-heading">
                     <h2 id="reception-schedule-title">Clases programadas</h2>
@@ -1334,7 +1311,7 @@ export default function Dashboard({ vista = 'recepcion' }) {
                     </div>
                     <button type="button" onClick={openModal} className="rx-btn rx-btn--accent rx-btn--small"><MaterialIcon name="add" className="text-lg" />Nuevo registro</button>
                   </div>
-              {/* ========== BÚSQUEDA (CÓDIGO O NOMBRE) Y FILTROS ========== */}
+              {/* ========== BÚSQUEDA POR NOMBRE Y FILTROS ========== */}
               <div className="rx-filter-bar rx-filter-stack">
                 <div className="rx-filter-row">
                   <div className="rx-search">
@@ -1344,8 +1321,8 @@ export default function Dashboard({ vista = 'recepcion' }) {
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
                       onKeyDown={(e) => { if (e.key === 'Enter') handleBuscarReserva(); }}
-                      placeholder="Código de reserva (RSV-XXXXXX) o nombre del cliente"
-                      aria-label="Buscar reservación por código de reserva o nombre del cliente"
+                      placeholder="Nombre o apellido del cliente"
+                      aria-label="Buscar reservación por nombre o apellido del cliente"
                       className="rx-input rx-input--search"
                     />
                     {searchTerm && (
@@ -1363,7 +1340,7 @@ export default function Dashboard({ vista = 'recepcion' }) {
                     type="button"
                     onClick={handleBuscarReserva}
                     disabled={!searchTerm.trim() || buscandoCodigo}
-                    title="Busca por código o nombre y abre el cobro"
+                    title="Busca por nombre o apellido y abre el cobro"
                     className="rx-btn rx-btn--dark"
                   >
                     <MaterialIcon name="qr_code_scanner" className="text-lg" />
@@ -1408,11 +1385,12 @@ export default function Dashboard({ vista = 'recepcion' }) {
                     )}
                   </div>
                 ) : (
-                  <RecepcionTabla reservas={reservasVisibles} clientes={clientes} seleccion={reservaVistaId} onSeleccionar={setReservaVistaId} hoy={hoyISO()} />
+                  <RecepcionTabla reservas={reservasVisibles} clientes={clientes} seleccion={reservaVistaId} onSeleccionar={id => { setReservaVistaId(id); setDetalleColapsado(false); }} hoy={hoyISO()} />
                 )}
               </div>
                 </section>
                 <RecepcionDetalle reserva={reservaVista} cliente={clienteVista}
+                  colapsado={detalleColapsado} onAlternar={() => setDetalleColapsado(valor => !valor)}
                   compra={comprasDetalle.find(c => String(c.id) === String(reservaVista?.membresiaCompraId))}
                   cargando={cargandoDetalle} error={errorDetalle}
                   claseId={clases.find(c => c.nombre === reservaVista?.class)?.idClase}
@@ -1535,7 +1513,7 @@ export default function Dashboard({ vista = 'recepcion' }) {
                     />
 
                     {/* Al enfocar se muestran todos los socios; al escribir se
-                        filtran por nombre o ID. */}
+                        filtran por nombre o apellido. */}
                     {showClientList && !selectedClient && (
                       <ul className="rx-suggestions" role="listbox" aria-label="Socios registrados">
                         {sociosFiltrados.map(c => (

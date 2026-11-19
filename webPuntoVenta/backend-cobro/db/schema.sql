@@ -25,6 +25,14 @@ ALTER TABLE webcobro.clientes ADD COLUMN IF NOT EXISTS vigencia_hasta DATE;
 -- Correo del socio (opcional): lo captura el módulo administrativo y debe ser
 -- único cuando se proporciona. Los socios viejos de cobro no lo tenían.
 ALTER TABLE webcobro.clientes ADD COLUMN IF NOT EXISTS correo TEXT;
+-- Migración aditiva: no cambia clientes, compras, vigencias ni reservaciones.
+ALTER TABLE webcobro.clientes ADD COLUMN IF NOT EXISTS enfermedades TEXT[] NOT NULL DEFAULT '{}';
+ALTER TABLE webcobro.clientes ADD COLUMN IF NOT EXISTS lesiones TEXT[] NOT NULL DEFAULT '{}';
+ALTER TABLE webcobro.clientes ADD COLUMN IF NOT EXISTS fecha_nacimiento DATE;
+ALTER TABLE webcobro.clientes ADD COLUMN IF NOT EXISTS nombre_tutor TEXT NOT NULL DEFAULT '';
+ALTER TABLE webcobro.clientes ADD COLUMN IF NOT EXISTS clave_elector_tutor TEXT NOT NULL DEFAULT '';
+ALTER TABLE webcobro.clientes ADD COLUMN IF NOT EXISTS estado_documentacion TEXT NOT NULL DEFAULT 'pendiente'
+  CHECK (estado_documentacion IN ('pendiente', 'validada'));
 DO $$
 BEGIN
     IF NOT EXISTS (

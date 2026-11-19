@@ -14,18 +14,24 @@ const cors = require('cors');
 const { Pool } = require('pg');
 const { imprimirTicket } = require('./ticketService');
 const flujoReservas = require('./reservasFlujo');
+const { esCorreoValido, esNombreValido, esTelefonoValido } = require('./validacionCliente');
+const { normalizarSalud } = require('./saludCliente');
+const { normalizarCodigoCliente } = require('./codigoCliente');
+const { normalizarMenor } = require('./menoresCliente');
+const { accesoClientes } = require('./permisosPersonal');
 const membresiasService = require('./membresiasService');
 
 const app = express();
 
 app.use(cors()); //permite que react hable con este backend
 app.use(express.json());
+app.use('/api/clientes', accesoClientes);
 
 // El panel administrativo se sirve por este mismo gateway (monto /admin/api) en
 // el mismo puerto 3000 que este backend de cobro, por lo que la llamada es
 // interna y no atraviesa el navegador. Cada POST /api/reservas consulta estos
 // horarios para garantizar que la clase + hora elegida existe de verdad.
-const ADMIN_API = 'http://localhost:3000/admin/api';
+const ADMIN_API = process.env.ADMIN_API_URL ?? 'http://localhost:3000/admin/api';
 
 // Conexion con PostgreSQL /////////////////////////////////////
 const pool = new Pool({
@@ -51,7 +57,7 @@ pool.query = (texto, parametros) => {
   if (typeof texto === 'string') {
     const sql = texto.replace(/\s+/g, ' ').trim();
     const hora = new Date().toLocaleTimeString('es-MX');
-    const datos = parametros && parametros.length
+    const datos = parametros && parametros.length && !/webcobro\.clientes/i.test(texto)
       ? ` -- datos: ${JSON.stringify(parametros)}`
       : '';
     console.log(`[SQL ${hora}] ${sql}${datos}`);
@@ -90,7 +96,9 @@ const inicioDeClase = (fecha, hora) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha || '') || !/^\d{2}:\d{2}$/.test(hora || '')) return null;
   const [anio, mes, dia] = fecha.split('-').map(Number);
   const [h, m] = hora.split(':').map(Number);
-  return new Date(anio, mes - 1, dia, h, m);
+  const inicio = new Date(anio, mes - 1, dia, h, m);
+  return inicio.getFullYear() === anio && inicio.getMonth() === mes - 1 && inicio.getDate() === dia
+    && h <= 23 && m <= 59 ? inicio : null;
 };
 
 const MOTIVO_POR_ESTADO = {
@@ -162,27 +170,8 @@ const marcarInasistencias = async (db = pool) => {
   return flujoReservas.marcarInasistencias(db);
 };
 
-// Código de reserva legible (sin 0/O ni 1/I para no confundirlos al dictarlo).
-const ALFABETO_CODIGO = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-const generarCodigoReserva = async (db) => {
-  for (let intento = 0; intento < 10; intento += 1) {
-    let codigo = 'RSV-';
-    for (let i = 0; i < 6; i += 1) {
-      codigo += ALFABETO_CODIGO[crypto.randomInt(ALFABETO_CODIGO.length)];
-    }
-    const existe = (await db.query('SELECT 1 FROM webcobro.reservas WHERE codigo = $1', [codigo])).rowCount;
-    if (!existe) return codigo;
-  }
-  throw new Error('No se pudo generar un código de reserva único.');
-};
-
-// Acepta 'rsv-7k2m9q', 'RSV-7K2M9Q' o solo '7K2M9Q'.
-const normalizarCodigoReserva = (valor) => {
-  const limpio = String(valor ?? '').trim().toUpperCase();
-  if (/^RSV-[A-Z0-9]{6}$/.test(limpio)) return limpio;
-  if (/^[A-Z0-9]{6}$/.test(limpio)) return `RSV-${limpio}`;
-  return null;
-};
+// PQ: reserva cubierta por paquete; NU: reserva sin cobertura. CLI no cambia.
+const { normalizarCodigoReserva, generarCodigoReserva } = require('./codigosReserva');
 
 /*
  * Busca en administrativa el horario activo de una fecha (por id o por
@@ -190,8 +179,8 @@ const normalizarCodigoReserva = (valor) => {
  */
 const buscarHorarioActivo = async (fecha, { horarioId, clase, time }) => {
   const [resHorarios, resClases] = await Promise.all([
-    fetch(`${ADMIN_API}/horarios?fecha=${encodeURIComponent(fecha)}&estatus=activo`),
-    fetch(`${ADMIN_API}/clases`),
+    fetch(`${ADMIN_API}/horarios?fecha=${encodeURIComponent(fecha)}&estatus=activo`, { signal: AbortSignal.timeout(10000) }),
+    fetch(`${ADMIN_API}/clases`, { signal: AbortSignal.timeout(10000) }),
   ]);
   if (!resHorarios.ok) throw new Error(`horarios HTTP ${resHorarios.status}`);
   if (!resClases.ok) throw new Error(`clases HTTP ${resClases.status}`);
@@ -209,6 +198,15 @@ const buscarHorarioActivo = async (fecha, { horarioId, clase, time }) => {
   const claseReal = horario && Array.isArray(clases)
     ? clases.find((c) => c.idClase === horario.idClase) ?? null
     : null;
+  if (!horario || !claseReal || claseReal.estatus !== 'activo'
+      || horario.estatus !== 'activo' || horario.visibleReservas === false || horario.fecha !== fecha
+      || !Number.isInteger(horario.capacidadTotal) || horario.capacidadTotal <= 0
+      || !inicioDeClase(fecha, horario.horaInicio) || !inicioDeClase(fecha, horario.horaFin)
+      || horario.horaFin <= horario.horaInicio) return { horario: null, clase: null };
+  // Consulta directa, sin autenticar como usuario ni exponer el listado de empleados.
+  const referencia = await fetch(`${ADMIN_API}/horarios/${encodeURIComponent(horario.idHorario)}/validacion`, { signal: AbortSignal.timeout(10000) });
+  if (referencia.status === 404 || referencia.status === 409 || referencia.status === 400) return { horario: null, clase: null };
+  if (!referencia.ok) throw new Error('No se pudo validar el entrenador de la sesión.');
   return { horario, clase: claseReal };
 };
 
@@ -252,11 +250,11 @@ app.get('/api/reservas', async (req, res) => {
 app.get('/api/reservas/codigo/:codigo', async (req, res) => {
   const codigo = normalizarCodigoReserva(req.params.codigo);
   if (!codigo) {
-    return res.status(400).json({ error: 'El código de reserva no es válido. Ejemplo: RSV-7K2M9Q' });
+    return res.status(400).json({ error: 'Código inválido. Usa NU-XXXXX, PQ-XXXXX o un código histórico RSV-XXXXXX.' });
   }
   await marcarInasistencias();
   const reserva = (
-    await pool.query(`SELECT ${COLUMNAS_RESERVA} FROM webcobro.reservas WHERE codigo = $1`, [codigo])
+    await pool.query(`SELECT ${COLUMNAS_RESERVA} FROM webcobro.reservas WHERE codigo = $1 OR codigo_anterior = $1`, [codigo])
   ).rows[0];
   if (!reserva) {
     return res.status(404).json({ error: `No existe una reservación con el código ${codigo}.` });
@@ -299,6 +297,7 @@ app.post('/api/reservas', async (req, res) => {
     return res.status(400).json({ error: 'El horario no es valido.' });
   }
   const [horas, minutos] = time.split(':').map(Number);
+  if (horas > 23 || minutos > 59) return res.status(400).json({ error: 'El horario debe estar entre 00:00 y 23:59.' });
 
   if (typeof fecha !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
     return res.status(400).json({ error: 'La fecha es obligatoria (YYYY-MM-DD).' });
@@ -481,7 +480,7 @@ app.post('/api/reservas', async (req, res) => {
       ? await membresiasService.buscarCobertura(conexion, clienteId, claseReal.idClase, fecha) : null;
     if (cobertura) precioFinal = 0;
     // Código de reserva que el cliente presenta en recepción para pagar.
-    const codigo = await generarCodigoReserva(conexion);
+    const codigo = await generarCodigoReserva(conexion, Boolean(cobertura));
     let nueva = (await conexion.query(
       `INSERT INTO webcobro.reservas
          (cliente, tipo, clase, hora, estado, precio, fecha, horario_id, estado_cupo, codigo, origen, cliente_id, hora_fin)
@@ -514,7 +513,9 @@ app.post('/api/reservas', async (req, res) => {
 //GET para clientes para llenar tabla del dashboard
 app.get('/api/clientes', async (req, res) => {
   const resultado = await pool.query(
-    `SELECT id, nombre, membresia, telefono, correo, activo,
+    `SELECT id, nombre, membresia, telefono, correo, activo, enfermedades, lesiones,
+             to_char(fecha_nacimiento, 'YYYY-MM-DD') AS "fechaNacimiento",
+             nombre_tutor AS "nombreTutor", clave_elector_tutor AS "claveElectorTutor", estado_documentacion AS "estadoDocumentacion",
             EXISTS (SELECT 1 FROM webcobro.membresias_compras mc WHERE mc.cliente_id = webcobro.clientes.id) AS "tieneCompras",
              COALESCE((SELECT jsonb_agg(jsonb_build_object(
                'id', mc.id, 'nombre', mc.condiciones->>'nombre',
@@ -522,7 +523,8 @@ app.get('/api/clientes', async (req, res) => {
                'fechaFin', to_char(mc.fecha_fin, 'YYYY-MM-DD')
              ) ORDER BY mc.fecha_fin DESC, mc.id DESC)
                FROM webcobro.membresias_compras mc WHERE mc.cliente_id = webcobro.clientes.id), '[]'::jsonb) AS "membresiasCompradas",
-            to_char(vigencia_hasta, 'YYYY-MM-DD') AS vigencia_hasta
+             COALESCE(to_jsonb(clientes)->>'codigo_usuario', 'CLI-' || id::text) AS codigo,
+             to_char(vigencia_hasta, 'YYYY-MM-DD') AS vigencia_hasta
        FROM webcobro.clientes ORDER BY id`,
   );
   res.json(resultado.rows);
@@ -532,12 +534,40 @@ app.get('/api/clientes', async (req, res) => {
  * POST para registrar un cliente nuevo (socio). Lo usa el módulo
  * administrativo: queda en webcobro.clientes y aparece al instante en cobro.
  */
-app.post('/api/clientes', async (req, res) => {
-  const { nombre, membresia, telefono, correo, activo, vigencia_hasta } = req.body ?? {};
+app.get('/api/clientes/codigo-disponible', async (req, res) => {
+  const id = typeof req.query.excluirId === 'string' && /^[1-9]\d*$/.test(req.query.excluirId) ? Number(req.query.excluirId) : null;
+  let codigo;
+  try { codigo = normalizarCodigoCliente(req.query.codigo, id); }
+  catch (error) { return res.status(400).json({ error: error.message }); }
+  res.set('Cache-Control', 'no-store');
+  if (!codigo) return res.json({ disponible: true });
+  const resultado = await pool.query(`SELECT id FROM webcobro.clientes
+    WHERE UPPER(to_jsonb(clientes)->>'codigo_usuario') = $1 AND ($2::integer IS NULL OR id <> $2)`, [codigo, id]);
+  res.json({ disponible: resultado.rows.length === 0 });
+});
 
-  if (typeof nombre !== 'string' || nombre.trim().length < 3) {
-    return res.status(400).json({ error: 'El nombre del cliente es obligatorio (mínimo 3 letras).' });
+app.post('/api/clientes', async (req, res) => {
+  if (!req.body?.fechaNacimiento) return res.status(400).json({ error: 'La fecha de nacimiento es obligatoria para determinar si requiere tutor.' });
+  let menor;
+  try { menor = normalizarMenor(req.body ?? {}); }
+  catch (error) { return res.status(400).json({ error: error.message }); }
+  let codigoUsuario;
+  try { codigoUsuario = normalizarCodigoCliente(req.body?.codigo); }
+  catch (error) { return res.status(400).json({ error: error.message }); }
+  if (codigoUsuario) {
+    const usado = await pool.query(`SELECT id FROM webcobro.clientes WHERE UPPER(to_jsonb(clientes)->>'codigo_usuario') = $1`, [codigoUsuario]);
+    if (usado.rows.length) return res.status(409).json({ error: 'Ese código de usuario ya está en uso por otro cliente.' });
   }
+  let salud;
+  try { salud = normalizarSalud(req.body ?? {}); }
+  catch (error) { return res.status(400).json({ error: error.message }); }
+  const { nombre, membresia, telefono, correo, activo, vigencia_hasta } = req.body ?? {};
+  if (!esCorreoValido(correo)) return res.status(400).json({ error: 'Introduce un correo electrónico válido.' });
+
+  if (!esNombreValido(nombre)) {
+    return res.status(400).json({ error: 'El nombre debe contener al menos 3 letras y solo admite letras y espacios.' });
+  }
+  if (!esTelefonoValido(telefono)) return res.status(400).json({ error: 'El teléfono solo admite números y un máximo de 10 dígitos.' });
 
   const plan = typeof membresia === 'string' && membresia.trim() ? membresia.trim() : 'Sin membresía';
   if (!['Sin membresía', 'Básica', 'Premium'].includes(plan)) {
@@ -558,11 +588,14 @@ app.post('/api/clientes', async (req, res) => {
   const vig = typeof vigencia_hasta === 'string' ? vigencia_hasta : '';
   const nuevo = (
     await pool.query(
-      `INSERT INTO webcobro.clientes (nombre, membresia, telefono, correo, activo, vigencia_hasta)
-       VALUES ($1, $2, $3, $4, $5, NULLIF($6, '')::date)
-       RETURNING id, nombre, membresia, telefono, correo, activo,
+      `INSERT INTO webcobro.clientes (nombre, membresia, telefono, correo, activo, vigencia_hasta, enfermedades, lesiones, fecha_nacimiento, nombre_tutor, clave_elector_tutor, estado_documentacion${codigoUsuario ? ', codigo_usuario' : ''})
+       VALUES ($1, $2, $3, $4, $5, NULLIF($6, '')::date, $7::text[], $8::text[], NULLIF($9, '')::date, $10, $11, $12${codigoUsuario ? ', $13' : ''})
+       RETURNING id, nombre, membresia, telefono, correo, activo, enfermedades, lesiones,
+                 to_char(fecha_nacimiento, 'YYYY-MM-DD') AS "fechaNacimiento",
+                 nombre_tutor AS "nombreTutor", clave_elector_tutor AS "claveElectorTutor", estado_documentacion AS "estadoDocumentacion",
+                 COALESCE(to_jsonb(clientes)->>'codigo_usuario', 'CLI-' || id::text) AS codigo,
                  to_char(vigencia_hasta, 'YYYY-MM-DD') AS vigencia_hasta`,
-      [nombre.trim(), plan, tel, correoLimpio || null, activo === false ? false : true, vig],
+      [nombre.trim(), plan, tel, correoLimpio || null, activo === false ? false : true, vig, salud.enfermedades ?? [], salud.lesiones ?? [], menor.fechaNacimiento, menor.nombreTutor, menor.claveElectorTutor, menor.estadoDocumentacion, ...(codigoUsuario ? [codigoUsuario] : [])],
     )
   ).rows[0];
 
@@ -755,6 +788,10 @@ app.post('/api/reservas/:id/reagendar', async (req, res) => {
       `SELECT ${COLUMNAS_RESERVA} FROM webcobro.reservas WHERE id = $1 FOR UPDATE`,
       [id],
     )).rows[0];
+    if (!bloqueada) {
+      await conexion.query('ROLLBACK');
+      return res.status(404).json({ error: 'La reservación ya no existe.' });
+    }
     const reglas = reglasDeReserva(bloqueada);
     if (reglas.motivoNoReagendar) {
       await conexion.query('ROLLBACK');
@@ -828,13 +865,18 @@ app.post('/api/reservas/:id/reagendar', async (req, res) => {
  * vigencia). Lo usa el módulo administrativo; cobro lo refleja al recargar.
  */
 app.patch('/api/clientes/:id', async (req, res) => {
+  let salud;
+  try { salud = normalizarSalud(req.body ?? {}); }
+  catch (error) { return res.status(400).json({ error: error.message }); }
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) {
     return res.status(400).json({ error: 'El id del cliente no es válido.' });
   }
 
   const existe = (
-    await pool.query(`SELECT id FROM webcobro.clientes WHERE id = $1`, [id])
+    await pool.query(`SELECT id, to_char(fecha_nacimiento, 'YYYY-MM-DD') AS "fechaNacimiento",
+      nombre_tutor AS "nombreTutor", clave_elector_tutor AS "claveElectorTutor", estado_documentacion AS "estadoDocumentacion"
+      FROM webcobro.clientes WHERE id = $1`, [id])
   ).rows[0];
   if (!existe) {
     return res.status(404).json({ error: 'El cliente no existe.' });
@@ -843,10 +885,34 @@ app.patch('/api/clientes/:id', async (req, res) => {
   const { nombre, membresia, telefono, correo, activo, vigencia_hasta } = req.body ?? {};
   const campos = [];
   const valores = [];
+  if (['fechaNacimiento', 'nombreTutor', 'claveElectorTutor', 'estadoDocumentacion'].some(c => req.body?.[c] !== undefined)) {
+    let menor;
+    try { menor = normalizarMenor(req.body, existe); }
+    catch (error) { return res.status(400).json({ error: error.message }); }
+    for (const [campo, valor] of [['fecha_nacimiento', menor.fechaNacimiento || null], ['nombre_tutor', menor.nombreTutor], ['clave_elector_tutor', menor.claveElectorTutor], ['estado_documentacion', menor.estadoDocumentacion]]) {
+      valores.push(valor); campos.push(`${campo} = $${valores.length}`);
+    }
+  }
+  if (req.body?.codigo !== undefined) {
+    let codigo;
+    try { codigo = normalizarCodigoCliente(req.body.codigo, id); }
+    catch (error) { return res.status(400).json({ error: error.message }); }
+    if (codigo) {
+      const usado = await pool.query(`SELECT id FROM webcobro.clientes WHERE UPPER(to_jsonb(clientes)->>'codigo_usuario') = $1 AND id <> $2`, [codigo, id]);
+      if (usado.rows.length) return res.status(409).json({ error: 'Ese código de usuario ya está en uso por otro cliente.' });
+    }
+    valores.push(codigo); campos.push(`codigo_usuario = $${valores.length}`);
+  }
+  for (const campo of ['enfermedades', 'lesiones']) {
+    if (salud[campo] !== undefined) {
+      valores.push(salud[campo]);
+      campos.push(`${campo} = $${valores.length}::text[]`);
+    }
+  }
 
   if (nombre !== undefined) {
-    if (typeof nombre !== 'string' || nombre.trim().length < 3) {
-      return res.status(400).json({ error: 'El nombre del cliente es obligatorio (mínimo 3 letras).' });
+    if (!esNombreValido(nombre)) {
+      return res.status(400).json({ error: 'El nombre debe contener al menos 3 letras y solo admite letras y espacios.' });
     }
     valores.push(nombre.trim());
     campos.push(`nombre = $${valores.length}`);
@@ -859,11 +925,13 @@ app.patch('/api/clientes/:id', async (req, res) => {
     campos.push(`membresia = $${valores.length}`);
   }
   if (telefono !== undefined) {
-    valores.push(String(telefono));
+    if (!esTelefonoValido(telefono)) return res.status(400).json({ error: 'El teléfono solo admite números y un máximo de 10 dígitos.' });
+    valores.push((telefono ?? '').trim());
     campos.push(`telefono = $${valores.length}`);
   }
   if (correo !== undefined) {
-    const limpio = String(correo).trim().toLowerCase();
+    if (!esCorreoValido(correo)) return res.status(400).json({ error: 'Introduce un correo electrónico válido.' });
+    const limpio = (correo ?? '').trim().toLowerCase();
     if (limpio) {
       const enUso = (
         await pool.query(`SELECT id FROM webcobro.clientes WHERE LOWER(correo) = $1 AND id <> $2`, [limpio, id])
@@ -893,7 +961,10 @@ app.patch('/api/clientes/:id', async (req, res) => {
   const actualizado = (
     await pool.query(
       `UPDATE webcobro.clientes SET ${campos.join(', ')} WHERE id = $${valores.length}
-       RETURNING id, nombre, membresia, telefono, correo, activo,
+       RETURNING id, nombre, membresia, telefono, correo, activo, enfermedades, lesiones,
+                 to_char(fecha_nacimiento, 'YYYY-MM-DD') AS "fechaNacimiento",
+                 nombre_tutor AS "nombreTutor", clave_elector_tutor AS "claveElectorTutor", estado_documentacion AS "estadoDocumentacion",
+                 COALESCE(to_jsonb(clientes)->>'codigo_usuario', 'CLI-' || id::text) AS codigo,
                  to_char(vigencia_hasta, 'YYYY-MM-DD') AS vigencia_hasta`,
       valores,
     )
@@ -902,11 +973,7 @@ app.patch('/api/clientes/:id', async (req, res) => {
   res.json({ mensaje: 'Cliente actualizado', cliente: actualizado });
 });
 
-/*
- * DELETE para borrar un cliente desde el módulo administrativo.
- * Se bloquea si tiene reservaciones o pagos ligados: primero hay que
- * cancelarlas en recepción para no dejar historial huérfano.
- */
+// Compatibilidad con clientes antiguos: DELETE ahora aplica una baja lógica.
 app.delete('/api/clientes/:id', async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) {
@@ -914,22 +981,13 @@ app.delete('/api/clientes/:id', async (req, res) => {
   }
 
   try {
-    const historial = await pool.query(
-      `SELECT 1 FROM webcobro.clientes c WHERE c.id = $1 AND (
-        EXISTS (SELECT 1 FROM webcobro.reservas r WHERE r.cliente_id = c.id
-          OR (r.tipo = 'cliente' AND r.cliente_id IS NULL AND r.cliente = c.nombre))
-        OR EXISTS (SELECT 1 FROM webcobro.asistencias a WHERE a.codigo = 'CLI-' || c.id::text))`, [id],
-    );
-    if (historial.rowCount) {
-      return res.status(409).json({ error: 'El cliente tiene historial de reservas o asistencia. Desactivalo en vez de eliminarlo.' });
-    }
     const borrado = (
-      await pool.query(`DELETE FROM webcobro.clientes WHERE id = $1 RETURNING id`, [id])
+      await pool.query(`UPDATE webcobro.clientes SET activo = FALSE WHERE id = $1 RETURNING id, nombre, activo`, [id])
     ).rows[0];
     if (!borrado) {
       return res.status(404).json({ error: 'El cliente no existe.' });
     }
-    res.json({ mensaje: 'Cliente eliminado' });
+    res.json({ mensaje: 'Cliente desactivado. Su información e historial se conservaron.', cliente: borrado });
   } catch (err) {
     if (err && err.code === '23503') {
       return res.status(409).json({ error: 'No se puede eliminar: el cliente tiene reservaciones o pagos registrados.' });
@@ -1202,6 +1260,9 @@ app.get('/api/kpis', async (req, res) => {
 
 // Asistencia adaptada del commit 948c1a5, aislada del cobro y las reservas.
 const { montarAsistencia } = require('./asistenciaService');
+const { accesoChecador } = require('./accesoChecador');
+app.get('/api/checador/acceso', accesoChecador, (_req, res) => res.json({ autorizado: true }));
+app.use('/api/asistencia', accesoChecador);
 const asistencia = montarAsistencia(app, pool, {
   turnosHabilitados: process.env.ASISTENCIA_TURNOS_HABILITADOS === 'true',
 });
@@ -1219,6 +1280,13 @@ if (process.env.ASISTENCIA_TURNOS_HABILITADOS === 'true' &&
 }
 
 //Iniciar Servidor
+app.use((error, _req, res, _next) => {
+  if (error.code === '23505') return res.status(409).json({ error: 'El código de usuario o correo ya está en uso por otro cliente.' });
+  if (error.code === '42703') return res.status(503).json({ error: 'Falta aplicar la migración de códigos de cliente. Contacta al administrador.' });
+  if (error.code === '23514') return res.status(400).json({ error: 'El código de usuario no es válido o está reservado.' });
+  console.error('Error en Cobro:', error.message);
+  res.status(error.status || 500).json({ error: error.status === 400 ? 'Solicitud inválida.' : 'No se pudo completar la operación.' });
+});
 const PORT = Number(process.env.PORT) || 3002;
 
 // Exporta la app para que el gateway unificado pueda montarla bajo su prefijo
@@ -1232,8 +1300,12 @@ module.exports = app;
  * que correr `npm run db:setup` a mano. Se usa la consulta sin bitácora para
  * no imprimir todo el esquema en la terminal.
  */
-const aplicarEsquema = () =>
-  consultaOriginal(fs.readFileSync(path.join(__dirname, 'db', 'schema.sql'), 'utf8'));
+const aplicarEsquema = async () => {
+  await consultaOriginal(fs.readFileSync(path.join(__dirname, 'db', 'schema.sql'), 'utf8'));
+  await consultaOriginal(fs.readFileSync(path.join(__dirname, 'db', 'codigo-cliente.sql'), 'utf8'));
+  await consultaOriginal(fs.readFileSync(path.join(__dirname, 'db', 'menores-clientes.sql'), 'utf8'));
+  await consultaOriginal(fs.readFileSync(path.join(__dirname, 'db', 'codigos-reservas.sql'), 'utf8'));
+};
 
 // Revisa cada minuto las clases que ya pasaron para marcar inasistencias,
 // aunque nadie tenga abierta la pantalla de recepción.

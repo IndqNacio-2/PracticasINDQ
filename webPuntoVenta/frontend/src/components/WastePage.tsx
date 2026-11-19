@@ -39,37 +39,37 @@ const WASTE_REASONS: Record<
   damaged: {
     label: "Producto dañado",
     icon: "warning",
-    className: "bg-[#FEF3C7] text-[#92400E]",
+    className: "rx-badge--warning",
   },
   expired: {
     label: "Producto caducado",
     icon: "event_busy",
-    className: "bg-[#FEE2E2] text-[#991B1B]",
+    className: "rx-badge--danger",
   },
   broken: {
     label: "Producto roto",
     icon: "broken_image",
-    className: "bg-[#FEE2E2] text-[#991B1B]",
+    className: "rx-badge--danger",
   },
   "internal-use": {
     label: "Consumo interno",
     icon: "groups",
-    className: "bg-[#F3F4F6] text-[#4B5563]",
+    className: "rx-badge--neutral",
   },
   "inventory-error": {
     label: "Error de inventario",
     icon: "sync_problem",
-    className: "bg-[#F3F4F6] text-[#4B5563]",
+    className: "rx-badge--neutral",
   },
   lost: {
     label: "Producto perdido",
     icon: "search_off",
-    className: "bg-[#F3F4F6] text-[#4B5563]",
+    className: "rx-badge--neutral",
   },
   other: {
     label: "Otro motivo",
     icon: "more_horiz",
-    className: "bg-[#F3F4F6] text-[#4B5563]",
+    className: "rx-badge--neutral",
   },
 };
 
@@ -168,353 +168,119 @@ export default function WastePage({
     0,
   );
 
-  const damagedRecords = wasteRecords.filter(
-    (record) =>
-      record.reason === "damaged" ||
-      record.reason === "broken",
-  ).length;
+  const hasFilters = search.trim() !== "" || reasonFilter !== "all";
+  const clearFilters = () => {
+    setSearch("");
+    setReasonFilter("all");
+  };
 
   return (
-    <section className="flex h-full flex-col overflow-hidden bg-[#F3F4F6]">
-      {/* Encabezado del módulo. */}
-      <header className="flex flex-shrink-0 items-center justify-between border-b border-[#E5E7EB] bg-white px-7 py-5">
+    <section className="rx-page rx-waste">
+      <header className="rx-page-header">
         <div>
-          <h1 className="text-2xl font-bold text-[#0D0F14]">
-            Mermas
-          </h1>
-
-          <p className="mt-0.5 text-sm text-[#6B7280]">
-            Consulta y registra las pérdidas de productos
-            del inventario.
-          </p>
+          <h1 className="rx-page-title">Mermas</h1>
+          <p className="rx-page-subtitle">Consulta y registra las pérdidas de productos del inventario.</p>
         </div>
-
-        <button
-          type="button"
-          onClick={() => setIsFormOpen(true)}
-          className="flex items-center gap-2 rounded-xl bg-[#6B7280] px-4 py-2.5 text-sm font-bold text-white transition-opacity hover:opacity-90 active:scale-[0.98]"
-        >
-          <MaterialIcon
-            name="add"
-            className="text-xl"
-          />
-
+        <button type="button" onClick={() => setIsFormOpen(true)} className="rx-btn rx-btn--accent">
+          <MaterialIcon name="add" className="text-xl" />
           Registrar merma
         </button>
       </header>
 
-      <div className="flex-1 overflow-y-auto p-7">
-        {/* Tarjetas con el resumen de las mermas. */}
-        <div className="mb-5 grid grid-cols-1 gap-4 md:grid-cols-3">
-          <SummaryCard
-            title="Registros"
-            value={wasteRecords.length.toString()}
-            icon="receipt_long"
-            iconClassName="bg-[#F3F4F6] text-[#4B5563]"
-          />
+      <div className="rx-page-content rx-waste-content">
+        <section className="rx-waste-kpis" aria-label="Resumen de mermas">
+          <SummaryCard title="Registros" value={wasteRecords.length.toString()} icon="receipt_long" tone="neutral" />
+          <SummaryCard title="Unidades perdidas" value={totalUnits.toString()} icon="inventory" tone="warning" />
+          <SummaryCard title="Pérdida estimada" value={formatCurrency(estimatedLoss)} icon="trending_down" tone="danger" />
+        </section>
 
-          <SummaryCard
-            title="Unidades perdidas"
-            value={totalUnits.toString()}
-            icon="inventory"
-            iconClassName="bg-[#FEF3C7] text-[#B45309]"
-          />
-
-          <SummaryCard
-            title="Pérdida estimada"
-            value={formatCurrency(estimatedLoss)}
-            icon="trending_down"
-            iconClassName="bg-[#FEE2E2] text-[#B91C1C]"
-          />
-        </div>
-
-        {/* Barra de búsqueda y filtros. */}
-        <div className="mb-4 rounded-2xl border border-[#E5E7EB] bg-white p-4">
-          <div className="flex flex-wrap gap-3">
-            <div className="relative min-w-[260px] flex-1">
-              <MaterialIcon
-                name="search"
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-lg text-[#9CA3AF]"
-              />
-
-              <input
-                value={search}
-                onChange={(event) =>
-                  setSearch(event.target.value)
-                }
-                placeholder="Buscar por producto, código o folio..."
-                className="w-full rounded-xl border border-[#E5E7EB] py-2.5 pl-9 pr-9 text-sm text-[#0D0F14] outline-none placeholder:text-[#9CA3AF] focus:border-[#111827]"
-              />
-
-              {search && (
-                <button
-                  type="button"
-                  onClick={() => setSearch("")}
-                  aria-label="Limpiar búsqueda"
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#9CA3AF] hover:text-[#374151]"
-                >
-                  <MaterialIcon
-                    name="close"
-                    className="text-base"
-                  />
-                </button>
-              )}
-            </div>
-
-            <select
-              value={reasonFilter}
-              onChange={(event) =>
-                setReasonFilter(
-                  event.target.value as
-                    | "all"
-                    | WasteReason,
-                )
-              }
-              aria-label="Filtrar por motivo"
-              className="min-w-[200px] rounded-xl border border-[#E5E7EB] bg-white px-3 py-2.5 text-sm text-[#374151] outline-none focus:border-[#111827]"
-            >
-              <option value="all">
-                Todos los motivos
-              </option>
-
-              {Object.entries(WASTE_REASONS).map(
-                ([value, configuration]) => (
-                  <option
-                    key={value}
-                    value={value}
-                  >
-                    {configuration.label}
-                  </option>
-                ),
-              )}
+        <div className="rx-filter-bar">
+          <div className="rx-filter-row">
+            <label className="rx-search">
+              <MaterialIcon name="search" className="rx-search-icon" />
+              <input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar por producto, código o folio" aria-label="Buscar por producto, código o folio" className="rx-input" />
+            </label>
+            <select value={reasonFilter} onChange={(event) => setReasonFilter(event.target.value as "all" | WasteReason)} aria-label="Filtrar por motivo" className="rx-select rx-filter-select">
+              <option value="all">Todos los motivos</option>
+              {Object.entries(WASTE_REASONS).map(([value, configuration]) => (
+                <option key={value} value={value}>{configuration.label}</option>
+              ))}
             </select>
-
-            <span className="self-center whitespace-nowrap text-xs text-[#9CA3AF]">
-              {filteredRecords.length} resultado
-              {filteredRecords.length === 1 ? "" : "s"}
-            </span>
+            {hasFilters && <button type="button" onClick={clearFilters} className="rx-btn rx-btn--outline">Limpiar filtros</button>}
+            <span className="rx-waste-results" role="status">{filteredRecords.length} resultado{filteredRecords.length === 1 ? "" : "s"}</span>
           </div>
         </div>
 
-        {/* Tabla de registros de mermas. */}
-        <div className="overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white">
-          {filteredRecords.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-center">
-              <MaterialIcon
-                name="delete_sweep"
-                className="mb-3 text-5xl text-[#D1D5DB]"
-              />
-
-              <p className="text-sm font-semibold text-[#6B7280]">
-                No se encontraron registros
-              </p>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setSearch("");
-                  setReasonFilter("all");
-                }}
-                className="mt-2 text-sm font-semibold text-[#111827] hover:underline"
-              >
-                Limpiar filtros
-              </button>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[980px] text-sm">
-                <thead>
-                  <tr className="border-b border-[#E5E7EB] bg-[#F9FAFB]">
-                    {[
-                      "Folio",
-                      "Producto",
-                      "Fecha",
-                      "Cantidad",
-                      "Motivo",
-                      "Pérdida",
-                      "Registró",
-                    ].map((heading) => (
-                      <th
-                        key={heading}
-                        className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-[#6B7280]"
-                      >
-                        {heading}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {filteredRecords.map(
-                    (record, index) => {
-                      const product = findProduct(
-                        record.productId,
-                      );
-
-                      const reason =
-                        WASTE_REASONS[record.reason];
-
-                      const loss =
-                        (product?.cost ?? 0) *
-                        record.quantity;
-
-                      return (
-                        <tr
-                          key={record.id}
-                          className={`border-b border-[#F3F4F6] transition-colors hover:bg-[#FAFAFA] ${
-                            index ===
-                            filteredRecords.length - 1
-                              ? "border-none"
-                              : ""
-                          }`}
-                        >
-                          <td className="px-4 py-3">
-                            <span className="rounded bg-[#F3F4F6] px-2 py-1 font-mono text-xs font-semibold text-[#6B7280]">
-                              {record.folio}
-                            </span>
-                          </td>
-
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-3">
-                              <div
-                                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl"
-                                style={{
-                                  backgroundColor:
-                                    product?.bgColor ??
-                                    "#F3F4F6",
-                                }}
-                              >
-                                <MaterialIcon
-                                  name={
-                                    product?.icon ??
-                                    "inventory_2"
-                                  }
-                                  className="text-xl text-[#374151]"
-                                  filled
-                                />
-                              </div>
-
-                              <div>
-                                <p className="font-semibold text-[#0D0F14]">
-                                  {product?.name ??
-                                    "Producto no disponible"}
-                                </p>
-
-                                <p className="text-xs text-[#9CA3AF]">
-                                  {product?.code ?? "Sin código"}
-                                </p>
-                              </div>
-                            </div>
-                          </td>
-
-                          <td className="px-4 py-3 text-[#6B7280]">
-                            {formatDate(record.createdAt)}
-                          </td>
-
-                          <td className="px-4 py-3">
-                            <span className="font-bold text-[#EF4444]">
-                              -{record.quantity}
-                            </span>
-                          </td>
-
-                          <td className="px-4 py-3">
-                            <span
-                              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold ${reason.className}`}
-                            >
-                              <MaterialIcon
-                                name={reason.icon}
-                                className="text-sm"
-                                filled
-                              />
-
-                              {reason.label}
-                            </span>
-                          </td>
-
-                          <td className="px-4 py-3 font-semibold text-[#0D0F14]">
-                            {formatCurrency(loss)}
-                          </td>
-
-                          <td className="px-4 py-3 text-[#6B7280]">
-                            {record.registeredBy}
-                          </td>
-                        </tr>
-                      );
-                    },
-                  )}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-
-        {/* Este dato se calcula para utilizarlo después
-            en filtros y reportes del módulo. */}
-        <span className="sr-only">
-          {damagedRecords} registros dañados
-        </span>
+        {filteredRecords.length === 0 ? (
+          <div className="rx-card rx-table-empty">
+            <span className="rx-table-empty-icon"><MaterialIcon name="delete_sweep" className="text-3xl" /></span>
+            <h2 className="rx-table-empty-title">{hasFilters ? "No se encontraron registros" : "Aún no hay mermas registradas"}</h2>
+            <p className="rx-page-subtitle">{hasFilters ? "Prueba con otra búsqueda o cambia el motivo." : "Los registros de pérdida de inventario aparecerán aquí."}</p>
+            <button type="button" onClick={hasFilters ? clearFilters : () => setIsFormOpen(true)} className={`rx-btn ${hasFilters ? "rx-btn--outline" : "rx-btn--accent"}`}>
+              {hasFilters ? "Limpiar filtros" : "Registrar merma"}
+            </button>
+          </div>
+        ) : (
+          <div className="rx-table-wrap" role="region" aria-label="Historial de mermas" tabIndex={0}>
+            <table className="rx-table rx-waste-table">
+              <caption className="sr-only">Historial de pérdidas de inventario, ordenado del registro más reciente al más antiguo</caption>
+              <thead>
+                <tr>{["Folio", "Producto", "Fecha", "Cantidad", "Motivo", "Pérdida", "Registró"].map((heading) => <th key={heading} scope="col">{heading}</th>)}</tr>
+              </thead>
+              <tbody>
+                {filteredRecords.map((record) => {
+                  const product = findProduct(record.productId);
+                  const reason = WASTE_REASONS[record.reason];
+                  const loss = (product?.cost ?? 0) * record.quantity;
+                  return (
+                    <tr key={record.id}>
+                      <td><span className="rx-badge rx-badge--neutral font-mono">{record.folio}</span></td>
+                      <td>
+                        <div className="rx-table-product">
+                          <span className="rx-table-product-icon rx-waste-product-icon"><MaterialIcon name={product?.icon ?? "inventory_2"} className="text-xl" /></span>
+                          <div className="rx-waste-product-info">
+                            <p className="rx-table-product-name">{product?.name ?? "Producto no disponible"}</p>
+                            <p className="rx-waste-meta">{product?.code ?? "Sin código"}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td><time dateTime={record.createdAt} className="rx-waste-meta">{formatDate(record.createdAt)}</time></td>
+                      <td><span className="rx-waste-quantity">-{record.quantity}</span></td>
+                      <td><span className={`rx-badge ${reason.className}`}><MaterialIcon name={reason.icon} className="text-sm" />{reason.label}</span></td>
+                      <td className="rx-waste-number">{formatCurrency(loss)}</td>
+                      <td><span className="rx-waste-meta">{record.registeredBy}</span></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {isFormOpen && (
-        <WasteFormModal
-          products={products}
-          onSave={async (waste) => {
-            /*
-            * Intento registrar la merma desde el estado principal
-            * y espero la respuesta del backend antes de continuar.
-            */
-            const wasRegistered = await onAddWaste(waste);
-
-            /*
-            * Solamente cierro el formulario cuando el registro
-            * y el descuento de inventario fueron correctos.
-            */
-            if (wasRegistered) {
-              setIsFormOpen(false);
-            }
-          }}
-          onCancel={() => setIsFormOpen(false)}
-        />
+        <WasteFormModal products={products} onSave={async (waste) => {
+          // Cierro únicamente después de confirmar el registro y el descuento de inventario.
+          const wasRegistered = await onAddWaste(waste);
+          if (wasRegistered) setIsFormOpen(false);
+        }} onCancel={() => setIsFormOpen(false)} />
       )}
     </section>
   );
 }
 
-/*
- * Reutilizo esta tarjeta para mostrar los totales
- * principales del módulo.
- */
-function SummaryCard({
-  title,
-  value,
-  icon,
-  iconClassName,
-}: {
+function SummaryCard({ title, value, icon, tone }: {
   title: string;
   value: string;
   icon: string;
-  iconClassName: string;
+  tone: "neutral" | "warning" | "danger";
 }) {
   return (
-    <article className="flex items-center gap-4 rounded-2xl border border-[#E5E7EB] bg-white p-4">
-      <div
-        className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl ${iconClassName}`}
-      >
-        <MaterialIcon
-          name={icon}
-          className="text-2xl"
-          filled
-        />
-      </div>
-
+    <article className={`rx-card rx-waste-kpi rx-waste-kpi--${tone}`}>
+      <span className="rx-waste-kpi-icon"><MaterialIcon name={icon} className="text-2xl" /></span>
       <div>
-        <p className="text-2xl font-bold text-[#0D0F14]">
-          {value}
-        </p>
-
-        <p className="text-xs font-medium text-[#6B7280]">
-          {title}
-        </p>
+        <p className="rx-waste-kpi-value">{value}</p>
+        <p className="rx-kpi-label">{title}</p>
       </div>
     </article>
   );

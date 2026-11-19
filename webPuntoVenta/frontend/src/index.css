@@ -10,6 +10,7 @@
 @import './styles/pos-ui.css';
 @import './styles/admin-buttons.css';
 @import './styles/login-ui.css';
+@import './styles/clientes-ui.css';
 
 /* ---- Sección webCobro (trabajo de un compañero) ----
    Colores personalizados que su proyecto definía en tailwind.config.js.

@@ -20,6 +20,7 @@ test('Recepción refresca datos automáticamente, evita solapamiento y limpia li
     isModalOpen: false, isPaymentModalOpen: false, verMembresias: false,
     reservaAReagendar: null, ticket: null, buscandoCodigo: false,
     fechaReserva: '2026-11-05', API: '/cobro', AbortController,
+    localStorage: { getItem: () => 'sesion-simulada' },
     EVENTO_CAMBIO_APLICACION: 'rx:datos-actualizados', CLAVE_CAMBIO_APLICACION: 'rx:ultimo-cambio',
     document: { ...ventana, visibilityState: 'visible' }, window: ventana, navigator: { onLine: true },
     fetch: async (url, options) => { llamadas.push({ url, options }); return { ok: true, json: async () => [] }; },

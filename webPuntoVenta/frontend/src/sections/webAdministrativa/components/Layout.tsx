@@ -54,7 +54,13 @@ const navItems: NavItem[] = [
     path: "/productos",
     label: "Inventario",
     icon: "inventory_2",
-    roles: ["administrador", "recepcion"],
+    roles: ["administrador", "vendedor"],
+  },
+  {
+    path: "/mermas",
+    label: "Mermas",
+    icon: "delete_sweep",
+    roles: ["administrador"],
   },
   {
     path: "/reportes",

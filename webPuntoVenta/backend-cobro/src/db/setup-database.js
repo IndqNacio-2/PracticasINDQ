@@ -38,7 +38,7 @@ async function main() {
   try {
     // Los archivos se ejecutan en orden: primero las tablas y después los
     // datos de ejemplo.
-    const sqlFiles = ['schema.sql', 'seed.sql'];
+    const sqlFiles = ['schema.sql', 'codigo-cliente.sql', 'menores-clientes.sql', 'seed.sql', 'codigos-reservas.sql'];
 
     for (const fileName of sqlFiles) {
       const filePath = path.join(__dirname, '..', '..', 'db', fileName);

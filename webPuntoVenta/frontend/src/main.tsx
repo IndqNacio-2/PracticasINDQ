@@ -4,6 +4,7 @@ import App from './App'
 import './index.css'
 import LoginPage from './auth/LoginPage'
 import ModuleGuard from './auth/ModuleGuard'
+import ChecadorGuard from './auth/ChecadorGuard'
 import { LOGIN_PATH } from './auth/session'
 import { instalarAvisosDeCambios } from './services/cambiosAplicacion'
 
@@ -19,7 +20,7 @@ import WebCobroSection from './sections/webCobro/Section'
 
 // Decide qué aplicación mostrar según la dirección abierta en el navegador.
 const legacyLoginPaths = ['/login', '/cobro/front-desk/login']
-const path = window.location.pathname
+const path = window.location.pathname.replace(/\/+$/, '') || '/'
 const isLogin = path === LOGIN_PATH || legacyLoginPaths.includes(path)
 let content: React.ReactNode
 
@@ -35,6 +36,8 @@ if (isLogin) {
       <WebAdministrativaSection />
     </ModuleGuard>
   )
+} else if (path === '/cobro/asistencia' || path === '/cobro/asistencia/') {
+  content = <ChecadorGuard><WebCobroSection /></ChecadorGuard>
 } else if (path.startsWith('/cobro')) {
   content = (
     <ModuleGuard allowedRole="recepcion">

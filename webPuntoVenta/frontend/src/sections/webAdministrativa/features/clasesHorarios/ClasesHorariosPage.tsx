@@ -30,7 +30,7 @@ function esVistaValida(valor: string | null): valor is VistaClasesHorarios {
   return valor === 'agenda' || valor === 'catalogo' || valor === 'cambios';
 }
 
-export default function ClasesHorariosPage() {
+export default function ClasesHorariosPage({ recepcion = false }: { recepcion?: boolean } = {}) {
   const [searchParams, setSearchParams] = useSearchParams();
   const vistaParam = searchParams.get('vista');
   const vista: VistaClasesHorarios = esVistaValida(vistaParam) ? vistaParam : 'agenda';
@@ -41,19 +41,22 @@ export default function ClasesHorariosPage() {
   };
 
   return (
-    <div className="max-w-7xl space-y-5">
-      <div>
+    <section className={recepcion ? 'rx-admin-dashboard rx-reception-programacion' : 'w-full min-w-0 space-y-5'}>
+      <header className={recepcion ? 'rx-page-header rx-admin-dashboard-header' : undefined}>
+      <div className={recepcion ? 'rx-page-heading rx-page-heading--stacked' : undefined}>
         <h1
-          className="text-2xl font-bold text-gray-900"
-          style={{ fontFamily: 'DM Sans, sans-serif' }}
+          className={recepcion ? 'rx-page-title' : 'text-2xl font-bold text-gray-900'}
+          style={recepcion ? undefined : { fontFamily: 'DM Sans, sans-serif' }}
         >
           Clases y horarios
         </h1>
-        <p className="mt-1 text-sm text-gray-500">
+        <p className={recepcion ? 'rx-page-subtitle' : 'mt-1 text-sm text-gray-500'}>
           Administra el catálogo y la programación desde un solo lugar.
         </p>
       </div>
+      </header>
 
+      <div className={recepcion ? 'rx-reception-programacion-content' : 'space-y-5'}>
       <div className="rounded-2xl border border-gray-100 bg-white p-2 shadow-sm">
         <div className="grid gap-2 md:grid-cols-3" role="tablist" aria-label="Vistas de clases y horarios">
           {VISTAS.map(item => {
@@ -108,6 +111,7 @@ export default function ClasesHorariosPage() {
           </div>
         )}
       </section>
-    </div>
+      </div>
+    </section>
   );
 }

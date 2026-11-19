@@ -1,7 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import type { CashClosingRecord, SaleRecord } from "../types";
 import MaterialIcon from "./MaterialIcon";
+import { getStoredUser } from '../auth/session';
 
 /*
  * Defino los datos que el módulo de Corte de caja
@@ -114,8 +115,8 @@ const getDifferenceStatus = (difference: number) => {
       label: "Caja exacta",
       message: "El efectivo contado coincide con el efectivo esperado.",
       icon: "check_circle",
-      containerClassName: "bg-[#DCFCE7] text-[#166534]",
-      amountClassName: "text-[#166534]",
+      containerClassName: "bg-[var(--rx-success-bg)] text-[var(--rx-success-ink)]",
+      amountClassName: "text-[var(--rx-success-ink)]",
     };
   }
 
@@ -128,8 +129,8 @@ const getDifferenceStatus = (difference: number) => {
       label: "Sobrante",
       message: "Se contó más efectivo del que se esperaba en la caja.",
       icon: "trending_up",
-      containerClassName: "bg-[#F3F4F6] text-[#4B5563]",
-      amountClassName: "text-[#4B5563]",
+      containerClassName: "bg-[var(--rx-warning-bg)] text-[var(--rx-warning-ink)]",
+      amountClassName: "text-[var(--rx-warning-ink)]",
     };
   }
 
@@ -141,8 +142,8 @@ const getDifferenceStatus = (difference: number) => {
     label: "Faltante",
     message: "Se contó menos efectivo del que se esperaba en la caja.",
     icon: "trending_down",
-    containerClassName: "bg-[#FEE2E2] text-[#B91C1C]",
-    amountClassName: "text-[#B91C1C]",
+    containerClassName: "bg-[var(--rx-danger-bg)] text-[var(--rx-danger-ink)]",
+    amountClassName: "text-[var(--rx-danger-ink)]",
   };
 };
 
@@ -163,6 +164,9 @@ export default function CashClosingPage({
   const [initialFundText, setInitialFundText] = useState(
     initialFund === 0 ? "" : String(initialFund),
   );
+  useEffect(() => {
+    setInitialFundText(initialFund === 0 ? "" : String(initialFund));
+  }, [initialFund]);
   const [countedCashText, setCountedCashText] = useState(
     countedCash === 0 ? "" : String(countedCash),
   );
@@ -262,26 +266,21 @@ export default function CashClosingPage({
       expectedCash: summary.expectedCash,
       countedCash,
       difference: summary.difference,
-      registeredBy: "Edgar Rodríguez",
+      registeredBy: getStoredUser()?.idUsuario ?? '',
     };
 
     onConfirmClosing(closing);
 
-    /*
-     * Limpio los campos del arqueo porque el turno
-     * vuelve a comenzar después del corte.
-     */
-    setInitialFundText("");
-    setCountedCashText("");
+    // El padre limpia el fondo únicamente tras la confirmación del servidor.
     setIsConfirmOpen(false);
   };
 
   return (
-    <section className="flex h-full flex-col overflow-hidden bg-[#F3F4F6]">
+    <section className="rx-closing">
       {/* Muestro el título y el estado temporal del turno. */}
-      <header className="flex flex-shrink-0 items-center justify-between border-b border-[#E5E7EB] bg-white px-7 py-5">
+      <header className="rx-page-header">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#F3F4F6] text-[#111827]">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--rx-surface-soft)] text-[var(--rx-ink)]">
             <MaterialIcon
               name="payments"
               className="text-2xl"
@@ -290,11 +289,11 @@ export default function CashClosingPage({
           </div>
 
           <div>
-            <h1 className="text-xl font-bold text-[#0D0F14]">
+            <h1 className="rx-page-title">
               Corte de caja
             </h1>
 
-            <p className="text-sm text-[#6B7280]">
+            <p className="text-sm text-[var(--rx-ink-secondary)]">
               Resumen de las ventas, el arqueo y los cortes del turno.
             </p>
           </div>
@@ -303,61 +302,60 @@ export default function CashClosingPage({
         <div className="flex items-center gap-2">
           {/* Recuerdo el último folio cerrado para dar seguimiento al turno. */}
           {closings.length > 0 && (
-            <span className="rounded-full bg-[#F3F4F6] px-3 py-1.5 text-xs font-semibold text-[#6B7280]">
-              Último corte: CC-
-              {String(closings.length).padStart(4, "0")}
+            <span className="rx-badge">
+              Último corte: {closings[closings.length - 1].folio}
             </span>
           )}
 
-          <span className="rounded-full bg-[#DCFCE7] px-3 py-1.5 text-xs font-bold text-[#166534]">
+          <span className="rx-badge rx-badge--success">
             Turno abierto
           </span>
         </div>
       </header>
 
-      <div className="flex-1 overflow-y-auto p-7">
+      <div className="rx-closing-content">
         {/* Presento los principales totales de la caja. */}
-        <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <div className="rx-closing-kpis">
           <SummaryCard
             title="Ventas realizadas"
             value={sales.length.toString()}
             icon="receipt_long"
-            iconClassName="bg-[#F3F4F6] text-[#4B5563]"
+            iconClassName="bg-[var(--rx-surface-soft)] text-[var(--rx-ink-secondary)]"
           />
 
           <SummaryCard
             title="Venta total"
             value={formatCurrency(summary.totalSales)}
             icon="point_of_sale"
-            iconClassName="bg-[#F3F4F6] text-[#111827]"
+            iconClassName="bg-[var(--rx-surface-soft)] text-[var(--rx-ink)]"
           />
 
           <SummaryCard
             title="Efectivo"
             value={formatCurrency(summary.cashSales)}
             icon="payments"
-            iconClassName="bg-[#DCFCE7] text-[#166534]"
+            iconClassName="bg-[var(--rx-success-bg)] text-[var(--rx-success-ink)]"
           />
 
           <SummaryCard
             title="Tarjeta"
             value={formatCurrency(summary.cardSales)}
             icon="credit_card"
-            iconClassName="bg-[#F3F4F6] text-[#4B5563]"
+            iconClassName="bg-[var(--rx-surface-soft)] text-[var(--rx-ink-secondary)]"
           />
 
           <SummaryCard
             title="Transferencia"
             value={formatCurrency(summary.transferSales)}
             icon="account_balance"
-            iconClassName="bg-[#FEF3C7] text-[#92400E]"
+            iconClassName="bg-[var(--rx-warning-bg)] text-[var(--rx-warning-ink)]"
           />
         </div>
 
         {/* Capturo el fondo inicial y el efectivo contado del turno. */}
-        <div className="mb-6 overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white">
-          <div className="flex items-center gap-3 border-b border-[#E5E7EB] px-5 py-4">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#F3F4F6] text-[#111827]">
+        <div className="rx-card rx-closing-panel">
+          <div className="rx-closing-panel-header">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--rx-surface-soft)] text-[var(--rx-ink)]">
               <MaterialIcon
                 name="calculate"
                 className="text-xl"
@@ -366,26 +364,26 @@ export default function CashClosingPage({
             </div>
 
             <div>
-              <h2 className="font-bold text-[#0D0F14]">
+              <h2 className="rx-card-title">
                 Arqueo de caja
               </h2>
 
-              <p className="text-xs text-[#9CA3AF]">
+              <p className="text-xs text-[var(--rx-ink-secondary)]">
                 Captura el fondo inicial y el efectivo contado para conocer la diferencia.
               </p>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-5 p-5 lg:grid-cols-2">
+          <div className="rx-closing-arqueo">
             {/* Campos que captura el usuario durante el turno. */}
             <div>
               <label className="mb-4 block">
-                <span className="mb-1.5 block text-sm font-semibold text-[#374151]">
+                <span className="rx-label mb-1.5 block">
                   Fondo inicial de caja
                 </span>
 
                 <div className="relative">
-                  <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-lg font-bold text-[#9CA3AF]">
+                  <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-lg font-bold text-[var(--rx-ink-secondary)]">
                     $
                   </span>
 
@@ -399,22 +397,22 @@ export default function CashClosingPage({
                       handleInitialFundChange(event.target.value)
                     }
                     placeholder="0.00"
-                    className="w-full rounded-xl border-2 border-[#E5E7EB] py-3 pl-9 pr-4 text-lg font-bold text-[#0D0F14] outline-none focus:border-[#111827]"
+                    className="rx-input rx-closing-amount"
                   />
                 </div>
 
-                <span className="mt-1.5 block text-xs text-[#9CA3AF]">
+                <span className="mt-1.5 block text-xs text-[var(--rx-ink-secondary)]">
                   Dinero con el que inició el turno.
                 </span>
               </label>
 
               <label className="block">
-                <span className="mb-1.5 block text-sm font-semibold text-[#374151]">
+                <span className="rx-label mb-1.5 block">
                   Efectivo contado
                 </span>
 
                 <div className="relative">
-                  <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-lg font-bold text-[#9CA3AF]">
+                  <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-lg font-bold text-[var(--rx-ink-secondary)]">
                     $
                   </span>
 
@@ -428,18 +426,18 @@ export default function CashClosingPage({
                       handleCountedCashChange(event.target.value)
                     }
                     placeholder="0.00"
-                    className="w-full rounded-xl border-2 border-[#E5E7EB] py-3 pl-9 pr-4 text-lg font-bold text-[#0D0F14] outline-none focus:border-[#111827]"
+                    className="rx-input rx-closing-amount"
                   />
                 </div>
 
-                <span className="mt-1.5 block text-xs text-[#9CA3AF]">
+                <span className="mt-1.5 block text-xs text-[var(--rx-ink-secondary)]">
                   Dinero que se contó físicamente al final del turno.
                 </span>
               </label>
             </div>
 
             {/* Resultado del arqueo con el desglose del efectivo. */}
-            <div className="rounded-2xl border border-[#E5E7EB] bg-[#F9FAFB] p-4">
+            <div className="rx-closing-reconciliation">
               <ArqueoRow
                 label="Fondo inicial"
                 value={formatCurrency(initialFund)}
@@ -464,7 +462,7 @@ export default function CashClosingPage({
               />
 
               <div
-                className={`mt-3 flex items-start gap-3 rounded-xl p-3.5 ${differenceStatus.containerClassName}`}
+                role="status" aria-live="polite" aria-atomic="true" className={`mt-3 flex items-start gap-3 rounded-xl p-3.5 ${differenceStatus.containerClassName}`}
               >
                 <MaterialIcon
                   name={differenceStatus.icon}
@@ -488,7 +486,7 @@ export default function CashClosingPage({
                 type="button"
                 onClick={() => setIsConfirmOpen(true)}
                 disabled={!canCloseShift}
-                className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-[#6B7280] px-5 py-3.5 font-bold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                className="rx-btn rx-btn--dark rx-btn--block rx-closing-submit"
               >
                 <MaterialIcon
                   name="lock_clock"
@@ -500,7 +498,7 @@ export default function CashClosingPage({
               </button>
 
               {!canCloseShift && (
-                <p className="mt-2 text-center text-xs text-[#9CA3AF]">
+                <p className="mt-2 text-center text-xs text-[var(--rx-ink-secondary)]">
                   Registra el fondo inicial o realiza una venta para poder cerrar el turno.
                 </p>
               )}
@@ -509,19 +507,19 @@ export default function CashClosingPage({
         </div>
 
         {/* Muestro las ventas que forman parte del turno actual. */}
-        <div className="overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white">
-          <div className="flex items-center justify-between border-b border-[#E5E7EB] px-5 py-4">
+        <div className="rx-card rx-closing-panel">
+          <div className="rx-closing-panel-header">
             <div>
-              <h2 className="font-bold text-[#0D0F14]">
+              <h2 className="rx-card-title">
                 Ventas del turno
               </h2>
 
-              <p className="text-xs text-[#9CA3AF]">
-                Las ventas se conservan mientras la aplicación permanece abierta.
+              <p className="text-xs text-[var(--rx-ink-secondary)]">
+                Tus ventas pendientes de incluir en un corte de caja.
               </p>
             </div>
 
-            <span className="text-xs font-semibold text-[#6B7280]">
+            <span className="text-xs font-semibold text-[var(--rx-ink-secondary)]">
               {sales.length} registro
               {sales.length === 1 ? "" : "s"}
             </span>
@@ -530,27 +528,27 @@ export default function CashClosingPage({
           {sales.length === 0 ? (
             /* Muestro un estado vacío cuando todavía no existen ventas. */
             <div className="flex flex-col items-center justify-center px-6 py-20 text-center">
-              <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-[#F3F4F6] text-[#9CA3AF]">
+              <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-[var(--rx-surface-soft)] text-[var(--rx-ink-secondary)]">
                 <MaterialIcon
                   name="receipt_long"
                   className="text-3xl"
                 />
               </div>
 
-              <p className="font-semibold text-[#374151]">
+              <p className="font-semibold text-[var(--rx-ink)]">
                 No hay ventas registradas
               </p>
 
-              <p className="mt-1 max-w-sm text-sm text-[#9CA3AF]">
+              <p className="mt-1 max-w-sm text-sm text-[var(--rx-ink-secondary)]">
                 Las ventas terminadas en el Punto de Venta aparecerán
                 automáticamente en esta sección.
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[700px] text-sm">
+            <div className="rx-table-wrap rx-closing-table-wrap" role="region" aria-label="Ventas del turno" tabIndex={0}>
+              <table className="rx-table rx-closing-table">
                 <thead>
-                  <tr className="bg-[#F9FAFB]">
+                  <tr className="bg-[var(--rx-surface-soft)]">
                     {[
                       "Folio",
                       "Fecha",
@@ -560,7 +558,7 @@ export default function CashClosingPage({
                     ].map((heading) => (
                       <th
                         key={heading}
-                        className={`px-5 py-3 text-xs font-bold uppercase tracking-wide text-[#6B7280] ${
+                        className={`px-5 py-3 text-xs font-bold uppercase tracking-wide text-[var(--rx-ink-secondary)] ${
                           heading === "Total" ? "text-right" : "text-left"
                         }`}
                       >
@@ -575,34 +573,34 @@ export default function CashClosingPage({
                   {[...sales].reverse().map((sale) => (
                     <tr
                       key={sale.folio}
-                      className="border-t border-[#F3F4F6] hover:bg-[#FAFAFA]"
+                      className="border-t border-[var(--rx-surface-soft)] hover:bg-[var(--rx-surface-soft)]"
                     >
                       <td className="px-5 py-3">
-                        <span className="rounded-md bg-[#F3F4F6] px-2 py-1 font-mono text-xs font-semibold text-[#6B7280]">
+                        <span className="rounded-md bg-[var(--rx-surface-soft)] px-2 py-1 font-mono text-xs font-semibold text-[var(--rx-ink-secondary)]">
                           {sale.folio}
                         </span>
                       </td>
 
-                      <td className="px-5 py-3 text-[#6B7280]">
+                      <td className="px-5 py-3 text-[var(--rx-ink-secondary)]">
                         {sale.date}
                       </td>
 
-                      <td className="px-5 py-3 text-[#6B7280]">
+                      <td className="px-5 py-3 text-[var(--rx-ink-secondary)]">
                         {sale.time}
                       </td>
 
                       <td className="px-5 py-3">
-                        <span className="inline-flex items-center gap-2 font-semibold text-[#374151]">
+                        <span className="inline-flex items-center gap-2 font-semibold text-[var(--rx-ink)]">
                           <MaterialIcon
                             name={PAYMENT_METHOD_ICONS[sale.paymentMethod]}
-                            className="text-lg text-[#111827]"
+                            className="text-lg text-[var(--rx-ink)]"
                           />
 
                           {PAYMENT_METHOD_LABELS[sale.paymentMethod]}
                         </span>
                       </td>
 
-                      <td className="px-5 py-3 text-right font-bold text-[#0D0F14]">
+                      <td className="px-5 py-3 text-right font-bold text-[var(--rx-ink)]">
                         {formatCurrency(sale.total)}
                       </td>
                     </tr>
@@ -614,19 +612,19 @@ export default function CashClosingPage({
         </div>
 
         {/* Muestro los cortes de caja realizados durante la sesión. */}
-        <div className="mt-6 overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white">
-          <div className="flex items-center justify-between border-b border-[#E5E7EB] px-5 py-4">
+        <div className="rx-card rx-closing-panel">
+          <div className="rx-closing-panel-header">
             <div>
-              <h2 className="font-bold text-[#0D0F14]">
+              <h2 className="rx-card-title">
                 Historial de cortes
               </h2>
 
-              <p className="text-xs text-[#9CA3AF]">
+              <p className="text-xs text-[var(--rx-ink-secondary)]">
                 Cada corte guarda el fondo, el efectivo esperado y la diferencia del turno.
               </p>
             </div>
 
-            <span className="text-xs font-semibold text-[#6B7280]">
+            <span className="text-xs font-semibold text-[var(--rx-ink-secondary)]">
               {closings.length} corte
               {closings.length === 1 ? "" : "s"}
             </span>
@@ -635,27 +633,27 @@ export default function CashClosingPage({
           {closings.length === 0 ? (
             /* Muestro un estado vacío cuando todavía no existen cortes. */
             <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
-              <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-[#F3F4F6] text-[#9CA3AF]">
+              <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-[var(--rx-surface-soft)] text-[var(--rx-ink-secondary)]">
                 <MaterialIcon
                   name="history"
                   className="text-3xl"
                 />
               </div>
 
-              <p className="font-semibold text-[#374151]">
+              <p className="font-semibold text-[var(--rx-ink)]">
                 No hay cortes registrados
               </p>
 
-              <p className="mt-1 max-w-sm text-sm text-[#9CA3AF]">
+              <p className="mt-1 max-w-sm text-sm text-[var(--rx-ink-secondary)]">
                 Al realizar el corte del turno aparecerá aquí el resumen
                 con el fondo inicial, el efectivo contado y la diferencia.
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[1000px] text-sm">
+            <div className="rx-table-wrap rx-closing-table-wrap" role="region" aria-label="Historial de cortes" tabIndex={0}>
+              <table className="rx-table rx-closing-table rx-closing-table--history">
                 <thead>
-                  <tr className="bg-[#F9FAFB]">
+                  <tr className="bg-[var(--rx-surface-soft)]">
                     {[
                       "Folio",
                       "Fecha",
@@ -683,7 +681,7 @@ export default function CashClosingPage({
                       return (
                         <th
                           key={heading}
-                          className={`px-5 py-3 text-xs font-bold uppercase tracking-wide text-[#6B7280] ${
+                          className={`px-5 py-3 text-xs font-bold uppercase tracking-wide text-[var(--rx-ink-secondary)] ${
                             isNumeric ? "text-right" : "text-left"
                           }`}
                         >
@@ -705,44 +703,45 @@ export default function CashClosingPage({
                     return (
                       <tr
                         key={closing.folio}
-                        className="border-t border-[#F3F4F6] hover:bg-[#FAFAFA]"
+                        className="border-t border-[var(--rx-surface-soft)] hover:bg-[var(--rx-surface-soft)]"
                       >
                         <td className="px-5 py-3">
-                          <span className="rounded-md bg-[#F3F4F6] px-2 py-1 font-mono text-xs font-semibold text-[#6B7280]">
+                          <span className="rounded-md bg-[var(--rx-surface-soft)] px-2 py-1 font-mono text-xs font-semibold text-[var(--rx-ink-secondary)]">
                             {closing.folio}
                           </span>
                         </td>
 
-                        <td className="px-5 py-3 text-[#6B7280]">
+                        <td className="px-5 py-3 text-[var(--rx-ink-secondary)]">
                           {closing.date}
                         </td>
 
-                        <td className="px-5 py-3 text-[#6B7280]">
+                        <td className="px-5 py-3 text-[var(--rx-ink-secondary)]">
                           {closing.time}
                         </td>
 
-                        <td className="px-5 py-3 text-right text-[#6B7280]">
+                        <td className="px-5 py-3 text-right text-[var(--rx-ink-secondary)]">
                           {closing.salesCount}
                         </td>
 
-                        <td className="px-5 py-3 text-right font-semibold text-[#374151]">
+                        <td className="px-5 py-3 text-right font-semibold text-[var(--rx-ink)]">
                           {formatCurrency(closing.totalSales)}
                         </td>
 
-                        <td className="px-5 py-3 text-right text-[#6B7280]">
+                        <td className="px-5 py-3 text-right text-[var(--rx-ink-secondary)]">
                           {formatCurrency(closing.initialFund)}
                         </td>
 
-                        <td className="px-5 py-3 text-right text-[#6B7280]">
+                        <td className="px-5 py-3 text-right text-[var(--rx-ink-secondary)]">
                           {formatCurrency(closing.expectedCash)}
                         </td>
 
-                        <td className="px-5 py-3 text-right text-[#6B7280]">
+                        <td className="px-5 py-3 text-right text-[var(--rx-ink-secondary)]">
                           {formatCurrency(closing.countedCash)}
                         </td>
 
                         <td
                           className={`px-5 py-3 text-right font-bold ${closingStatus.amountClassName}`}
+                          title={closingStatus.label}
                         >
                           {formatDifference(closing.difference)}
                         </td>
@@ -756,19 +755,19 @@ export default function CashClosingPage({
         </div>
 
         {/* Aclaro qué funciones quedan pendientes para el cierre real. */}
-        <div className="mt-5 flex items-start gap-3 rounded-xl border border-[#E5E7EB] bg-[#F3F4F6] p-4">
+        <div className="mt-5 flex items-start gap-3 rounded-xl border border-[var(--rx-line)] bg-[var(--rx-surface-soft)] p-4">
           <MaterialIcon
             name="info"
-            className="mt-0.5 text-xl text-[#111827]"
+            className="mt-0.5 text-xl text-[var(--rx-ink)]"
             filled
           />
 
           <div>
-            <p className="text-sm font-bold text-[#111827]">
+            <p className="text-sm font-bold text-[var(--rx-ink)]">
               Alcance actual del corte
             </p>
 
-            <p className="mt-0.5 text-xs leading-5 text-[#6B7280]">
+            <p className="mt-0.5 text-xs leading-5 text-[var(--rx-ink-secondary)]">
               El corte calcula el fondo inicial, el efectivo esperado, el
               efectivo contado y la diferencia. Al confirmar el cierre se
               registra el corte y queda en el historial del turno. La
@@ -812,22 +811,22 @@ function ArqueoRow({
   return (
     <div
       className={`flex items-start justify-between gap-4 py-2 ${
-        emphasized ? "border-t border-[#E5E7EB]" : ""
+        emphasized ? "border-t border-[var(--rx-line)]" : ""
       }`}
     >
       <div>
         <p
           className={`text-sm ${
             emphasized
-              ? "font-bold text-[#0D0F14]"
-              : "text-[#6B7280]"
+              ? "font-bold text-[var(--rx-ink)]"
+              : "text-[var(--rx-ink-secondary)]"
           }`}
         >
           {label}
         </p>
 
         {hint && (
-          <p className="mt-0.5 text-xs text-[#9CA3AF]">
+          <p className="mt-0.5 text-xs text-[var(--rx-ink-secondary)]">
             {hint}
           </p>
         )}
@@ -836,8 +835,8 @@ function ArqueoRow({
       <p
         className={`flex-shrink-0 ${
           emphasized
-            ? "text-base font-bold text-[#0D0F14]"
-            : "text-sm font-semibold text-[#374151]"
+            ? "text-base font-bold text-[var(--rx-ink)]"
+            : "text-sm font-semibold text-[var(--rx-ink)]"
         }`}
       >
         {value}
@@ -870,23 +869,41 @@ function ConfirmCashClosingModal({
   // Obtengo el mensaje y los colores según la diferencia capturada.
   const status = getDifferenceStatus(difference);
 
+  useEffect(() => {
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const dialog = document.getElementById("closing-confirm-dialog");
+    const buttons = dialog?.querySelectorAll<HTMLButtonElement>("button");
+    buttons?.[0]?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onCancel();
+      if (event.key === "Tab" && buttons?.length) {
+        const first = buttons[0];
+        const last = buttons[buttons.length - 1];
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => { document.removeEventListener("keydown", handleKeyDown); previousFocus?.focus(); };
+  }, [onCancel]);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="modal-enter w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+    <div className="rx-modal-overlay">
+      <div id="closing-confirm-dialog" className="rx-modal rx-closing-modal" role="dialog" aria-modal="true" aria-labelledby="closing-confirm-title" aria-describedby="closing-confirm-description">
         <div className="mb-5 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-[#F3F4F6]">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-[var(--rx-surface-soft)]">
             <MaterialIcon
               name="lock_clock"
-              className="text-3xl text-[#111827]"
+              className="text-3xl text-[var(--rx-ink)]"
               filled
             />
           </div>
 
-          <h2 className="mb-2 text-lg font-bold text-[#0D0F14]">
+          <h2 id="closing-confirm-title" className="mb-2 text-lg font-bold text-[var(--rx-ink)]">
             ¿Realizar el corte de caja?
           </h2>
 
-          <p className="text-sm leading-6 text-[#6B7280]">
+          <p id="closing-confirm-description" className="text-sm leading-6 text-[var(--rx-ink-secondary)]">
             Se cerrará el turno con {salesCount} venta
             {salesCount === 1 ? "" : "s"} registrada
             {salesCount === 1 ? "" : "s"} y comenzará un turno nuevo.
@@ -894,30 +911,30 @@ function ConfirmCashClosingModal({
         </div>
 
         {/* Repaso el resultado del arqueo antes de confirmar. */}
-        <div className="mb-5 space-y-2 rounded-xl border border-[#E5E7EB] bg-[#F9FAFB] p-4 text-sm">
+        <div className="mb-5 space-y-2 rounded-xl border border-[var(--rx-line)] bg-[var(--rx-surface-soft)] p-4 text-sm">
           <div className="flex justify-between">
-            <span className="text-[#6B7280]">Total vendido</span>
-            <strong className="text-[#0D0F14]">
+            <span className="text-[var(--rx-ink-secondary)]">Total vendido</span>
+            <strong className="text-[var(--rx-ink)]">
               {formatCurrency(totalSales)}
             </strong>
           </div>
 
           <div className="flex justify-between">
-            <span className="text-[#6B7280]">Efectivo esperado</span>
-            <strong className="text-[#0D0F14]">
+            <span className="text-[var(--rx-ink-secondary)]">Efectivo esperado</span>
+            <strong className="text-[var(--rx-ink)]">
               {formatCurrency(expectedCash)}
             </strong>
           </div>
 
           <div className="flex justify-between">
-            <span className="text-[#6B7280]">Efectivo contado</span>
-            <strong className="text-[#0D0F14]">
+            <span className="text-[var(--rx-ink-secondary)]">Efectivo contado</span>
+            <strong className="text-[var(--rx-ink)]">
               {formatCurrency(countedCash)}
             </strong>
           </div>
 
-          <div className="flex justify-between border-t border-[#E5E7EB] pt-2">
-            <span className="text-[#6B7280]">
+          <div className="flex justify-between border-t border-[var(--rx-line)] pt-2">
+            <span className="text-[var(--rx-ink-secondary)]">
               {status.label}
             </span>
 
@@ -931,7 +948,7 @@ function ConfirmCashClosingModal({
           <button
             type="button"
             onClick={onCancel}
-            className="w-full rounded-xl border border-[#E5E7EB] bg-[#F9FAFB] py-3 font-semibold text-[#374151] hover:bg-[#F3F4F6]"
+            className="rx-btn rx-btn--outline rx-btn--block"
           >
             Cancelar
           </button>
@@ -939,7 +956,7 @@ function ConfirmCashClosingModal({
           <button
             type="button"
             onClick={onConfirm}
-            className="w-full rounded-xl bg-[#6B7280] py-3 font-bold text-white hover:opacity-90"
+            className="rx-btn rx-btn--dark rx-btn--block"
           >
             Confirmar corte
           </button>
@@ -965,9 +982,9 @@ function SummaryCard({
   iconClassName: string;
 }) {
   return (
-    <article className="rounded-2xl border border-[#E5E7EB] bg-white p-4">
+    <article className="rx-card rx-closing-kpi">
       <div
-        className={`mb-3 flex h-10 w-10 items-center justify-center rounded-xl ${iconClassName}`}
+        className={`rx-closing-kpi-icon ${iconClassName}`}
       >
         <MaterialIcon
           name={icon}
@@ -976,13 +993,10 @@ function SummaryCard({
         />
       </div>
 
-      <p className="truncate text-xl font-bold text-[#0D0F14]">
-        {value}
-      </p>
-
-      <p className="mt-1 text-xs font-medium text-[#6B7280]">
-        {title}
-      </p>
+      <div className="rx-closing-kpi-copy">
+        <p className="rx-closing-kpi-value">{value}</p>
+        <p className="rx-closing-kpi-label">{title}</p>
+      </div>
     </article>
   );
 }

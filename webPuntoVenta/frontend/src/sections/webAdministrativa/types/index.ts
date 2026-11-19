@@ -55,6 +55,11 @@ export interface Membresia {
 }
 
 export interface Cliente extends Usuario {
+  nombreTutor?: string;
+  claveElectorTutor?: string;
+  estadoDocumentacion?: 'pendiente' | 'validada';
+  enfermedades?: string[];
+  lesiones?: string[];
   fechaNacimiento: string;
   direccion: string;
   fechaRegistro: string;

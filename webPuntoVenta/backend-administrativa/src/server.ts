@@ -13,7 +13,11 @@ import usuarioRoutes from './routes/usuarios.routes';
 import ventaRoutes from './routes/ventas.routes';
 import membresiaRoutes from './routes/membresia.routes';
 import reportesRoutes from './routes/reportes.routes';
+import { requireAuth, requireRole } from './middleware/auth';
+import { accesoProgramacion } from './middleware/programacion';
 import { connectDB } from './lib/mongo';
+import { pool } from './lib/post';
+import { crearRutasClientesMovil } from './routes/clientes-movil.routes';
 import { iniciarMantenimientoHorizonte } from './services/mantener-horizonte-sesiones';
 import { iniciarCumpleanos } from './services/cumpleanos.service';
 
@@ -31,6 +35,15 @@ app.use(express.json());
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 app.use('/api/auth', authRoutes);
+app.use('/api/movil', crearRutasClientesMovil(pool));
+// Catálogos compartidos no conceden permisos administrativos de escritura.
+app.use(['/api/clases', '/api/horarios', '/api/plantillas-horarios'], accesoProgramacion);
+app.use('/api/reservaciones', (req, res, next) => {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+  requireAuth(req, res, () => requireRole('administrador')(req, res, next));
+});
+app.use('/api/ventas', requireAuth, requireRole('administrador'));
+app.use('/api/clientes', requireAuth, requireRole('administrador', 'recepcion', 'vendedor'));
 app.use('/api/clientes', clienteRoutes);
 app.use('/api/reservaciones', reservacionRoutes);
 app.use('/api/horarios', horarioRoutes);
@@ -41,7 +54,7 @@ app.use('/api/movimientos', movimientoRoutes);
 app.use('/api/usuarios', usuarioRoutes);
 app.use('/api/ventas', ventaRoutes);
 app.use('/api/membresias', membresiaRoutes);
-app.use('/api/reportes', reportesRoutes);
+app.use('/api/reportes', requireAuth, requireRole('administrador'), reportesRoutes);
 
 // Exporta la app para que el gateway unificado pueda montarla bajo su prefijo
 // (/admin) en un solo puerto. Con GATEWAY_MODE no abre su propio puerto y un

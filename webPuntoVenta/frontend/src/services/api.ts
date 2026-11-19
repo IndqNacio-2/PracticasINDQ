@@ -14,6 +14,7 @@ import type {
   SaleRecord,
   CashClosingRecord,
 } from '../types';
+import { TOKEN_KEY } from '../auth/session';
 /**
  * obtiene la direccion base del backend desde las variables de Vite
  * 
@@ -105,6 +106,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
         ...options,
         headers: {
             "Content-Type": "application/json",
+            ...(localStorage.getItem(TOKEN_KEY) ? { Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY)}` } : {}),
             ...options.headers,
         },
     });
@@ -274,7 +276,7 @@ export async function getCashClosings(): Promise<CashClosingRecord[]> {
 }
 
 // Datos del cierre de turno que arma la pantalla de Corte de caja.
-export type CashClosingPayload = Omit<CashClosingRecord, "folio" | "date" | "time">;
+export type CashClosingPayload = Omit<CashClosingRecord, "folio" | "date" | "time"> & { saleIds: number[] };
 
 // Registrar el cierre de un turno.
 export async function createCashClosing(

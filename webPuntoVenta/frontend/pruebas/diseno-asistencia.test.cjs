@@ -31,11 +31,13 @@ function preparar({ codigo = '', empleado = null, historial = [], resultado = nu
     require(nombre) {
       if (nombre === 'react') return reactSimulado;
       if (nombre === 'react/jsx-runtime') return require(nombre);
+      if (nombre.endsWith('/auth/session')) return { TOKEN_KEY: 'token-prueba' };
       if (nombre.endsWith('/BrandLogo')) return { default: () => React.createElement('img', { alt: 'NUUCLEO', src: '/branding/nuucleo-symbol.png' }) };
       if (nombre.endsWith('/MaterialIcon')) return { default: ({ name }) => React.createElement('span', { 'aria-hidden': true }, name) };
       throw Error(`Importacion inesperada: ${nombre}`);
     },
     fetch: fetchImpl ?? (() => { throw Error('No se permiten llamadas reales'); }),
+    localStorage: { getItem: () => 'sesion-simulada' },
     console, setTimeout, clearTimeout, setInterval, clearInterval,
   }, { filename: file });
   const arbol = modulo.exports.default();

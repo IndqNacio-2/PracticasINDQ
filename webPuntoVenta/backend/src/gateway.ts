@@ -37,6 +37,17 @@ process.env.GATEWAY_MODE = "1";
 const { default: posApp } = await import("./server.js");
 const { default: adminApp } = await import("../../backend-administrativa/src/server.js");
 const { default: cobroApp } = await import("../../backend-cobro/serverWebCobro.js");
+const { Usuario } = await import("../../backend-administrativa/src/models/Usuarios/usuarios.js");
+
+// Consulta mínima, interna y de solo lectura: nunca publica correos ni contraseñas.
+cobroApp.locals.asistenciaUsuarios = async (codigo: string) => {
+  const interno = /^USR-([A-F0-9]{24})$/.exec(codigo);
+  const filtro = interno
+    ? { _id: interno[1], estatus: "activo" }
+    : { codigoAcceso: codigo, estatus: "activo" };
+  const u = await Usuario.findOne(filtro).select("_id nombre apellidos rol").lean();
+  return u ? { id: String(u._id), nombre: `${u.nombre} ${u.apellidos}`.trim(), rol: u.rol } : null;
+};
 
 const app = express();
 const port = 3000;
