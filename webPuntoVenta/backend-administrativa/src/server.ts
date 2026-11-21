@@ -14,6 +14,8 @@ import ventaRoutes from './routes/ventas.routes';
 import membresiaRoutes from './routes/membresia.routes';
 import reportesRoutes from './routes/reportes.routes';
 import comprasMembresiaRoutes from './routes/compras-membresia.routes';
+import { enfermedadesRoutes, lesionesRoutes } from './routes/salud.routes';
+import { sembrarCatalogoSalud } from './salud-core/catalogo.model';
 import { crearRutasClientesMovil } from './routes/clientes-movil.routes';
 import { pool } from './lib/post';
 import { permitir, PERMISOS } from './middleware/permisos';
@@ -50,6 +52,8 @@ app.use('/api/usuarios', usuarioRoutes);
 app.use('/api/ventas', permitir(PERMISOS.ventas), ventaRoutes);
 app.use('/api/membresias', membresiaRoutes);
 app.use('/api/reportes', permitir(PERMISOS.reportes), reportesRoutes);
+app.use('/api/enfermedades', permitir(PERMISOS.catalogoSalud), enfermedadesRoutes);
+app.use('/api/lesiones', permitir(PERMISOS.catalogoSalud), lesionesRoutes);
 app.use('/api/membresias-compras', permitir(PERMISOS.membresiasCompras), comprasMembresiaRoutes);
 
 // Exporta la app para que el gateway unificado pueda montarla bajo su prefijo
@@ -60,6 +64,7 @@ export default app;
 connectDB()
   .then(() => {
     iniciarMantenimientoHorizonte();
+    sembrarCatalogoSalud().catch((error) => console.error('Catálogo de salud:', error.message));
     iniciarCumpleanos();
     // Cada minuto: las clases que ya pasaron sin asistencia quedan como inasistencia (antes lo hacía cobro).
     setInterval(() => {

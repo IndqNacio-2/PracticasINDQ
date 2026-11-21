@@ -10,12 +10,9 @@ import CobroApartada from './CobroApartada';
 import { ClientesPage } from '../../webAdministrativa/features/clientes/ClientesPage';
 import { EVENTO_CAMBIO_APLICACION, CLAVE_CAMBIO_APLICACION } from '../../../services/cambiosAplicacion';
 import RecepcionDetalle from './RecepcionDetalle';
-import RecepcionTabla from './RecepcionTabla';
 import InventarioRecepcion from './InventarioRecepcion';
 import ClasesHorariosPage from '../../webAdministrativa/features/clasesHorarios/ClasesHorariosPage';
 import MembresiasPage from '../../webAdministrativa/features/membresia/membresia';
-import { coincideNombre } from '../../../services/busquedaClientes';
-import { ClientesPage } from '../../webAdministrativa/features/clientes/ClientesPage';
 import { ClienteDetalle } from '../../webAdministrativa/features/clientes/ClienteDetalle';
 import '../../../styles/recepcion-workspace.css';
 
@@ -30,6 +27,12 @@ import '../../../styles/recepcion-workspace.css';
  * Las reservaciones se cargan desde el backend (esquema webcobro). Ya no hay
  * datos de ejemplo: la tabla inicia vacía y se llena con la respuesta de la API.
  */
+
+/*
+ * Backend unificado: la sección de cobro se monta bajo /cobro en el mismo
+ * puerto del frontend (Vite lo reenvía al gateway en el 3000).
+ */
+const API = '/cobro';
 
 /*
  * Las mismas formas de pago que maneja el Punto de Venta: efectivo, tarjeta
@@ -202,7 +205,6 @@ function BotonCambiarMetodo({ onClick }) {
 }
 
 export default function Dashboard({ vista = 'recepcion' }) {
-  const navigate = useNavigate();
   const { user, logout } = useAuth();
 
   // ========== ESTADOS ==========
@@ -309,9 +311,6 @@ export default function Dashboard({ vista = 'recepcion' }) {
   };
 
   // ========== CARGA DE DATOS DESDE EL BACKEND ==========
-  // Backend unificado: la sección de cobro se monta bajo /cobro en el mismo
-  // puerto del frontend (Vite lo reenvía al gateway en el 3000).
-  const API = '/cobro';
 
   useEffect(() => {
     /**
@@ -355,15 +354,11 @@ export default function Dashboard({ vista = 'recepcion' }) {
      * las clases se crean en el modulo de administrativa y se guardan en MongoDB
      * desde cobro consultamos esas mismas clases para obtener su nombre,
      * precio, capacidad, color y estatus.
-     *
-     * el error anterior estaba aqui: se usaba serclasses, pero el estado
-     * fue declarado como setClases,no existia las clases
-     * nunca se guardaban en el estado y cobro mostraba el preciio como $0
      */
     fetch('/admin/api/clases', { headers: authAdmin() })
       .then(res => {
-        if(!res.ok) {
-          throw new Error(`No se pudieron consulat las clases. HTTP ${res.status}`);
+        if (!res.ok) {
+          throw new Error(`No se pudieron consultar las clases. HTTP ${res.status}`);
         }
 
         return res.json();
@@ -371,9 +366,6 @@ export default function Dashboard({ vista = 'recepcion' }) {
       .then(data => {
         /**
          * solo conservamos las clases activas
-         * la funcion correcta es serClases porque asi se declaro el estado
-         *
-         * const [clases, setClases] = useState([]);
          */
         const clasesActivas = (Array.isArray(data) ? data : [])
           .filter(clase => clase.estatus !== 'inactivo');
@@ -382,10 +374,10 @@ export default function Dashboard({ vista = 'recepcion' }) {
       })
       .catch(error => {
         /**
-         * si administrativa no responde o devuelve un error, impiamos la lista
+         * si administrativa no responde o devuelve un error, limpiamos la lista
          * tambien imprimimos el error real para facilitar el diagnostico
          */
-        console.warn('No se pudieron cargar las calses de Administrativa:', error);
+        console.warn('No se pudieron cargar las clases de Administrativa:', error);
         setClases([]);
       });
 
@@ -479,7 +471,7 @@ export default function Dashboard({ vista = 'recepcion' }) {
         await Promise.all([
           consultar(`${API}/api/reservas`, datos => setReservations((Array.isArray(datos) ? datos : []).filter(r => r.status !== 'cancelado'))),
           consultar(`${API}/api/kpis`, setKpis),
-          cargarClientes().then(setClientes).catch(() => {}),
+          cargarClientes().then(setClientes).catch(() => { }),
           consultar('/admin/api/clases', datos => setClases((Array.isArray(datos) ? datos : []).filter(c => c.estatus !== 'inactivo'))),
           consultar(`/admin/api/horarios?fecha=${encodeURIComponent(fechaReserva)}&estatus=activo`, datos => setHorarios(Array.isArray(datos) ? datos : [])),
         ]);
@@ -1035,9 +1027,6 @@ export default function Dashboard({ vista = 'recepcion' }) {
 
   // ========== CÁLCULOS DE RESUMEN Y FILTRADO ==========
 
-  const totalPending = reservations.filter(r => r.status === 'pendiente').length;
-  const totalPaid = reservations.filter(r => r.paymentStatus === 'pagado').reduce((sum, r) => sum + r.price, 0);
-
   /*
    * Valores derivados del modal de cobro: se calculan con el monto real de la
    * reservación seleccionada y lo que el recepcionista captura en efectivo,
@@ -1274,390 +1263,390 @@ export default function Dashboard({ vista = 'recepcion' }) {
 
         <main className={`rx-admin-content${vista === 'clases-horarios' ? ' rx-reception-content--schedule' : vista === 'membresias' ? ' rx-reception-content--schedule' : ''}`}>
           {vista === 'membresias' ? <MembresiasPage /> : vista === 'clases-horarios' ? <ClasesHorariosPage recepcion /> : vista === 'inventario' ? <InventarioRecepcion /> : vista === 'cliente-detalle' ? <ClienteDetalle rutaClientes="/front-desk/clientes" /> : vista === 'clientes' ? <ClientesPage rutaClientes="/front-desk/clientes" /> : (
-          <section className="rx-admin-dashboard">
-            <header className="rx-page-header rx-admin-dashboard-header">
-              <div className="rx-page-heading rx-page-heading--stacked">
-                <span className="rx-section-eyebrow">Atención de clientes</span>
-                <h1 className="rx-page-title">Recepción</h1>
-                <p className="rx-page-subtitle">{fechaDeHoyLarga()}</p>
-              </div>
-              <div className="rx-page-actions">
-                <button type="button" onClick={() => setVerClientes(true)} className="rx-btn rx-btn--outline">
-                  <MaterialIcon name="group" className="text-lg" filled />
-                  Clientes
-                </button>
-                <button type="button" onClick={() => setVerMembresias(true)} className="rx-btn rx-btn--outline">
-                  <MaterialIcon name="sell" className="text-lg" filled />
-                  Vender membresía
-                </button>
-                <button type="button" onClick={openModal} className="rx-btn rx-btn--accent">
-                  <MaterialIcon name="add" className="text-lg" />
-                  Nueva reservación
-                </button>
-              </div>
-            </header>
-
-            <div className="rx-page-content">
-              {verClientes && (
-                <div className="rx-modal-overlay" role="presentation">
-                  <section
-                    className="rx-modal rx-modal--scroll modal-enter"
-                    role="dialog"
-                    aria-modal="true"
-                    aria-labelledby="clientes-titulo"
-                    style={{ width: 'min(1200px, 96vw)', maxWidth: '96vw' }}
-                  >
-                    <header className="rx-modal-header">
-                      <div>
-                        <h2 id="clientes-titulo" className="rx-modal-title">Clientes</h2>
-                        <p className="rx-modal-subtitle rx-modal-subtitle--plain">
-                          Los mismos clientes de administrativa y de la app móvil.
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        aria-label="Cerrar"
-                        className="rx-modal-close"
-                        onClick={() => {
-                          setVerClientes(false);
-                          // Lo registrado o editado aquí debe verse de inmediato en reservas y membresías.
-                          cargarClientes().then(setClientes).catch(() => {});
-                        }}
-                      >
-                        <MaterialIcon name="close" className="text-xl" />
-                      </button>
-                    </header>
-                    <div className="rx-modal-body">
-                      <ClientesPage />
-                    </div>
-                  </section>
+            <section className="rx-admin-dashboard">
+              <header className="rx-page-header rx-admin-dashboard-header">
+                <div className="rx-page-heading rx-page-heading--stacked">
+                  <span className="rx-section-eyebrow">Atención de clientes</span>
+                  <h1 className="rx-page-title">Recepción</h1>
+                  <p className="rx-page-subtitle">{fechaDeHoyLarga()}</p>
                 </div>
-              )}
-              {apartadaACobrar && <CobroApartada compra={apartadaACobrar} onClose={() => setApartadaACobrar(null)}
-                onTicket={nuevoTicket => { setApartadaACobrar(null); setTicket(nuevoTicket); }}
-                onCobrada={() => {
-                  cargarKpis();
-                  cargarClientes().then(setClientes).catch(e => showNotification(e.message, 'error'));
-                }} />}
-              {verMembresias && <MembresiasRecepcion clientes={clientes} clases={clases} onClose={() => setVerMembresias(false)} onTicket={nuevoTicket => { setVerMembresias(false); setTicket(nuevoTicket); }}
-                onVenta={() => {
-                  cargarKpis();
-                  cargarClientes()
-                    .then(datos => { setClientes(datos); setSelectedClient(null); })
-                    .catch(e => showNotification(e.message, 'error'));
-                }} />}
-
-
-              <div className={`rx-reception-workspace${detalleColapsado ? ' rx-reception-workspace--detail-collapsed' : ''}`}>
-                <section className="rx-reception-schedule" aria-labelledby="reception-schedule-title">
-                  <div className="rx-reception-section-heading">
-                    <h2 id="reception-schedule-title">Clases programadas</h2>
-                    <span className="rx-badge rx-badge--special">{fechaReserva === hoyISO() ? 'Hoy' : formatFechaCorta(fechaReserva)}</span>
-                  </div>
-                  <section className="rx-reception-kpis" aria-label="Resumen de recepción">
-                <article className="rx-reception-kpi rx-reception-kpi--classes">
-                  <div className="rx-reception-kpi-heading">
-                    <span className="rx-reception-kpi-icon"><MaterialIcon name="event_available" className="text-2xl" /></span>
-                    <h2>Clases programadas</h2>
-                  </div>
-                  <p className="rx-reception-kpi-value">{horarios.length}</p>
-                  <p className="rx-reception-kpi-caption">{fechaReserva === hoyISO() ? 'Hoy' : formatFechaCorta(fechaReserva)}</p>
-                </article>
-                <article className="rx-reception-kpi rx-reception-kpi--income">
-                  <div className="rx-reception-kpi-heading">
-                    <span className="rx-reception-kpi-icon"><MaterialIcon name="payments" className="text-2xl" /></span>
-                    <h2>Ingresos del día</h2>
-                  </div>
-                  <p className="rx-reception-kpi-value">{formatMoney(kpis.ingresosHoy)}</p>
-                  <p className="rx-reception-kpi-caption">Hoy</p>
-                </article>
-              </section>
-                  <label className="rx-field">
-                    <span className="rx-label">Fecha de clases</span>
-                    <input type="date" className="rx-input" value={fechaReserva}
-                      onChange={event => { setFechaReserva(event.target.value); setHorarioVistaId(null); setReservaVistaId(null); }} />
-                  </label>
-                  <button type="button" className="rx-reception-all" aria-pressed={!horarioVista}
-                    onClick={() => { setHorarioVistaId(null); setReservaVistaId(null); }}>
-                    Todas las reservaciones <MaterialIcon name="arrow_forward" className="text-lg" />
+                <div className="rx-page-actions">
+                  <button type="button" onClick={() => setVerClientes(true)} className="rx-btn rx-btn--outline">
+                    <MaterialIcon name="group" className="text-lg" filled />
+                    Clientes
                   </button>
-                  <div className="rx-reception-schedule-list" tabIndex={0} role="region" aria-label="Lista de clases programadas">
-                    {[...horarios].sort((a, b) => a.horaInicio.localeCompare(b.horaInicio)).map(horario => {
-                      const libres = lugaresDisponibles(horario);
-                      const ocupados = reservasActivasDe(horario.nombreClase, horario.fecha, horario.horaInicio);
-                      const ahora = new Date();
-                      const inicio = new Date(`${horario.fecha}T${horario.horaInicio}`);
-                      const fin = horario.horaFin ? new Date(`${horario.fecha}T${horario.horaFin}`) : inicio;
-                      const pasada = fin <= ahora;
-                      const enCurso = inicio <= ahora && fin > ahora;
-                      const llegaron = reservations.filter(r => r.class === horario.nombreClase && r.fecha === horario.fecha && r.time === horario.horaInicio && r.status === 'asistido').length;
-                      return (
-                        <button type="button" key={horario.idHorario}
-                          aria-pressed={horarioVistaId === horario.idHorario}
-                          className={`rx-reception-class ${pasada ? 'rx-reception-class--past' : ''}`}
-                          onClick={() => { setHorarioVistaId(horario.idHorario); setReservaVistaId(null); }}>
-                          <span className="rx-reception-class-top"><strong>{horario.horaInicio}</strong>
-                            <span className={`rx-badge rx-badge--${pasada ? 'neutral' : enCurso ? 'success' : 'warning'}`}>
-                              {pasada ? 'Terminó' : enCurso ? 'En curso' : libres ? 'Próxima' : 'Sin cupo'}
-                            </span>
-                          </span>
-                          <span className="rx-reception-class-name">{horario.nombreClase}</span>
-                          <span className="rx-reception-class-coach">{horario.entrenador || horario.nombreEntrenador || 'Entrenador sin asignar'}</span>
-                          <span className="rx-reception-capacity"><span style={{ width: `${Math.min(100, llegaron / Math.max(1, Number(horario.capacidadTotal)) * 100)}%` }} /><span className="rx-reception-capacity-reserved" style={{ width: `${Math.min(100, Math.max(0, ocupados - llegaron) / Math.max(1, Number(horario.capacidadTotal)) * 100)}%` }} /></span>
-                          <span className="rx-reception-class-meta">{llegaron} llegaron · {ocupados} de {horario.capacidadTotal} reservados</span>
-                        </button>
-                      );
-                    })}
-                    {!horarios.length && <p className="rx-reception-hint">No hay clases programadas para esta fecha.</p>}
-                  </div>
-                </section>
-
-                <section className="rx-reception-reservations" aria-labelledby="reception-reservations-title">
-                  <div className="rx-reception-list-heading">
-                    <div><h2 id="reception-reservations-title">{horarioVista ? `${horarioVista.nombreClase} · ${horarioVista.horaInicio} h` : 'Reservaciones'}</h2>
-                      <p>{horarioVista ? `${horarioVista.nombreEntrenador || 'Entrenador sin asignar'} · ${reservasActivasDe(horarioVista.nombreClase, horarioVista.fecha, horarioVista.horaInicio)} de ${horarioVista.capacidadTotal} lugares reservados` : 'Selecciona una clase o consulta todas las reservaciones.'}</p>
-                    </div>
-                    <button type="button" onClick={openModal} className="rx-btn rx-btn--accent rx-btn--small"><MaterialIcon name="add" className="text-lg" />Nuevo registro</button>
-                  </div>
-              {/* ========== BÚSQUEDA POR NOMBRE Y FILTROS ========== */}
-              <div className="rx-filter-bar rx-filter-stack">
-                <div className="rx-filter-row">
-                  <div className="rx-search">
-                    <MaterialIcon name="search" className="rx-search-icon text-lg" />
-                    <input
-                      type="text"
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === 'Enter') handleBuscarReserva(); }}
-                      placeholder="Código de reserva (NU-XXXXX / PQ-XXXXX) o nombre del cliente"
-                      aria-label="Buscar reservación por código de reserva o nombre del cliente"
-                      className="rx-input rx-input--search"
-                    />
-                    {searchTerm && (
-                      <button
-                        type="button"
-                        onClick={() => setSearchTerm('')}
-                        aria-label="Limpiar búsqueda"
-                        className="rx-search-clear"
-                      >
-                        <MaterialIcon name="close" className="text-lg" />
-                      </button>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleBuscarReserva}
-                    disabled={!searchTerm.trim() || buscandoCodigo}
-                    title="Busca por nombre o apellido y abre el cobro"
-                    className="rx-btn rx-btn--dark"
-                  >
-                    <MaterialIcon name="qr_code_scanner" className="text-lg" />
-                    {buscandoCodigo ? 'Buscando…' : 'Buscar y cobrar'}
+                  <button type="button" onClick={() => setVerMembresias(true)} className="rx-btn rx-btn--outline">
+                    <MaterialIcon name="sell" className="text-lg" filled />
+                    Vender membresía
                   </button>
-                  <span className="rx-results-count">
-                    {reservasVisibles.length} de {reservations.length} reservaciones
-                  </span>
+                  <button type="button" onClick={openModal} className="rx-btn rx-btn--accent">
+                    <MaterialIcon name="add" className="text-lg" />
+                    Nueva reservación
+                  </button>
                 </div>
+              </header>
 
-                <div className="rx-tabs" role="tablist" aria-label="Filtrar reservaciones por estado">
-                  {FILTROS_ESTADO.map(filtro => (
-                    <button
-                      key={filtro.key}
-                      type="button"
-                      role="tab"
-                      aria-selected={filtroEstado === filtro.key}
-                      onClick={() => setFiltroEstado(filtro.key)}
-                      className="rx-tab"
+              <div className="rx-page-content">
+                {verClientes && (
+                  <div className="rx-modal-overlay" role="presentation">
+                    <section
+                      className="rx-modal rx-modal--scroll modal-enter"
+                      role="dialog"
+                      aria-modal="true"
+                      aria-labelledby="clientes-titulo"
+                      style={{ width: 'min(1200px, 96vw)', maxWidth: '96vw' }}
                     >
-                      {filtro.etiqueta}
-                      <span className="rx-tab-count">{conteoPorFiltro[filtro.key]}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* ========== TABLA DE RESERVACIONES ========== */}
-              <div className="rx-table-card">
-                {reservasVisibles.length === 0 ? (
-                  <div className="rx-table-empty">
-                    <div className="rx-table-empty-icon">
-                      <MaterialIcon name={hayFiltros ? 'search_off' : 'event_busy'} className="text-3xl" />
-                    </div>
-                    <p className="rx-table-empty-title">
-                      {hayFiltros ? 'No hay reservaciones con este filtro.' : 'Aún no hay reservaciones.'}
-                    </p>
-                    {hayFiltros && (
-                      <button type="button" onClick={limpiarFiltros} className="rx-table-empty-action">
-                        Ver todas las reservaciones
-                      </button>
-                    )}
-                  </div>
-                ) : (
-                  <div className="rx-table-wrap">
-                    <table className="rx-table rx-reservations-table">
-                      <thead>
-                        <tr>
-                          <th>Cliente</th>
-                          <th>Código</th>
-                          <th>Clase y horario</th>
-                          <th className="rx-table-number">Monto</th>
-                          <th>Estado</th>
-                          <th>Cupo</th>
-                          <th className="rx-table-number">Acciones</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {reservasVisibles.map((res) => {
-                          const badge = ESTADO_BADGE[res.status] ?? ESTADO_BADGE.pendiente;
-                          const enEspera = res.capacityStatus === 'espera';
-                          const cobrable = res.paymentStatus !== 'pagado' && (res.status === 'pendiente' || res.status === 'asistido') && !enEspera;
-                          const puedeConfirmar = res.paymentStatus === 'pagado' && (res.status === 'pendiente' || res.status === 'pagado') && res.fecha === hoyISO() && !enEspera;
-                          // Solo las pendientes o pagadas se pueden reagendar o cancelar.
-                          const vigente = res.status === 'pendiente' || res.status === 'pagado';
-                          const colorClase = clases.find(c => c.nombre === res.class)?.color;
-                          return (
-                            <tr
-                              key={res.id}
-                              className={res.status === 'no_asistio' ? 'rx-table-row--inactive' : undefined}
-                            >
-                              <td>
-                                <div className="rx-table-product">
-                                  <span className="rx-avatar">{iniciales(res.client)}</span>
-                                  <div>
-                                    <span className="rx-table-product-name">{res.client}</span>
-                                    <span className="rx-cell-caption">
-                                      {res.type === 'visitante' ? 'Visitante' : 'Socio'}
-                                    </span>
-                                  </div>
-                                </div>
-                              </td>
-                              <td>
-                                <span className="rx-code">{res.codigo || '—'}</span>
-                                <span className="rx-cell-caption">
-                                  {res.codigo || res.id}
-                                  {res.origen === 'app' && (
-                                    <span className="rx-badge rx-badge--info" title="Reservada desde la app móvil">
-                                      App
-                                    </span>
-                                  )}
-                                </span>
-                              </td>
-                              <td>
-                                <span className="rx-cell-strong">
-                                  <span
-                                    className="rx-class-dot"
-                                    style={colorClase ? { '--class-color': colorClase } : undefined}
-                                  />{' '}
-                                  {res.class}
-                                </span>
-                                <span className="rx-cell-caption">
-                                  {formatFechaCorta(res.fecha)} · {res.time}
-                                  {res.reagendada && (
-                                    <span
-                                      className="rx-badge rx-badge--info"
-                                      title={`Antes: ${res.fechaOriginal || ''} ${res.horaOriginal || ''}`}
-                                    >
-                                      Reagendada
-                                    </span>
-                                  )}
-                                </span>
-                              </td>
-                              <td className="rx-cell-strong rx-table-number">
-                                {formatMoney(res.price)}
-                                {res.membresiaCompraId && <span className="rx-cell-caption">Cubierta por membresía · compra #{res.membresiaCompraId}</span>}
-                              </td>
-                              <td>
-                                <span className={`rx-badge rx-badge--${badge.tono}`}>{badge.etiqueta}</span>
-                                <span className="rx-cell-caption">{res.paymentStatus === 'pagado' ? 'Pago registrado' : 'Pago pendiente'} · {res.attendanceStatus === 'asistido' ? 'Asistió' : res.attendanceStatus === 'no_asistio' ? 'No asistió' : 'Asistencia pendiente'}</span>
-                              </td>
-                              <td>
-                                <span className={`rx-badge ${enEspera ? 'rx-badge--special' : 'rx-badge--neutral'}`}>
-                                  {enEspera ? 'En espera' : 'Confirmada'}
-                                </span>
-                              </td>
-                              <td>
-                                <div className="rx-row-actions">
-                                  {res.status === 'no_asistio' && (
-                                    <span className="rx-row-note" title="Sin reembolso y sin reagendar">
-                                      Sin reembolso
-                                    </span>
-                                  )}
-                                  {puedeConfirmar && (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleConfirmAttendance(res.id)}
-                                      title="Confirmar asistencia"
-                                      aria-label={`Confirmar asistencia de ${res.client}`}
-                                      className="rx-compact-icon-button"
-                                    >
-                                      <MaterialIcon name="how_to_reg" className="text-lg" />
-                                    </button>
-                                  )}
-                                  {/* Reagendar: una sola vez y sin costo. Si ya no se puede,
-                                      al hacer clic se avisa el motivo. */}
-                                  {vigente && (
-                                    <button
-                                      type="button"
-                                      onClick={() => openReagendar(res)}
-                                      aria-disabled={res.puedeReagendar === false}
-                                      title={res.puedeReagendar === false
-                                        ? res.motivoNoReagendar || 'Ya no se puede reagendar'
-                                        : 'Reagendar (una sola vez, sin costo)'}
-                                      aria-label={`Reagendar la reservación de ${res.client}`}
-                                      className="rx-compact-icon-button"
-                                    >
-                                      <MaterialIcon name="event_repeat" className="text-lg" />
-                                    </button>
-                                  )}
-                                  {/* Cancelar: dentro de las 24 h de haber reservado, sin reembolso. */}
-                                  {vigente && (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleCancel(res.id)}
-                                      aria-disabled={res.puedeCancelar === false}
-                                      title={res.puedeCancelar === false
-                                        ? res.motivoNoCancelar || 'Ya no se puede cancelar'
-                                        : res.cancelableHasta
-                                          ? `Cancelar (sin reembolso) · hasta ${formatTicketDate(res.cancelableHasta)}`
-                                          : 'Cancelar (sin reembolso)'}
-                                      aria-label={`Cancelar la reservación de ${res.client}`}
-                                      className="rx-compact-icon-button rx-compact-icon-button--danger"
-                                    >
-                                      <MaterialIcon name="event_busy" className="text-lg" />
-                                    </button>
-                                  )}
-                                  {cobrable && (
-                                    <button
-                                      type="button"
-                                      onClick={() => handlePayment(res.id)}
-                                      className="rx-btn rx-btn--dark rx-btn--small"
-                                    >
-                                      <MaterialIcon name="point_of_sale" className="text-base" />
-                                      Cobrar
-                                    </button>
-                                  )}
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+                      <header className="rx-modal-header">
+                        <div>
+                          <h2 id="clientes-titulo" className="rx-modal-title">Clientes</h2>
+                          <p className="rx-modal-subtitle rx-modal-subtitle--plain">
+                            Los mismos clientes de administrativa y de la app móvil.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          aria-label="Cerrar"
+                          className="rx-modal-close"
+                          onClick={() => {
+                            setVerClientes(false);
+                            // Lo registrado o editado aquí debe verse de inmediato en reservas y membresías.
+                            cargarClientes().then(setClientes).catch(() => { });
+                          }}
+                        >
+                          <MaterialIcon name="close" className="text-xl" />
+                        </button>
+                      </header>
+                      <div className="rx-modal-body">
+                        <ClientesPage />
+                      </div>
+                    </section>
                   </div>
                 )}
+                {apartadaACobrar && <CobroApartada compra={apartadaACobrar} onClose={() => setApartadaACobrar(null)}
+                  onTicket={nuevoTicket => { setApartadaACobrar(null); setTicket(nuevoTicket); }}
+                  onCobrada={() => {
+                    cargarKpis();
+                    cargarClientes().then(setClientes).catch(e => showNotification(e.message, 'error'));
+                  }} />}
+                {verMembresias && <MembresiasRecepcion clientes={clientes} clases={clases} onClose={() => setVerMembresias(false)} onTicket={nuevoTicket => { setVerMembresias(false); setTicket(nuevoTicket); }}
+                  onVenta={() => {
+                    cargarKpis();
+                    cargarClientes()
+                      .then(datos => { setClientes(datos); setSelectedClient(null); })
+                      .catch(e => showNotification(e.message, 'error'));
+                  }} />}
+
+
+                <div className={`rx-reception-workspace${detalleColapsado ? ' rx-reception-workspace--detail-collapsed' : ''}`}>
+                  <section className="rx-reception-schedule" aria-labelledby="reception-schedule-title">
+                    <div className="rx-reception-section-heading">
+                      <h2 id="reception-schedule-title">Clases programadas</h2>
+                      <span className="rx-badge rx-badge--special">{fechaReserva === hoyISO() ? 'Hoy' : formatFechaCorta(fechaReserva)}</span>
+                    </div>
+                    <section className="rx-reception-kpis" aria-label="Resumen de recepción">
+                      <article className="rx-reception-kpi rx-reception-kpi--classes">
+                        <div className="rx-reception-kpi-heading">
+                          <span className="rx-reception-kpi-icon"><MaterialIcon name="event_available" className="text-2xl" /></span>
+                          <h2>Clases programadas</h2>
+                        </div>
+                        <p className="rx-reception-kpi-value">{horarios.length}</p>
+                        <p className="rx-reception-kpi-caption">{fechaReserva === hoyISO() ? 'Hoy' : formatFechaCorta(fechaReserva)}</p>
+                      </article>
+                      <article className="rx-reception-kpi rx-reception-kpi--income">
+                        <div className="rx-reception-kpi-heading">
+                          <span className="rx-reception-kpi-icon"><MaterialIcon name="payments" className="text-2xl" /></span>
+                          <h2>Ingresos del día</h2>
+                        </div>
+                        <p className="rx-reception-kpi-value">{formatMoney(kpis.ingresosHoy)}</p>
+                        <p className="rx-reception-kpi-caption">Hoy</p>
+                      </article>
+                    </section>
+                    <label className="rx-field">
+                      <span className="rx-label">Fecha de clases</span>
+                      <input type="date" className="rx-input" value={fechaReserva}
+                        onChange={event => { setFechaReserva(event.target.value); setHorarioVistaId(null); setReservaVistaId(null); }} />
+                    </label>
+                    <button type="button" className="rx-reception-all" aria-pressed={!horarioVista}
+                      onClick={() => { setHorarioVistaId(null); setReservaVistaId(null); }}>
+                      Todas las reservaciones <MaterialIcon name="arrow_forward" className="text-lg" />
+                    </button>
+                    <div className="rx-reception-schedule-list" tabIndex={0} role="region" aria-label="Lista de clases programadas">
+                      {[...horarios].sort((a, b) => a.horaInicio.localeCompare(b.horaInicio)).map(horario => {
+                        const libres = lugaresDisponibles(horario);
+                        const ocupados = reservasActivasDe(horario.nombreClase, horario.fecha, horario.horaInicio);
+                        const ahora = new Date();
+                        const inicio = new Date(`${horario.fecha}T${horario.horaInicio}`);
+                        const fin = horario.horaFin ? new Date(`${horario.fecha}T${horario.horaFin}`) : inicio;
+                        const pasada = fin <= ahora;
+                        const enCurso = inicio <= ahora && fin > ahora;
+                        const llegaron = reservations.filter(r => r.class === horario.nombreClase && r.fecha === horario.fecha && r.time === horario.horaInicio && r.status === 'asistido').length;
+                        return (
+                          <button type="button" key={horario.idHorario}
+                            aria-pressed={horarioVistaId === horario.idHorario}
+                            className={`rx-reception-class ${pasada ? 'rx-reception-class--past' : ''}`}
+                            onClick={() => { setHorarioVistaId(horario.idHorario); setReservaVistaId(null); }}>
+                            <span className="rx-reception-class-top"><strong>{horario.horaInicio}</strong>
+                              <span className={`rx-badge rx-badge--${pasada ? 'neutral' : enCurso ? 'success' : 'warning'}`}>
+                                {pasada ? 'Terminó' : enCurso ? 'En curso' : libres ? 'Próxima' : 'Sin cupo'}
+                              </span>
+                            </span>
+                            <span className="rx-reception-class-name">{horario.nombreClase}</span>
+                            <span className="rx-reception-class-coach">{horario.entrenador || horario.nombreEntrenador || 'Entrenador sin asignar'}</span>
+                            <span className="rx-reception-capacity"><span style={{ width: `${Math.min(100, llegaron / Math.max(1, Number(horario.capacidadTotal)) * 100)}%` }} /><span className="rx-reception-capacity-reserved" style={{ width: `${Math.min(100, Math.max(0, ocupados - llegaron) / Math.max(1, Number(horario.capacidadTotal)) * 100)}%` }} /></span>
+                            <span className="rx-reception-class-meta">{llegaron} llegaron · {ocupados} de {horario.capacidadTotal} reservados</span>
+                          </button>
+                        );
+                      })}
+                      {!horarios.length && <p className="rx-reception-hint">No hay clases programadas para esta fecha.</p>}
+                    </div>
+                  </section>
+
+                  <section className="rx-reception-reservations" aria-labelledby="reception-reservations-title">
+                    <div className="rx-reception-list-heading">
+                      <div><h2 id="reception-reservations-title">{horarioVista ? `${horarioVista.nombreClase} · ${horarioVista.horaInicio} h` : 'Reservaciones'}</h2>
+                        <p>{horarioVista ? `${horarioVista.nombreEntrenador || 'Entrenador sin asignar'} · ${reservasActivasDe(horarioVista.nombreClase, horarioVista.fecha, horarioVista.horaInicio)} de ${horarioVista.capacidadTotal} lugares reservados` : 'Selecciona una clase o consulta todas las reservaciones.'}</p>
+                      </div>
+                      <button type="button" onClick={openModal} className="rx-btn rx-btn--accent rx-btn--small"><MaterialIcon name="add" className="text-lg" />Nuevo registro</button>
+                    </div>
+                    {/* ========== BÚSQUEDA POR NOMBRE Y FILTROS ========== */}
+                    <div className="rx-filter-bar rx-filter-stack">
+                      <div className="rx-filter-row">
+                        <div className="rx-search">
+                          <MaterialIcon name="search" className="rx-search-icon text-lg" />
+                          <input
+                            type="text"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') handleBuscarReserva(); }}
+                            placeholder="Código de reserva (NU-XXXXX / PQ-XXXXX) o nombre del cliente"
+                            aria-label="Buscar reservación por código de reserva o nombre del cliente"
+                            className="rx-input rx-input--search"
+                          />
+                          {searchTerm && (
+                            <button
+                              type="button"
+                              onClick={() => setSearchTerm('')}
+                              aria-label="Limpiar búsqueda"
+                              className="rx-search-clear"
+                            >
+                              <MaterialIcon name="close" className="text-lg" />
+                            </button>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleBuscarReserva}
+                          disabled={!searchTerm.trim() || buscandoCodigo}
+                          title="Busca por nombre o apellido y abre el cobro"
+                          className="rx-btn rx-btn--dark"
+                        >
+                          <MaterialIcon name="qr_code_scanner" className="text-lg" />
+                          {buscandoCodigo ? 'Buscando…' : 'Buscar y cobrar'}
+                        </button>
+                        <span className="rx-results-count">
+                          {reservasVisibles.length} de {reservations.length} reservaciones
+                        </span>
+                      </div>
+
+                      <div className="rx-tabs" role="tablist" aria-label="Filtrar reservaciones por estado">
+                        {FILTROS_ESTADO.map(filtro => (
+                          <button
+                            key={filtro.key}
+                            type="button"
+                            role="tab"
+                            aria-selected={filtroEstado === filtro.key}
+                            onClick={() => setFiltroEstado(filtro.key)}
+                            className="rx-tab"
+                          >
+                            {filtro.etiqueta}
+                            <span className="rx-tab-count">{conteoPorFiltro[filtro.key]}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* ========== TABLA DE RESERVACIONES ========== */}
+                    <div className="rx-table-card">
+                      {reservasVisibles.length === 0 ? (
+                        <div className="rx-table-empty">
+                          <div className="rx-table-empty-icon">
+                            <MaterialIcon name={hayFiltros ? 'search_off' : 'event_busy'} className="text-3xl" />
+                          </div>
+                          <p className="rx-table-empty-title">
+                            {hayFiltros ? 'No hay reservaciones con este filtro.' : 'Aún no hay reservaciones.'}
+                          </p>
+                          {hayFiltros && (
+                            <button type="button" onClick={limpiarFiltros} className="rx-table-empty-action">
+                              Ver todas las reservaciones
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="rx-table-wrap">
+                          <table className="rx-table rx-reservations-table">
+                            <thead>
+                              <tr>
+                                <th>Cliente</th>
+                                <th>Código</th>
+                                <th>Clase y horario</th>
+                                <th className="rx-table-number">Monto</th>
+                                <th>Estado</th>
+                                <th>Cupo</th>
+                                <th className="rx-table-number">Acciones</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {reservasVisibles.map((res) => {
+                                const badge = ESTADO_BADGE[res.status] ?? ESTADO_BADGE.pendiente;
+                                const enEspera = res.capacityStatus === 'espera';
+                                const cobrable = res.paymentStatus !== 'pagado' && (res.status === 'pendiente' || res.status === 'asistido') && !enEspera;
+                                const puedeConfirmar = res.paymentStatus === 'pagado' && (res.status === 'pendiente' || res.status === 'pagado') && res.fecha === hoyISO() && !enEspera;
+                                // Solo las pendientes o pagadas se pueden reagendar o cancelar.
+                                const vigente = res.status === 'pendiente' || res.status === 'pagado';
+                                const colorClase = clases.find(c => c.nombre === res.class)?.color;
+                                return (
+                                  <tr
+                                    key={res.id}
+                                    className={res.status === 'no_asistio' ? 'rx-table-row--inactive' : undefined}
+                                  >
+                                    <td>
+                                      <div className="rx-table-product">
+                                        <span className="rx-avatar">{iniciales(res.client)}</span>
+                                        <div>
+                                          <span className="rx-table-product-name">{res.client}</span>
+                                          <span className="rx-cell-caption">
+                                            {res.type === 'visitante' ? 'Visitante' : 'Socio'}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </td>
+                                    <td>
+                                      <span className="rx-code">{res.codigo || '—'}</span>
+                                      <span className="rx-cell-caption">
+                                        {res.codigo || res.id}
+                                        {res.origen === 'app' && (
+                                          <span className="rx-badge rx-badge--info" title="Reservada desde la app móvil">
+                                            App
+                                          </span>
+                                        )}
+                                      </span>
+                                    </td>
+                                    <td>
+                                      <span className="rx-cell-strong">
+                                        <span
+                                          className="rx-class-dot"
+                                          style={colorClase ? { '--class-color': colorClase } : undefined}
+                                        />{' '}
+                                        {res.class}
+                                      </span>
+                                      <span className="rx-cell-caption">
+                                        {formatFechaCorta(res.fecha)} · {res.time}
+                                        {res.reagendada && (
+                                          <span
+                                            className="rx-badge rx-badge--info"
+                                            title={`Antes: ${res.fechaOriginal || ''} ${res.horaOriginal || ''}`}
+                                          >
+                                            Reagendada
+                                          </span>
+                                        )}
+                                      </span>
+                                    </td>
+                                    <td className="rx-cell-strong rx-table-number">
+                                      {formatMoney(res.price)}
+                                      {res.membresiaCompraId && <span className="rx-cell-caption">Cubierta por membresía · compra #{res.membresiaCompraId}</span>}
+                                    </td>
+                                    <td>
+                                      <span className={`rx-badge rx-badge--${badge.tono}`}>{badge.etiqueta}</span>
+                                      <span className="rx-cell-caption">{res.paymentStatus === 'pagado' ? 'Pago registrado' : 'Pago pendiente'} · {res.attendanceStatus === 'asistido' ? 'Asistió' : res.attendanceStatus === 'no_asistio' ? 'No asistió' : 'Asistencia pendiente'}</span>
+                                    </td>
+                                    <td>
+                                      <span className={`rx-badge ${enEspera ? 'rx-badge--special' : 'rx-badge--neutral'}`}>
+                                        {enEspera ? 'En espera' : 'Confirmada'}
+                                      </span>
+                                    </td>
+                                    <td>
+                                      <div className="rx-row-actions">
+                                        {res.status === 'no_asistio' && (
+                                          <span className="rx-row-note" title="Sin reembolso y sin reagendar">
+                                            Sin reembolso
+                                          </span>
+                                        )}
+                                        {puedeConfirmar && (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleConfirmAttendance(res.id)}
+                                            title="Confirmar asistencia"
+                                            aria-label={`Confirmar asistencia de ${res.client}`}
+                                            className="rx-compact-icon-button"
+                                          >
+                                            <MaterialIcon name="how_to_reg" className="text-lg" />
+                                          </button>
+                                        )}
+                                        {/* Reagendar: una sola vez y sin costo. Si ya no se puede,
+                                      al hacer clic se avisa el motivo. */}
+                                        {vigente && (
+                                          <button
+                                            type="button"
+                                            onClick={() => openReagendar(res)}
+                                            aria-disabled={res.puedeReagendar === false}
+                                            title={res.puedeReagendar === false
+                                              ? res.motivoNoReagendar || 'Ya no se puede reagendar'
+                                              : 'Reagendar (una sola vez, sin costo)'}
+                                            aria-label={`Reagendar la reservación de ${res.client}`}
+                                            className="rx-compact-icon-button"
+                                          >
+                                            <MaterialIcon name="event_repeat" className="text-lg" />
+                                          </button>
+                                        )}
+                                        {/* Cancelar: dentro de las 24 h de haber reservado, sin reembolso. */}
+                                        {vigente && (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleCancel(res.id)}
+                                            aria-disabled={res.puedeCancelar === false}
+                                            title={res.puedeCancelar === false
+                                              ? res.motivoNoCancelar || 'Ya no se puede cancelar'
+                                              : res.cancelableHasta
+                                                ? `Cancelar (sin reembolso) · hasta ${formatTicketDate(res.cancelableHasta)}`
+                                                : 'Cancelar (sin reembolso)'}
+                                            aria-label={`Cancelar la reservación de ${res.client}`}
+                                            className="rx-compact-icon-button rx-compact-icon-button--danger"
+                                          >
+                                            <MaterialIcon name="event_busy" className="text-lg" />
+                                          </button>
+                                        )}
+                                        {cobrable && (
+                                          <button
+                                            type="button"
+                                            onClick={() => handlePayment(res.id)}
+                                            className="rx-btn rx-btn--dark rx-btn--small"
+                                          >
+                                            <MaterialIcon name="point_of_sale" className="text-base" />
+                                            Cobrar
+                                          </button>
+                                        )}
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  </section>
+                  <RecepcionDetalle reserva={reservaVista} cliente={clienteVista}
+                    colapsado={detalleColapsado} onAlternar={() => setDetalleColapsado(valor => !valor)}
+                    compra={comprasDetalle.find(c => String(c.id) === String(reservaVista?.membresiaCompraId))}
+                    cargando={cargandoDetalle} error={errorDetalle}
+                    claseId={clases.find(c => c.nombre === reservaVista?.class)?.idClase}
+                    horario={horarios.find(h => h.nombreClase === reservaVista?.class && h.fecha === reservaVista?.fecha && h.horaInicio === reservaVista?.time)}
+                    onCobrar={handlePayment} onAsistencia={handleConfirmAttendance}
+                    onReagendar={openReagendar} onCancelar={handleCancel} hoy={hoyISO()} />
+                </div>
               </div>
-                </section>
-                <RecepcionDetalle reserva={reservaVista} cliente={clienteVista}
-                  colapsado={detalleColapsado} onAlternar={() => setDetalleColapsado(valor => !valor)}
-                  compra={comprasDetalle.find(c => String(c.id) === String(reservaVista?.membresiaCompraId))}
-                  cargando={cargandoDetalle} error={errorDetalle}
-                  claseId={clases.find(c => c.nombre === reservaVista?.class)?.idClase}
-                  horario={horarios.find(h => h.nombreClase === reservaVista?.class && h.fecha === reservaVista?.fecha && h.horaInicio === reservaVista?.time)}
-                  onCobrar={handlePayment} onAsistencia={handleConfirmAttendance}
-                  onReagendar={openReagendar} onCancelar={handleCancel} hoy={hoyISO()} />
-              </div>
-            </div>
-          </section>
+            </section>
           )}
         </main>
       </div>
@@ -1921,9 +1910,8 @@ export default function Dashboard({ vista = 'recepcion' }) {
                             {h.horaInicio} · {formatMoney(claseDelHorario?.precio ?? 0)}
                           </span>
                           <span
-                            className={`rx-slot-status ${
-                              bloqueada ? 'rx-slot-status--blocked' : aceptaEspera ? 'rx-slot-status--warning' : ''
-                            }`}
+                            className={`rx-slot-status ${bloqueada ? 'rx-slot-status--blocked' : aceptaEspera ? 'rx-slot-status--warning' : ''
+                              }`}
                           >
                             {estadoTexto}
                           </span>

@@ -18,8 +18,14 @@ export const esMenorDeEdad = (fechaNacimiento?: string | null): boolean => {
     return edad !== null && edad < EDAD_MAYORIA;
 };
 
-// Claves de los 4 documentos. (Pendiente: poner aquí los nombres reales cuando se definan.)
-export const CLAVES_DOCUMENTOS = ['documento1', 'documento2', 'documento3', 'documento4'] as const;
+// Los 4 documentos (copias) que se piden una sola vez.
+export const CLAVES_DOCUMENTOS = ['actaNacimiento', 'ineTutor', 'curpMenor', 'credencialEscolar'] as const;
+export const ETIQUETAS_DOCUMENTOS: Record<(typeof CLAVES_DOCUMENTOS)[number], string> = {
+    actaNacimiento: 'Acta de nacimiento del menor',
+    ineTutor: 'INE del padre, madre o tutor',
+    curpMenor: 'CURP del menor',
+    credencialEscolar: 'Credencial escolar del menor',
+};
 
 const CLAVE_ELECTOR = /^[A-Za-z0-9]{18}$/; // la clave de elector del INE tiene 18 caracteres
 

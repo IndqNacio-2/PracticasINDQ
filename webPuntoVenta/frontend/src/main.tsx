@@ -37,12 +37,9 @@ if (isLogin) {
     </ModuleGuard>
   )
 } else if (path.startsWith('/cobro/asistencia')) {
-  // Reloj checador: solo el administrador lo abre (no aparece en el menú de recepción).
-  content = (
-    <ModuleGuard allowedRole="administrador">
-      <WebCobroSection />
-    </ModuleGuard>
-  )
+  // Reloj checador: no depende del módulo de recepción. Quién puede abrirlo (administrador o usuarios
+  // autorizados) lo decide el servidor: ver ChecadorGuard y backend-cobro/accesoChecador.js.
+  content = <WebCobroSection />
 } else if (path.startsWith('/cobro')) {
   content = (
     <ModuleGuard allowedRole="recepcion">

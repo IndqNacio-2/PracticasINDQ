@@ -55,6 +55,8 @@ export const PERMISOS = {
     clasesYHorarios: { lectura: ['administrador', 'recepcion'], escritura: ['administrador'] },
     reportes: { lectura: ['administrador'] },
     // Compras de membresía: la venta y el cobro del apartado los hace recepción (la app móvil entra por sus propias rutas).
+    // Catálogos de enfermedades y lesiones: los consultan quienes registran clientes; solo el administrador los edita.
+    catalogoSalud: { lectura: ['administrador', 'recepcion', 'vendedor'], escritura: ['administrador'] },
     membresiasCompras: { lectura: ['administrador', 'recepcion'] },
     ventas: { lectura: ['administrador', 'vendedor'], escritura: ['vendedor'] },
 } satisfies Record<string, Regla>;

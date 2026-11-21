@@ -4,29 +4,81 @@ import { DataState } from '../../components/DataState';
 import { DataTable } from '../../components/DataTable';
 import { Modal } from '../../components/Modal';
 import { InputField, SelectField } from '../../components/FormField';
-import { api, apiCobro } from '../../lib/api';
+import { api, ApiError } from '../../lib/api';
 import { useNavigate } from 'react-router';
 import { MembresiasCliente, type MembresiaComprada } from './MembresiasCliente';
 import ListaSalud, { SaludEtiquetas } from './SaludEtiquetas';
 import { esNombreValido, esTelefonoValido, esCorreoValido, errorCodigoCliente } from './validacionCliente';
 
-// Un cliente tal como lo devuelve GET /cobro/api/clientes. Estos registros
-// viven en la tabla webcobro.clientes (PostgreSQL): son los mismos socios que
-// usa el módulo de Cobro (front desk) para reservar clases.
+// Cliente tal como lo devuelve la API administrativa (GET /admin/api/clientes, MongoDB).
+// Los campos son opcionales porque se aceptan las variantes de nombre más comunes.
+interface ClienteAdmin {
+  _id?: string;
+  id?: string;
+  nombre?: string;
+  apellidos?: string;
+  correo?: string | null;
+  telefono?: string | null;
+  estatus?: string;
+  activo?: boolean;
+  codigoAcceso?: string | null;
+  codigo?: string | null;
+  fechaNacimiento?: string;
+  nombreTutor?: string;
+  claveElectorTutor?: string;
+  estadoDocumentacion?: 'pendiente' | 'validada';
+  perfilSalud?: { enfermedades?: string[]; lesiones?: string[] };
+  enfermedades?: string[];
+  lesiones?: string[];
+  membresiasCompradas?: MembresiaComprada[];
+}
+
+// Modelo que usa esta pantalla. `id` es el _id de Mongo (texto).
 interface SocioCobro {
+  id: string;
+  codigo?: string | null;
+  nombre: string; // nombre completo (nombre + apellidos)
+  nombreOriginal: string;
+  apellidosOriginal: string;
+  telefono: string;
+  correo: string | null;
+  activo: boolean;
   fechaNacimiento?: string;
   nombreTutor?: string;
   claveElectorTutor?: string;
   estadoDocumentacion?: 'pendiente' | 'validada';
   enfermedades?: string[];
   lesiones?: string[];
-  id: number;
-  codigo?: string | null;
-  nombre: string;
   membresiasCompradas?: MembresiaComprada[];
-  telefono: string;
-  correo: string | null;
-  activo: boolean;
+}
+
+// Traduce el cliente de Mongo al modelo de la pantalla.
+function aSocio(c: ClienteAdmin, idRespaldo = ''): SocioCobro {
+  const nombre = c.nombre ?? '';
+  const apellidos = c.apellidos ?? '';
+  return {
+    id: String(c._id ?? c.id ?? idRespaldo),
+    codigo: c.codigoAcceso ?? c.codigo ?? null,
+    nombre: [nombre, apellidos].filter(Boolean).join(' '),
+    nombreOriginal: nombre,
+    apellidosOriginal: apellidos,
+    telefono: c.telefono ?? '',
+    correo: c.correo ?? null,
+    activo: c.estatus !== undefined ? c.estatus === 'activo' : c.activo !== false,
+    fechaNacimiento: c.fechaNacimiento ? String(c.fechaNacimiento).slice(0, 10) : '',
+    nombreTutor: c.nombreTutor,
+    claveElectorTutor: c.claveElectorTutor,
+    estadoDocumentacion: c.estadoDocumentacion,
+    enfermedades: c.perfilSalud?.enfermedades ?? c.enfermedades ?? [],
+    lesiones: c.perfilSalud?.lesiones ?? c.lesiones ?? [],
+    membresiasCompradas: c.membresiasCompradas ?? [],
+  };
+}
+
+// POST/PATCH pueden responder { cliente } o el cliente directo.
+function extraerCliente(respuesta: unknown): ClienteAdmin {
+  const r = (respuesta ?? {}) as { cliente?: ClienteAdmin } & ClienteAdmin;
+  return r.cliente ?? r;
 }
 
 interface SocioForm {
@@ -60,6 +112,17 @@ function estatusDe(s: SocioCobro): 'activo' | 'inactivo' {
   return 'activo';
 }
 
+// Separa el nombre completo en nombre y apellidos. Si no cambió respecto al
+// original, se conservan tal cual para no alterar registros existentes.
+function separarNombre(completo: string, editando: SocioCobro | null): { nombre: string; apellidos: string } {
+  const limpio = completo.trim().replace(/\s+/g, ' ');
+  if (editando && limpio === editando.nombre.trim().replace(/\s+/g, ' ')) {
+    return { nombre: editando.nombreOriginal, apellidos: editando.apellidosOriginal };
+  }
+  const [primero, ...resto] = limpio.split(' ');
+  return { nombre: primero ?? '', apellidos: resto.join(' ') };
+}
+
 export function ClientesPage({ soloRegistro = false, rutaClientes = '/clientes', permiteActivacion = true }: { soloRegistro?: boolean; rutaClientes?: string; permiteActivacion?: boolean } = {}) {
   const navigate = useNavigate();
   const [clientes, setClientes] = useState<SocioCobro[]>([]);
@@ -72,17 +135,18 @@ export function ClientesPage({ soloRegistro = false, rutaClientes = '/clientes',
   const [formError, setFormError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
   const [accionError, setAccionError] = useState<string | null>(null);
-  const [procesando, setProcesando] = useState<number | null>(null);
+  const [procesando, setProcesando] = useState<string | null>(null);
   const [actualizando, setActualizando] = useState(false);
   const [activacion, setActivacion] = useState<{ nombre: string; codigo: string } | null>(null);
   const [tocados, setTocados] = useState<Partial<Record<'nombre' | 'correo' | 'telefono' | 'codigo', boolean>>>({});
   const [avisos, setAvisos] = useState<Partial<Record<'nombre' | 'telefono', string>>>({});
   const [consultaCodigo, setConsultaCodigo] = useState<{ valor: string; error: string; pendiente: boolean } | null>(null);
   const codigoLimpio = (form.codigo ?? '').trim().toUpperCase();
-  const codigoLocalError = errorCodigoCliente(codigoLimpio, editando?.id)
-    || (codigoLimpio && clientes.some(s => s.id !== editando?.id && (s.codigo || `CLI-${s.id}`).toUpperCase() === codigoLimpio)
+  // errorCodigoCliente esperaba un id numérico; ahora el id es texto (_id de Mongo).
+  const codigoLocalError = errorCodigoCliente(codigoLimpio, editando?.id as unknown as number | undefined)
+    || (codigoLimpio && clientes.some(s => s.id !== editando?.id && (s.codigo || '').toUpperCase() === codigoLimpio)
       ? 'Ese código de usuario ya está en uso por otro cliente.' : '');
-  const necesitaConsultaCodigo = Boolean(codigoLimpio && codigoLimpio !== (editando?.codigo || (editando ? `CLI-${editando.id}` : '')));
+  const necesitaConsultaCodigo = Boolean(codigoLimpio && codigoLimpio !== (editando?.codigo || '').toUpperCase());
   const codigoPendiente = modal && necesitaConsultaCodigo && !codigoLocalError
     && (consultaCodigo?.valor !== codigoLimpio || consultaCodigo.pendiente);
 
@@ -92,9 +156,15 @@ export function ClientesPage({ soloRegistro = false, rutaClientes = '/clientes',
     setConsultaCodigo({ valor: codigoLimpio, error: '', pendiente: true });
     const timer = window.setTimeout(async () => {
       try {
-        const resultado = await apiCobro.get<{ disponible: boolean }>(`/clientes/codigo-disponible?codigo=${encodeURIComponent(codigoLimpio)}${editando ? `&excluirId=${editando.id}` : ''}`);
+        const resultado = await api.get<{ disponible: boolean }>(`/clientes/codigo-disponible?codigo=${encodeURIComponent(codigoLimpio)}${editando ? `&excluirId=${encodeURIComponent(editando.id)}` : ''}`);
         if (vigente) setConsultaCodigo({ valor: codigoLimpio, error: resultado.disponible ? '' : 'Ese código de usuario ya está en uso por otro cliente.', pendiente: false });
       } catch (err) {
+        // Si la API administrativa no tiene esta ruta (404), no se bloquea el formulario:
+        // el backend valida la unicidad al guardar.
+        if (err instanceof ApiError && err.status === 404) {
+          if (vigente) setConsultaCodigo({ valor: codigoLimpio, error: '', pendiente: false });
+          return;
+        }
         if (vigente) setConsultaCodigo({ valor: codigoLimpio, error: err instanceof Error ? err.message : 'No se pudo comprobar el código. Intenta de nuevo.', pendiente: false });
       }
     }, 300);
@@ -124,8 +194,8 @@ export function ClientesPage({ soloRegistro = false, rutaClientes = '/clientes',
       enCurso = true;
       setActualizando(true);
       try {
-        const datos = await apiCobro.get<SocioCobro[]>('/clientes');
-        if (!cancelado) { setClientes(datos); setError(null); }
+        const datos = await api.get<ClienteAdmin[]>('/clientes');
+        if (!cancelado) { setClientes((Array.isArray(datos) ? datos : []).map(c => aSocio(c))); setError(null); }
       } catch (err) {
         if (!cancelado) setError(err instanceof Error ? err.message : 'No se pudieron cargar los clientes.');
       } finally {
@@ -176,7 +246,7 @@ export function ClientesPage({ soloRegistro = false, rutaClientes = '/clientes',
     setForm({
       fechaNacimiento: s.fechaNacimiento ?? '', nombreTutor: s.nombreTutor ?? '',
       claveElectorTutor: s.claveElectorTutor ?? '', estadoDocumentacion: s.estadoDocumentacion ?? 'pendiente',
-      codigo: s.codigo || `CLI-${s.id}`,
+      codigo: s.codigo || '',
       enfermedades: s.enfermedades ?? [],
       lesiones: s.lesiones ?? [],
       nombre: s.nombre,
@@ -188,7 +258,13 @@ export function ClientesPage({ soloRegistro = false, rutaClientes = '/clientes',
     setModal(true);
   };
 
-  // Usar la fila devuelta por PostgreSQL evita desmontar la tabla y perder
+  const activos = clientes.filter(c => estatusDe(c) === 'activo').length;
+  const hoy = new Date();
+  const hoyISO = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+  const edad = form.fechaNacimiento ? hoy.getFullYear() - Number(form.fechaNacimiento.slice(0, 4)) - (hoyISO.slice(5) < form.fechaNacimiento.slice(5) ? 1 : 0) : null;
+  const requiereTutor = edad !== null && edad < 18;
+
+  // Se usa la fila devuelta por el servidor para no desmontar la tabla ni perder
   // su búsqueda/página. No se actualiza la UI si el servidor rechaza el cambio.
   const save = async () => {
     if (guardando) return;
@@ -225,22 +301,25 @@ export function ClientesPage({ soloRegistro = false, rutaClientes = '/clientes',
     }
     setGuardando(true);
     try {
+      const { nombre, apellidos } = separarNombre(form.nombre, editando);
       const cuerpo = {
         fechaNacimiento: form.fechaNacimiento, nombreTutor: form.nombreTutor,
         claveElectorTutor: form.claveElectorTutor, estadoDocumentacion: form.estadoDocumentacion,
-        ...(form.codigo !== undefined && (!editando || codigoLimpio !== (editando.codigo || `CLI-${editando.id}`)) ? { codigo: codigoLimpio } : {}),
-        enfermedades: form.enfermedades,
-        lesiones: form.lesiones,
-        nombre: form.nombre.trim(),
+        ...(codigoLimpio && (!editando || codigoLimpio !== (editando.codigo || '').toUpperCase()) ? { codigoAcceso: codigoLimpio } : {}),
+        perfilSalud: { enfermedades: form.enfermedades, lesiones: form.lesiones },
+        nombre,
+        apellidos,
         correo: form.correo.trim(),
         telefono: form.telefono.trim(),
-        activo: form.activo,
+        estatus: form.activo ? 'activo' : 'inactivo',
       };
       if (editando) {
-        const { cliente } = await apiCobro.patch<{ cliente: SocioCobro }>(`/clientes/${editando.id}`, cuerpo);
+        const res = await api.patch<unknown>(`/clientes/${encodeURIComponent(editando.id)}`, cuerpo);
+        const cliente = aSocio(extraerCliente(res), editando.id);
         setClientes(lista => lista.map(s => s.id === cliente.id ? { ...s, ...cliente } : s));
       } else {
-        const { cliente } = await apiCobro.post<{ cliente: SocioCobro }>('/clientes', cuerpo);
+        const res = await api.post<unknown>('/clientes', cuerpo);
+        const cliente = aSocio(extraerCliente(res));
         setClientes(lista => [...lista, cliente]);
       }
       setAccionError(null);
@@ -257,7 +336,8 @@ export function ClientesPage({ soloRegistro = false, rutaClientes = '/clientes',
     setAccionError(null);
     setProcesando(s.id);
     try {
-      const { cliente } = await apiCobro.patch<{ cliente: SocioCobro }>(`/clientes/${s.id}`, { activo: s.activo === false });
+      const res = await api.patch<unknown>(`/clientes/${encodeURIComponent(s.id)}`, { estatus: s.activo === false ? 'activo' : 'inactivo' });
+      const cliente = aSocio(extraerCliente(res), s.id);
       setClientes(lista => lista.map(c => c.id === cliente.id ? { ...c, ...cliente } : c));
     } catch (err) {
       setAccionError(err instanceof Error ? err.message : 'No se pudo cambiar el estatus.');
@@ -274,7 +354,8 @@ export function ClientesPage({ soloRegistro = false, rutaClientes = '/clientes',
     setAccionError(null);
     setProcesando(s.id);
     try {
-      const { cliente } = await apiCobro.patch<{ cliente: SocioCobro }>(`/clientes/${s.id}`, { activo: false });
+      const res = await api.patch<unknown>(`/clientes/${encodeURIComponent(s.id)}`, { estatus: 'inactivo' });
+      const cliente = aSocio(extraerCliente(res), s.id);
       setClientes(lista => lista.map(c => c.id === cliente.id ? { ...c, ...cliente } : c));
     } catch (err) {
       const mensaje = err instanceof Error ? err.message : 'No se pudo dar de baja al cliente.';
@@ -284,19 +365,13 @@ export function ClientesPage({ soloRegistro = false, rutaClientes = '/clientes',
     }
   };
 
-  const activos = clientes.filter(c => estatusDe(c) === 'activo').length;
-  const hoy = new Date();
-  const hoyISO = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
-  const edad = form.fechaNacimiento ? hoy.getFullYear() - Number(form.fechaNacimiento.slice(0, 4)) - (hoyISO.slice(5) < form.fechaNacimiento.slice(5) ? 1 : 0) : null;
-  const requiereTutor = edad !== null && edad < 18;
-
   const habilitarMovil = async (s: SocioCobro) => {
     if (procesando !== null) return;
     setProcesando(s.id);
     setAccionError(null);
     setActivacion(null);
     try {
-      const respuesta = await api.post<{ codigoActivacion: string }>(`/movil/clientes/${s.id}/activacion`);
+      const respuesta = await api.post<{ codigoActivacion: string }>(`/movil/clientes/${encodeURIComponent(s.id)}/activacion`);
       setActivacion({ nombre: s.nombre, codigo: respuesta.codigoActivacion });
     } catch (err) {
       setAccionError(err instanceof Error ? err.message : 'No se pudo habilitar el acceso móvil.');
@@ -347,7 +422,7 @@ export function ClientesPage({ soloRegistro = false, rutaClientes = '/clientes',
             searchPlaceholder="Buscar por nombre o apellido…"
             searchKeys={['nombre']}
             normalizeSearch
-            data={clientes.map(s => ({ ...s, codigo: s.codigo || `CLI-${s.id}` })) as unknown as Record<string, unknown>[]}
+            data={clientes.map(s => ({ ...s, codigo: s.codigo || '—' })) as unknown as Record<string, unknown>[]}
             emptyMessage="No hay clientes que mostrar"
             columns={[
               {
@@ -428,7 +503,7 @@ export function ClientesPage({ soloRegistro = false, rutaClientes = '/clientes',
               <p className="rx-help-text">Se permite registrar con documentos pendientes. El expediente se conserva en las renovaciones. La lista de cuatro documentos está pendiente de confirmación; este estado no sustituye su revisión.</p>
             </>}
             <InputField label="Código Usuario" aria-label="Código Usuario" autoComplete="off" maxLength={30}
-              value={form.codigo ?? ''} placeholder="Automático si se deja vacío (CLI-ID)"
+              value={form.codigo ?? ''} placeholder="Automático si se deja vacío"
               error={tocados.codigo ? errores.codigo : undefined} onBlur={() => tocar('codigo')}
               onChange={e => { tocar('codigo'); setConsultaCodigo(null); setFormError(null); setForm(f => ({ ...f, codigo: e.target.value.toUpperCase() })); }} />
             <span className="rx-help-text" role="status" aria-live="polite">{codigoPendiente ? 'Comprobando disponibilidad del código…' : 'De 3 a 30 letras, números o guiones. Vacío conserva el código automático. No cambia el ID ni el historial.'}</span>

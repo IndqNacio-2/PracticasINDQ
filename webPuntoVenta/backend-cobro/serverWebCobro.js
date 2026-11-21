@@ -15,6 +15,7 @@ const { Pool } = require('pg');
 const { imprimirTicket } = require('./ticketService');
 const membresiasService = require('./membresiasService');
 const { requerirRol } = require('./autorizacion');
+const { accesoClientes } = require('./permisosPersonal');
 const { crearClientesAdmin } = require('./clientesAdmin');
 const { crearReservasAdmin } = require('./reservasAdmin');
 
@@ -182,19 +183,19 @@ const buscarHorarioActivo = async (fecha, { horarioId, clase, time }, autorizaci
 
   const horario = Array.isArray(horarios)
     ? horarios.find((h) =>
-        typeof horarioId === 'string' && horarioId
-          ? h.idHorario === horarioId
-          : h.nombreClase === clase && h.horaInicio === time
-      ) ?? null
+      typeof horarioId === 'string' && horarioId
+        ? h.idHorario === horarioId
+        : h.nombreClase === clase && h.horaInicio === time
+    ) ?? null
     : null;
   const claseReal = horario && Array.isArray(clases)
     ? clases.find((c) => c.idClase === horario.idClase) ?? null
     : null;
   if (!horario || !claseReal || claseReal.estatus !== 'activo'
-      || horario.estatus !== 'activo' || horario.visibleReservas === false || horario.fecha !== fecha
-      || !Number.isInteger(horario.capacidadTotal) || horario.capacidadTotal <= 0
-      || !inicioDeClase(fecha, horario.horaInicio) || !inicioDeClase(fecha, horario.horaFin)
-      || horario.horaFin <= horario.horaInicio) return { horario: null, clase: null };
+    || horario.estatus !== 'activo' || horario.visibleReservas === false || horario.fecha !== fecha
+    || !Number.isInteger(horario.capacidadTotal) || horario.capacidadTotal <= 0
+    || !inicioDeClase(fecha, horario.horaInicio) || !inicioDeClase(fecha, horario.horaFin)
+    || horario.horaFin <= horario.horaInicio) return { horario: null, clase: null };
   // Consulta directa, sin autenticar como usuario ni exponer el listado de empleados.
   const referencia = await fetch(`${ADMIN_API}/horarios/${encodeURIComponent(horario.idHorario)}/validacion`, { signal: AbortSignal.timeout(10000) });
   if (referencia.status === 404 || referencia.status === 409 || referencia.status === 400) return { horario: null, clase: null };
@@ -719,12 +720,11 @@ app.get('/api/checador/acceso', accesoChecador, (_req, res) => res.json({ autori
 app.use('/api/asistencia', accesoChecador);
 const asistencia = montarAsistencia(app, pool, {
   turnosHabilitados: process.env.ASISTENCIA_TURNOS_HABILITADOS === 'true',
-  // El reloj checador solo lo opera el administrador.
-  proteger: [requerirRol(ADMIN_API, 'administrador')],
+  // El acceso al checador (administrador o usuarios autorizados) lo valida accesoChecador.js más arriba.
   clientesAdmin,
 });
 if (process.env.ASISTENCIA_TURNOS_HABILITADOS === 'true' &&
-    process.env.ASISTENCIA_FALTAS_AUTOMATICAS === 'true') {
+  process.env.ASISTENCIA_FALTAS_AUTOMATICAS === 'true') {
   let revisando = false;
   const timer = setInterval(async () => {
     if (revisando) return;

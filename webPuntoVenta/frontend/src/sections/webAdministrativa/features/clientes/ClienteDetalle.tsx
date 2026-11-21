@@ -91,6 +91,7 @@ export function ClienteDetalle({ rutaClientes = '/clientes' }: { rutaClientes?: 
             telefono: socio.telefono ?? '', codigoAcceso: socio.codigo || `CLI-${socio.id}`, estatus: socio.activo ? 'activo' : 'inactivo',
             enfermedades: socio.enfermedades ?? [], lesiones: socio.lesiones ?? [],
             rol: 'cliente', fechaCreacion: '', fechaRegistro: '', direccion: '', fechaNacimiento: socio.fechaNacimiento ?? ''
+
           });
           setCompras(socio.membresiasCompradas ?? []);
           setReservas(historial.filter(r => r.clienteId === socio.id).map(r => ({

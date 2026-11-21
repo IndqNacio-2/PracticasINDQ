@@ -64,10 +64,10 @@ const tutorSchema = new Schema(
 // Los 4 documentos adicionales del menor. Se piden una sola vez (no en cada renovación de membresía).
 const documentosMenorSchema = new Schema(
     {
-        documento1: { type: Boolean, default: false },
-        documento2: { type: Boolean, default: false },
-        documento3: { type: Boolean, default: false },
-        documento4: { type: Boolean, default: false },
+        actaNacimiento: { type: Boolean, default: false }, // Acta de nacimiento del menor
+        ineTutor: { type: Boolean, default: false }, // INE del padre, madre o tutor
+        curpMenor: { type: Boolean, default: false }, // CURP del menor
+        credencialEscolar: { type: Boolean, default: false }, // Credencial escolar del menor
     },
     { _id: false }
 );
@@ -98,6 +98,12 @@ const clienteSchema = new Schema(
 
         // Acceso a la app móvil. password es un hash bcrypt y nunca se devuelve en las consultas.
         password: { type: String, select: false },
+        // Recuperación de cuenta: código de 6 dígitos (solo se guarda su hash) que vence en 15 minutos.
+        recuperacion: {
+            type: new Schema({ codigoHash: String, expira: Date, intentos: { type: Number, default: 0 } }, { _id: false }),
+            default: null,
+            select: false,
+        },
         // Se incrementa al cambiar la contraseña desde la web o dar de baja: invalida los tokens ya emitidos.
         tokenVersion: { type: Number, default: 0, select: false },
         ultimoAcceso: Date,
@@ -133,6 +139,7 @@ const clienteSchema = new Schema(
                 delete ret._id;
                 delete ret.__v;
                 delete ret.password;
+                delete ret.recuperacion;
                 delete ret.tokenVersion;
                 return ret;
             },
