@@ -106,7 +106,8 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
         ...options,
         headers: {
             "Content-Type": "application/json",
-            ...(localStorage.getItem(TOKEN_KEY) ? { Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY)}` } : {}),
+            // Las rutas del punto de venta exigen la sesión del personal.
+            Authorization: `Bearer ${localStorage.getItem("token") ?? ""}`,
             ...options.headers,
         },
     });

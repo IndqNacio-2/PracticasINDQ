@@ -4,7 +4,8 @@ import { Horario } from '../models/horario';
 import { Clase } from '../models/clase';
 import { Reservacion } from '../models/reservacion';
 import { diaSemana, fechaLocal, sumarDias } from '../lib/fecha';
-import { POLITICAS, type MembresiaDoc } from '../lib/reglas';
+import { POLITICAS } from '../lib/reglas';
+import { carteraDe, infoParaClase } from '../lib/membresia';
 import { detallePago, itemHorario, type ContextoHorarios } from '../lib/vista';
 
 const router = Router();
@@ -13,19 +14,20 @@ const FECHA = /^\d{4}-\d{2}-\d{2}$/;
 const DIAS_MAXIMOS = 60;
 
 // Arma el contexto del cliente: sus reservaciones vigentes y los precios de las clases involucradas
-async function contexto(idCliente: string, membresia: MembresiaDoc | null, horarios: { _id: unknown; idClase: string }[]): Promise<ContextoHorarios> {
+async function contexto(idCliente: string, horarios: { _id: unknown; idClase: string }[]): Promise<ContextoHorarios> {
     const ids = horarios.map((h) => String(h._id));
     const idsClase = [...new Set(horarios.map((h) => h.idClase))].filter((i) => isValidObjectId(i));
 
-    const [reservaciones, clases] = await Promise.all([
+    const [reservaciones, clases, cartera] = await Promise.all([
         Reservacion.find({ idCliente, idHorario: { $in: ids }, estatus: { $ne: 'cancelada' } }),
         Clase.find({ _id: { $in: idsClase } }),
+        carteraDe(idCliente),
     ]);
 
     return {
         ahora: new Date(),
         hoy: fechaLocal(),
-        membresia,
+        cartera,
         precios: new Map(clases.filter((c) => typeof c.precio === 'number').map((c) => [String(c._id), c.precio as number])),
         reservadas: new Map(reservaciones.map((r) => [r.idHorario, String(r._id)])),
     };
@@ -71,7 +73,7 @@ router.get('/', async (req, res) => {
         : null;
 
     const lista = filtroClase ? delDia.filter((h) => h.nombreClase.toLowerCase() === filtroClase.toLowerCase()) : delDia;
-    const ctx = await contexto(String(res.locals.cliente._id), res.locals.cliente.membresia as MembresiaDoc | null, lista);
+    const ctx = await contexto(String(res.locals.cliente._id), lista);
 
     res.json({ fecha, diaSemana: diaSemana(fecha), horarioAtencion, horarios: lista.map((h) => itemHorario(h, ctx)) });
 });
@@ -82,11 +84,10 @@ router.get('/:id', async (req, res) => {
     const horario = await Horario.findById(req.params.id);
     if (!horario || horario.estatus !== 'activo') return res.status(404).json({ error: 'Clase no encontrada' });
 
-    const membresia = res.locals.cliente.membresia as MembresiaDoc | null;
-    const ctx = await contexto(String(res.locals.cliente._id), membresia, [horario]);
+    const ctx = await contexto(String(res.locals.cliente._id), [horario]);
     const item = itemHorario(horario, ctx);
 
-    res.json({ ...item, pago: detallePago(item, membresia, ctx.hoy), politicas: POLITICAS });
+    res.json({ ...item, pago: detallePago(item, infoParaClase(ctx.cartera, String(horario.idClase), horario.fecha)), politicas: POLITICAS });
 });
 
 export default router;

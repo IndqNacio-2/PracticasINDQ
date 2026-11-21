@@ -39,7 +39,7 @@ export function PagoMembresia({ cliente, membresia, opcion, fechaInicio, metodoP
         <div>
           <p className="rx-context-title">{cliente.nombre}</p>
           <p className="rx-context-copy">{membresia.nombre} · {opcion.entradas === null ? 'Entradas ilimitadas' : `${opcion.entradas} entradas`} · {opcion.duracion ?? opcion.vigenciaDias} {opcion.unidadDuracion || 'días'}</p>
-          <p className="rx-context-meta">Cliente #{cliente.id} · Inicio de vigencia: {fechaInicio}</p>
+          <p className="rx-context-meta">Cliente {cliente.codigo || cliente.id} · Inicio de vigencia: {fechaInicio}</p>
         </div>
       </div>
     </div>
@@ -74,8 +74,9 @@ export function PagoMembresia({ cliente, membresia, opcion, fechaInicio, metodoP
 
 export function filtrarClientesMembresias(clientes, busqueda) {
   const normalizar = valor => String(valor).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
-  const texto = normalizar(busqueda).replace(/^#/, '');
-  return clientes.filter(c => c.activo !== false && (normalizar(c.nombre).includes(texto) || String(c.id).includes(texto)));
+  const texto = normalizar(busqueda);
+  // Solo por nombre y/o apellido, sin importar acentos ni mayúsculas.
+  return clientes.filter(c => c.activo !== false && normalizar(c.nombre).includes(texto));
 }
 
 export function SaldosMembresias({ compras, clases = [] }) {
@@ -198,7 +199,7 @@ export default function MembresiasRecepcion({ clientes, clases, onTicket, onVent
     }
     envio.current = true;
     setOcupado(true); setError('');
-    const datos = { clienteId: Number(clienteId), membresiaId, opcionId, fechaInicio, metodoPago,
+    const datos = { clienteId, membresiaId, opcionId, fechaInicio, metodoPago,
       efectivoRecibido: metodoPago === 'efectivo' ? Number(efectivo) : null, referencia };
     const firma = JSON.stringify(datos);
     if (!solicitud.current || solicitud.current.firma !== firma) solicitud.current = { firma, id: crypto.randomUUID() };
@@ -237,7 +238,7 @@ export default function MembresiasRecepcion({ clientes, clases, onTicket, onVent
         <div className="rx-field">
           <label className="rx-label" htmlFor="buscar-cliente-membresia">Buscar cliente</label>
           <div className="rx-autocomplete">
-            <input ref={buscador} id="buscar-cliente-membresia" className="rx-input" type="text" autoComplete="off" placeholder="Escribe ID o nombre..."
+            <input ref={buscador} id="buscar-cliente-membresia" className="rx-input" type="text" autoComplete="off" placeholder="Escribe nombre o apellido..."
               role="combobox" aria-autocomplete="list" aria-expanded={mostrarClientes} aria-controls="clientes-membresia-lista"
               aria-activedescendant={mostrarClientes && indiceCliente >= 0 ? `cliente-membresia-${clientesFiltrados[indiceCliente]?.id}` : undefined}
               value={busqueda} onChange={e => { setBusqueda(e.target.value); setClienteId(''); setCompras([]); setMostrarClientes(true); setIndiceCliente(-1); setError(''); }}
@@ -253,7 +254,7 @@ export default function MembresiasRecepcion({ clientes, clases, onTicket, onVent
             {mostrarClientes && <ul id="clientes-membresia-lista" className="rx-suggestions" role="listbox" aria-label="Clientes registrados">
               {clientesFiltrados.map((cliente, indice) => <li key={cliente.id} id={`cliente-membresia-${cliente.id}`} role="option" aria-selected={indice === indiceCliente}
                 className="rx-suggestion" onMouseDown={e => e.preventDefault()} onClick={() => seleccionarCliente(cliente)}>
-                <span>{cliente.nombre} <span className="rx-cell-subtle">#{cliente.id}</span></span>
+                <span>{cliente.nombre} <span className="rx-cell-subtle">{cliente.codigo || cliente.id}</span></span>
                 <span className={`rx-badge ${cliente.tieneCompras ? 'rx-badge--accent' : 'rx-badge--neutral'}`}>
                   {cliente.membresiasCompradas?.map(c => c.nombre).join(' · ') || (cliente.tieneCompras ? 'Con membresías compradas' : 'Sin membresías compradas')}
                 </span>

@@ -9,13 +9,23 @@ const fetchChecador = (url, opciones = {}) => fetch(url, {
   headers: { ...opciones.headers, Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) || ''}` },
 });
 
-// Formatos aceptados: EMP-101, CLI-3 o el ID numérico de un socio.
-const listoBuscar = (codigo) =>
-  /^\d+$/.test(codigo) || /^[A-Z0-9][A-Z0-9-]{2,29}$/.test(codigo);
+// Las rutas de asistencia exigen sesión de administrador: toda llamada envía el token.
+const conToken = (extra = {}) => ({
+  ...extra,
+  headers: { ...(extra.headers || {}), Authorization: `Bearer ${localStorage.getItem('token') || ''}` },
+});
 
-// Normaliza el ID numérico de un socio: "3" -> "CLI-3".
-const normalizar = (codigo) =>
-  /^\d+$/.test(codigo) ? `CLI-${codigo}` : codigo;
+// Formatos aceptados: EMP-101, el código de acceso del cliente (CLI001) o solo su número.
+const listoBuscar = (codigo) =>
+  /^\d+$/.test(codigo) ||
+  /^CLI-?\d+$/.test(codigo) ||
+  /^EMP-\d{3}$/.test(codigo);
+
+// Normaliza el código del cliente: "3" o "CLI-3" -> "CLI003".
+const normalizar = (codigo) => {
+  const numero = codigo.match(/^(?:CLI-?)?(\d+)$/);
+  return numero ? `CLI${numero[1].padStart(3, '0')}` : codigo;
+};
 
 const coincidePersona = (codigo, persona) => Boolean(persona &&
   (normalizar(codigo) === persona.codigo || codigo === persona.codigoIngresado));
@@ -155,8 +165,9 @@ const Attendance = () => {
     setCargando(true);
 
     try {
-      const resPersona = await fetchChecador(
-        `/cobro/api/asistencia/empleado/${encodeURIComponent(cod)}`
+      const resPersona = await fetch(
+        `/cobro/api/asistencia/empleado/${encodeURIComponent(cod)}`,
+        conToken()
       );
 
       if (id !== busqRef.current) return;
@@ -182,8 +193,9 @@ const Attendance = () => {
 
       if (id !== busqRef.current) return;
 
-      const resHistorial = await fetchChecador(
-        `/cobro/api/asistencia/historial/${encodeURIComponent(persona.codigo || cod)}`
+      const resHistorial = await fetch(
+        `/cobro/api/asistencia/historial/${encodeURIComponent(persona.codigo || cod)}`,
+        conToken()
       );
 
       if (id !== busqRef.current) return;
@@ -221,11 +233,11 @@ const Attendance = () => {
     setResultado(null);
 
     try {
-      const res = await fetchChecador('/cobro/api/asistencia/marcar', {
+      const res = await fetch('/cobro/api/asistencia/marcar', conToken({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ codigo: codigoMarcado }),
-      });
+      }));
 
       const data = await res.json();
 
@@ -242,11 +254,13 @@ const Attendance = () => {
 
       // Actualiza la persona y el historial después de registrar la marcación.
       const [resEmpleado, resHistorial] = await Promise.all([
-        fetchChecador(
-          `/cobro/api/asistencia/empleado/${encodeURIComponent(codigoMarcado)}`
+        fetch(
+          `/cobro/api/asistencia/empleado/${encodeURIComponent(codigoMarcado)}`,
+          conToken()
         ),
-        fetchChecador(
-          `/cobro/api/asistencia/historial/${encodeURIComponent(codigoMarcado)}`
+        fetch(
+          `/cobro/api/asistencia/historial/${encodeURIComponent(codigoMarcado)}`,
+          conToken()
         ),
       ]);
 

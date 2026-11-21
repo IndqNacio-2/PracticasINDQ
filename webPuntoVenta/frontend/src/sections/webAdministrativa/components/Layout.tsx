@@ -157,6 +157,19 @@ export function Layout() {
               )}
             </NavLink>
           ))}
+          {/* El reloj checador es un kiosco aparte (sección de cobro): solo lo ve el administrador. */}
+          {user?.rol === "administrador" && (
+            <a
+              href="/cobro/asistencia"
+              target="_blank"
+              rel="noreferrer"
+              title={collapsed ? "Reloj checador" : "Abre el reloj checador en otra pestaña"}
+              className={`rx-nav-item ${collapsed ? "rx-nav-item--collapsed" : ""}`}
+            >
+              <MaterialIcon name="badge" className="flex-shrink-0 text-xl" />
+              {!collapsed && <span className="truncate">Reloj checador</span>}
+            </a>
+          )}
         </nav>
 
         <div className="rx-sidebar-footer">

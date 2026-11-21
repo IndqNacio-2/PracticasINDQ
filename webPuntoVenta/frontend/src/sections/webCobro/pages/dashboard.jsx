@@ -1,10 +1,13 @@
 import { useState, useEffect } from 'react';
-import { Link, NavLink, useNavigate } from 'react-router-dom';
+import { NavLink } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import MaterialIcon from '../../../components/MaterialIcon';
 import BrandLogo from '../../../components/BrandLogo';
 import { LOGIN_PATH } from '../../../auth/session';
 import MembresiasRecepcion, { membresiasRequest, SaldosMembresias } from './MembresiasRecepcion';
+import CobroApartada from './CobroApartada';
+// Clientes: recepción usa la misma pantalla (y la misma API) que administrativa: una sola fuente de clientes.
+import { ClientesPage } from '../../webAdministrativa/features/clientes/ClientesPage';
 import { EVENTO_CAMBIO_APLICACION, CLAVE_CAMBIO_APLICACION } from '../../../services/cambiosAplicacion';
 import RecepcionDetalle from './RecepcionDetalle';
 import RecepcionTabla from './RecepcionTabla';
@@ -65,6 +68,52 @@ const hoyISO = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
+/*
+ * Encabezado con el token de la sesión. Las rutas de /admin (clases, horarios...)
+ * ya exigen sesión y rol, así que toda llamada a ellas debe enviarlo.
+ */
+const authAdmin = () => ({ Authorization: `Bearer ${localStorage.getItem('token') || ''}` });
+
+// fetch con la sesión del personal: las rutas de cobro y de administrativa exigen token y rol.
+const fetchAuth = (url, opciones = {}) =>
+  fetch(url, { ...opciones, headers: { ...authAdmin(), ...(opciones.headers || {}) } });
+
+// Quita acentos y pasa a minúsculas: "Pédro" -> "pedro" (el buscador de clientes es solo por nombre y/o apellido).
+const sinAcentos = (valor) => String(valor ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+/*
+ * Clientes: la fuente única es administrativa (MongoDB), la misma que usa la app móvil.
+ * Se completan con las compras de membresía que guarda cobro (cliente_ref = id del cliente).
+ */
+const cargarClientes = async () => {
+  const [resClientes, resCompras] = await Promise.all([
+    fetchAuth('/admin/api/clientes'),
+    fetchAuth('/cobro/api/membresias/compras-resumen'),
+  ]);
+  if (!resClientes.ok) throw new Error(`No se pudieron consultar los clientes. HTTP ${resClientes.status}`);
+  const lista = await resClientes.json();
+  const compras = resCompras.ok ? await resCompras.json() : {};
+  return (Array.isArray(lista) ? lista : []).map((c) => ({
+    id: c.idUsuario,
+    codigo: c.codigoAcceso,
+    nombre: [c.nombre, c.apellidos].filter(Boolean).join(' '),
+    telefono: c.telefono ?? '',
+    correo: c.correo ?? '',
+    activo: c.estatus === 'activo',
+    membresia: 'Sin membresía',
+    vigencia_hasta: null,
+    tieneCompras: Boolean(compras[c.idUsuario]?.tieneCompras),
+    membresiasCompradas: compras[c.idUsuario]?.membresiasCompradas ?? [],
+  }));
+};
+
+/*
+ * Código que da el cliente en recepción (lo genera el backend al reservar, también
+ * desde la app móvil). Todos siguen PREFIJO-XXXXX (prefijo + guion + 5 dígitos):
+ * NU-48213 (clase individual) o PQ-07391 (membresía/paquete apartado).
+ */
+// Las reservas anteriores al cambio conservan su código RSV-XXXXXX, que se sigue reconociendo.
+const pareceCodigoReserva = (valor) => /^((NU|PQ)-\d{5}|RSV-[A-Z0-9]{6})$/i.test((valor || '').trim());
 
 // Estados que ya no apartan lugar ni cuentan como reservación activa.
 const ESTADOS_INACTIVOS = ['cancelado', 'no_asistio'];
@@ -195,6 +244,9 @@ export default function Dashboard({ vista = 'recepcion' }) {
   const [tipoReserva, setTipoReserva] = useState('cliente');
   const [selectedClient, setSelectedClient] = useState(null);
   const [verMembresias, setVerMembresias] = useState(false);
+  const [verClientes, setVerClientes] = useState(false);
+  // Membresía apartada desde la app (código PQ-XXXXX) que recepción está cobrando
+  const [apartadaACobrar, setApartadaACobrar] = useState(null);
   const [comprasSocio, setComprasSocio] = useState([]);
   const [saldoError, setSaldoError] = useState('');
   const [saldoCargando, setSaldoCargando] = useState(false);
@@ -249,7 +301,7 @@ export default function Dashboard({ vista = 'recepcion' }) {
   // pide los KPIs al backend unificado (vite los reenvia al gateway).
   const cargarKpis = async () => {
     try {
-      const res = await fetch(`${API}/api/kpis`);
+      const res = await fetchAuth(`${API}/api/kpis`);
       if (res.ok) setKpis(await res.json());
     } catch (err) {
       console.warn(`No se pudieron cargar los KPIs:`, err);
@@ -267,7 +319,7 @@ export default function Dashboard({ vista = 'recepcion' }) {
      * las reservaciones canceladas no se muestran en el tablero principal,
      * pero siguen guardadas para que administrativa pueda consultarlas.
      */
-    fetch(`${API}/api/reservas`)
+    fetchAuth(`${API}/api/reservas`)
       .then(res => {
         if (!res.ok) {
           throw new Error(`No se pudieron cargar las reservaciones. HTTP ${res.status}`);
@@ -290,16 +342,9 @@ export default function Dashboard({ vista = 'recepcion' }) {
      * cargamos los socios registrados desde el backend de cobro
      * estos clientes se utilizan para validar su estado, membresia y vigencia.
      */
-    fetch(`${API}/api/clientes`, { headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` } })
-      .then(res => {
-        if (!res.ok) {
-          throw new Error(`No se pudieron consultar los clientes. HTTP ${res.status}`);
-        }
-
-        return res.json();
-      })
+    cargarClientes()
       .then(data => {
-        setClientes(Array.isArray(data) ? data : []);
+        setClientes(data);
       })
       .catch(error => {
         console.warn('No se pudieron cargar los clientes:', error);
@@ -315,7 +360,7 @@ export default function Dashboard({ vista = 'recepcion' }) {
      * fue declarado como setClases,no existia las clases
      * nunca se guardaban en el estado y cobro mostraba el preciio como $0
      */
-    fetch('/admin/api/clases')
+    fetch('/admin/api/clases', { headers: authAdmin() })
       .then(res => {
         if(!res.ok) {
           throw new Error(`No se pudieron consulat las clases. HTTP ${res.status}`);
@@ -348,7 +393,7 @@ export default function Dashboard({ vista = 'recepcion' }) {
      * Por ultimo cargamos los indicadores superiores del dashboard:
      * ingresos del dia, clientes esperados y total de reservaciones.
      */
-    fetch(`${API}/api/kpis`)
+    fetchAuth(`${API}/api/kpis`)
       .then(res => {
         if (!res.ok) {
           throw new Error(`No se pudieron cargar los indicadores. HTTP ${res.status}`);
@@ -371,7 +416,7 @@ export default function Dashboard({ vista = 'recepcion' }) {
    */
   useEffect(() => {
     if (!fechaReserva) return;
-    fetch(`/admin/api/horarios?fecha=${encodeURIComponent(fechaReserva)}&estatus=activo`)
+    fetch(`/admin/api/horarios?fecha=${encodeURIComponent(fechaReserva)}&estatus=activo`, { headers: authAdmin() })
       .then(res => res.json())
       .then(data => setHorarios(Array.isArray(data) ? data : []))
       .catch(() => {
@@ -387,7 +432,7 @@ export default function Dashboard({ vista = 'recepcion' }) {
   useEffect(() => {
     if (!reservaAReagendar || !fechaReagendar) return;
     setHorarioReagendarId('');
-    fetch(`/admin/api/horarios?fecha=${encodeURIComponent(fechaReagendar)}&estatus=activo`)
+    fetch(`/admin/api/horarios?fecha=${encodeURIComponent(fechaReagendar)}&estatus=activo`, { headers: authAdmin() })
       .then(res => res.json())
       .then(data => setHorariosReagendar(
         (Array.isArray(data) ? data : []).filter(h => h.nombreClase === reservaAReagendar.class)
@@ -401,7 +446,7 @@ export default function Dashboard({ vista = 'recepcion' }) {
    * servidor marca cuando la clase ya pasó.
    */
   const recargarReservas = async () => {
-    const res = await fetch(`${API}/api/reservas`);
+    const res = await fetchAuth(`${API}/api/reservas`);
     if (!res.ok) throw new Error(`No se pudieron cargar las reservaciones. HTTP ${res.status}`);
     const data = await res.json();
     const activas = (Array.isArray(data) ? data : []).filter(r => r.status !== 'cancelado');
@@ -411,7 +456,7 @@ export default function Dashboard({ vista = 'recepcion' }) {
 
   // Refresco automático: conserva filtros y formularios; nunca recarga la página.
   useEffect(() => {
-    if (isModalOpen || isPaymentModalOpen || verMembresias || reservaAReagendar || ticket || buscandoCodigo) return;
+    if (isModalOpen || isPaymentModalOpen || verMembresias || verClientes || apartadaACobrar || reservaAReagendar || ticket || buscandoCodigo) return;
     const controller = new AbortController();
     let consultando = false;
     let cambioPendiente = false;
@@ -421,7 +466,7 @@ export default function Dashboard({ vista = 'recepcion' }) {
       consultando = true;
       const consultar = async (url, aplicar) => {
         try {
-          const respuesta = await fetch(url, { signal: controller.signal, cache: 'no-store', headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` } });
+          const respuesta = await fetch(url, { signal: controller.signal, cache: 'no-store', headers: authAdmin() });
           if (!respuesta.ok) throw new Error(`HTTP ${respuesta.status}`);
           const datos = await respuesta.json();
           if (!controller.signal.aborted) aplicar(datos);
@@ -434,7 +479,7 @@ export default function Dashboard({ vista = 'recepcion' }) {
         await Promise.all([
           consultar(`${API}/api/reservas`, datos => setReservations((Array.isArray(datos) ? datos : []).filter(r => r.status !== 'cancelado'))),
           consultar(`${API}/api/kpis`, setKpis),
-          consultar(`${API}/api/clientes`, datos => setClientes(Array.isArray(datos) ? datos : [])),
+          cargarClientes().then(setClientes).catch(() => {}),
           consultar('/admin/api/clases', datos => setClases((Array.isArray(datos) ? datos : []).filter(c => c.estatus !== 'inactivo'))),
           consultar(`/admin/api/horarios?fecha=${encodeURIComponent(fechaReserva)}&estatus=activo`, datos => setHorarios(Array.isArray(datos) ? datos : [])),
         ]);
@@ -463,7 +508,7 @@ export default function Dashboard({ vista = 'recepcion' }) {
       window.removeEventListener('online', actualizar);
       document.removeEventListener('visibilitychange', actualizar);
     };
-  }, [isModalOpen, isPaymentModalOpen, verMembresias, reservaAReagendar, ticket, buscandoCodigo, fechaReserva]);
+  }, [isModalOpen, isPaymentModalOpen, verMembresias, verClientes, apartadaACobrar, reservaAReagendar, ticket, buscandoCodigo, fechaReserva]);
 
   // ========== FUNCIONES DE VALIDACIÓN ==========
 
@@ -601,7 +646,7 @@ export default function Dashboard({ vista = 'recepcion' }) {
       if (reservation.status === 'asistido') throw new Error('Este cliente ya tiene asistencia confirmada.');
       if (reservation.capacityStatus === 'espera') throw new Error('El cliente sigue en lista de espera.');
 
-      const response = await fetch(`${API}/api/reservas/${id}`, {
+      const response = await fetchAuth(`${API}/api/reservas/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'asistido' }),
@@ -666,7 +711,7 @@ export default function Dashboard({ vista = 'recepcion' }) {
       // El cobro se guarda en el backend: marca la reservación como pagada y
       // registra el pago en PostgreSQL (esquema webcobro) con su forma de pago.
       // El monto lo toma el servidor del precio real de la reservación.
-      const response = await fetch(`${API}/api/cobros`, {
+      const response = await fetchAuth(`${API}/api/cobros`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -736,7 +781,7 @@ export default function Dashboard({ vista = 'recepcion' }) {
       );
       if (!confirmed) return;
 
-      const response = await fetch(`${API}/api/reservas/${id}`, {
+      const response = await fetchAuth(`${API}/api/reservas/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'cancelado' }),
@@ -782,7 +827,7 @@ export default function Dashboard({ vista = 'recepcion' }) {
     if (!reservaAReagendar || !horarioReagendarId) return;
     setReagendando(true);
     try {
-      const response = await fetch(`${API}/api/reservas/${reservaAReagendar.id}/reagendar`, {
+      const response = await fetchAuth(`${API}/api/reservas/${reservaAReagendar.id}/reagendar`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ horarioId: horarioReagendarId, fecha: fechaReagendar }),
@@ -818,8 +863,44 @@ export default function Dashboard({ vista = 'recepcion' }) {
     if (!termino) return;
     setBuscandoCodigo(true);
     try {
+      // PQ-XXXXX: membresía que el cliente apartó en la app; se cobra aquí y queda activa.
+      if (/^PQ-\d{5}$/i.test(termino)) {
+        const compra = await membresiasRequest(`/membresias/codigo/${encodeURIComponent(termino.toUpperCase())}`);
+        if (compra.estado === 'activa') {
+          showNotification(`La membresía ${compra.codigo} de ${compra.nombreCliente} ya está pagada.`, 'success');
+          return;
+        }
+        if (compra.estado === 'cancelada') throw new Error(`La membresía ${compra.codigo} fue cancelada.`);
+        setApartadaACobrar(compra);
+        return;
+      }
+      if (pareceCodigoReserva(termino)) {
+        const response = await fetchAuth(`${API}/api/reservas/codigo/${encodeURIComponent(termino)}`);
+        const body = await response.json().catch(() => null);
+        if (response.ok) {
+          const encontrada = body;
+          setReservations(prev => {
+            if (encontrada.status === 'cancelado') return prev.filter(r => r.id !== encontrada.id);
+            return prev.some(r => r.id === encontrada.id)
+              ? prev.map(r => (r.id === encontrada.id ? encontrada : r))
+              : [...prev, encontrada];
+          });
+          if (encontrada.paymentStatus === 'pagado') {
+            showNotification(`La reservación ${encontrada.codigo} de ${encontrada.client} ya está pagada.`, 'success');
+            return;
+          }
+          abrirCobro(encontrada);
+          return;
+        }
+        // Con formato PREFIJO-XXXXX es un código: si no existe, se avisa (no es un nombre).
+        if (response.status !== 404 || /^(NU|PQ|RSV)-/i.test(termino)) {
+          throw new Error(body?.error || 'No se encontró la reservación.');
+        }
+      }
+
       const lista = await recargarReservas();
-      const delCliente = lista.filter(r => coincideNombre(r.client, termino));
+      const nombre = sinAcentos(termino).trim();
+      const delCliente = lista.filter(r => sinAcentos(r.client).includes(nombre));
       const porCobrar = delCliente.filter(
         r => r.paymentStatus !== 'pagado' && (r.status === 'pendiente' || r.status === 'asistido') && r.capacityStatus !== 'espera'
       );
@@ -911,7 +992,7 @@ export default function Dashboard({ vista = 'recepcion' }) {
        * y la membresía del socio, para que el navegador no pueda inventarse
        * un monto.
        */
-      const response = await fetch(`${API}/api/reservas`, {
+      const response = await fetchAuth(`${API}/api/reservas`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1021,7 +1102,7 @@ export default function Dashboard({ vista = 'recepcion' }) {
       ${ticket.contexto === 'membresia' ? `
       <p><strong>Membresía:</strong> ${escapeHtml(ticket.membresia)}</p>
       <p><strong>Vigencia:</strong> ${escapeHtml(ticket.fechaInicio)} al ${escapeHtml(ticket.fechaFin)}</p>` : `
-      <p><strong>Reserva:</strong> #${escapeHtml(ticket.reservaId)}</p>
+      <p><strong>Reserva:</strong> ${escapeHtml(ticket.codigo || ticket.reservaId)}</p>
       <p><strong>Clase:</strong> ${escapeHtml(ticket.clase)}</p>
       <p><strong>Horario:</strong> ${escapeHtml(ticket.fechaClase)} ${escapeHtml(ticket.horaClase)}</p>`}
       <p><strong>Atendió:</strong> ${escapeHtml(ticket.usuario || 'Recepción')}</p>
@@ -1038,13 +1119,13 @@ export default function Dashboard({ vista = 'recepcion' }) {
   };
 
   const filteredReservations = reservations.filter(res => {
-    const term = normalizarTexto(searchTerm);
+    const term = searchTerm.toLowerCase();
+    // El nombre del cliente se busca sin acentos ni mayúsculas.
     return (
-      normalizarTexto(res.client).includes(term) ||
+      sinAcentos(res.client).includes(sinAcentos(searchTerm).trim()) ||
       (res.codigo || '').toLowerCase().includes(term) ||
       res.class.toLowerCase().includes(term) ||
-      res.time.toLowerCase().includes(term) ||
-      String(res.id).includes(term)
+      res.time.toLowerCase().includes(term)
     );
   });
 
@@ -1066,12 +1147,10 @@ export default function Dashboard({ vista = 'recepcion' }) {
   const nombreUsuario = user ? `${user.nombre ?? ''} ${user.apellidos ?? ''}`.trim() : '';
   const inicialesUsuario = iniciales(nombreUsuario);
 
-  // Socios que coinciden por nombre o apellido, nunca por ID ni código.
-  const textoSocio = newReservation.client || '';
-  const termSocio = normalizarTexto(textoSocio);
-  const sociosFiltrados = clientes.filter(
-    c => coincideNombre(c.nombre, textoSocio)
-  );
+  // Clientes que coinciden con lo escrito en "Buscar cliente": solo por nombre y/o apellido,
+  // sin importar acentos ni mayúsculas.
+  const textoSocio = sinAcentos(newReservation.client || '').trim();
+  const sociosFiltrados = clientes.filter(c => sinAcentos(c.nombre).includes(textoSocio));
 
   const limpiarFiltros = () => {
     setSearchTerm('');
@@ -1152,31 +1231,6 @@ export default function Dashboard({ vista = 'recepcion' }) {
               </>
             )}
           </NavLink>
-          <NavLink
-            to="/front-desk/clientes"
-            title={menuColapsado ? 'Clientes' : undefined}
-            className={({ isActive }) =>
-              `rx-nav-item ${menuColapsado ? 'rx-nav-item--collapsed' : ''} ${isActive ? 'rx-nav-item--active' : ''}`
-            }
-          >
-            {({ isActive }) => (
-              <>
-                <MaterialIcon name="group" className="flex-shrink-0 text-xl" filled={isActive} />
-                {!menuColapsado && <span className="truncate">Clientes</span>}
-              </>
-            )}
-          </NavLink>
-          <button
-            type="button"
-            onClick={() => { navigate('/front-desk/dashboard'); setVerMembresias(true); }}
-            aria-label="Vender paquetes"
-            aria-pressed={verMembresias}
-            title={menuColapsado ? 'Vender paquetes' : undefined}
-            className={`rx-nav-item ${menuColapsado ? 'rx-nav-item--collapsed' : ''} ${verMembresias ? 'rx-nav-item--active' : ''}`}
-          >
-            <MaterialIcon name="sell" className="flex-shrink-0 text-xl" filled />
-            {!menuColapsado && <span className="truncate">Vender paquetes</span>}
-          </button>
         </nav>
 
         <div className="rx-sidebar-footer">
@@ -1227,14 +1281,68 @@ export default function Dashboard({ vista = 'recepcion' }) {
                 <h1 className="rx-page-title">Recepción</h1>
                 <p className="rx-page-subtitle">{fechaDeHoyLarga()}</p>
               </div>
+              <div className="rx-page-actions">
+                <button type="button" onClick={() => setVerClientes(true)} className="rx-btn rx-btn--outline">
+                  <MaterialIcon name="group" className="text-lg" filled />
+                  Clientes
+                </button>
+                <button type="button" onClick={() => setVerMembresias(true)} className="rx-btn rx-btn--outline">
+                  <MaterialIcon name="sell" className="text-lg" filled />
+                  Vender membresía
+                </button>
+                <button type="button" onClick={openModal} className="rx-btn rx-btn--accent">
+                  <MaterialIcon name="add" className="text-lg" />
+                  Nueva reservación
+                </button>
+              </div>
             </header>
 
             <div className="rx-page-content">
-
+              {verClientes && (
+                <div className="rx-modal-overlay" role="presentation">
+                  <section
+                    className="rx-modal rx-modal--scroll modal-enter"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="clientes-titulo"
+                    style={{ width: 'min(1200px, 96vw)', maxWidth: '96vw' }}
+                  >
+                    <header className="rx-modal-header">
+                      <div>
+                        <h2 id="clientes-titulo" className="rx-modal-title">Clientes</h2>
+                        <p className="rx-modal-subtitle rx-modal-subtitle--plain">
+                          Los mismos clientes de administrativa y de la app móvil.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        aria-label="Cerrar"
+                        className="rx-modal-close"
+                        onClick={() => {
+                          setVerClientes(false);
+                          // Lo registrado o editado aquí debe verse de inmediato en reservas y membresías.
+                          cargarClientes().then(setClientes).catch(() => {});
+                        }}
+                      >
+                        <MaterialIcon name="close" className="text-xl" />
+                      </button>
+                    </header>
+                    <div className="rx-modal-body">
+                      <ClientesPage />
+                    </div>
+                  </section>
+                </div>
+              )}
+              {apartadaACobrar && <CobroApartada compra={apartadaACobrar} onClose={() => setApartadaACobrar(null)}
+                onTicket={nuevoTicket => { setApartadaACobrar(null); setTicket(nuevoTicket); }}
+                onCobrada={() => {
+                  cargarKpis();
+                  cargarClientes().then(setClientes).catch(e => showNotification(e.message, 'error'));
+                }} />}
               {verMembresias && <MembresiasRecepcion clientes={clientes} clases={clases} onClose={() => setVerMembresias(false)} onTicket={nuevoTicket => { setVerMembresias(false); setTicket(nuevoTicket); }}
                 onVenta={() => {
                   cargarKpis();
-                    fetch(`${API}/api/clientes`, { headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` } }).then(r => { if (!r.ok) throw Error('No se pudieron actualizar los clientes.'); return r.json(); })
+                  cargarClientes()
                     .then(datos => { setClientes(datos); setSelectedClient(null); })
                     .catch(e => showNotification(e.message, 'error'));
                 }} />}
@@ -1321,8 +1429,8 @@ export default function Dashboard({ vista = 'recepcion' }) {
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
                       onKeyDown={(e) => { if (e.key === 'Enter') handleBuscarReserva(); }}
-                      placeholder="Nombre o apellido del cliente"
-                      aria-label="Buscar reservación por nombre o apellido del cliente"
+                      placeholder="Código de reserva (NU-XXXXX / PQ-XXXXX) o nombre del cliente"
+                      aria-label="Buscar reservación por código de reserva o nombre del cliente"
                       className="rx-input rx-input--search"
                     />
                     {searchTerm && (
@@ -1385,7 +1493,157 @@ export default function Dashboard({ vista = 'recepcion' }) {
                     )}
                   </div>
                 ) : (
-                  <RecepcionTabla reservas={reservasVisibles} clientes={clientes} seleccion={reservaVistaId} onSeleccionar={id => { setReservaVistaId(id); setDetalleColapsado(false); }} hoy={hoyISO()} />
+                  <div className="rx-table-wrap">
+                    <table className="rx-table rx-reservations-table">
+                      <thead>
+                        <tr>
+                          <th>Cliente</th>
+                          <th>Código</th>
+                          <th>Clase y horario</th>
+                          <th className="rx-table-number">Monto</th>
+                          <th>Estado</th>
+                          <th>Cupo</th>
+                          <th className="rx-table-number">Acciones</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {reservasVisibles.map((res) => {
+                          const badge = ESTADO_BADGE[res.status] ?? ESTADO_BADGE.pendiente;
+                          const enEspera = res.capacityStatus === 'espera';
+                          const cobrable = res.paymentStatus !== 'pagado' && (res.status === 'pendiente' || res.status === 'asistido') && !enEspera;
+                          const puedeConfirmar = res.paymentStatus === 'pagado' && (res.status === 'pendiente' || res.status === 'pagado') && res.fecha === hoyISO() && !enEspera;
+                          // Solo las pendientes o pagadas se pueden reagendar o cancelar.
+                          const vigente = res.status === 'pendiente' || res.status === 'pagado';
+                          const colorClase = clases.find(c => c.nombre === res.class)?.color;
+                          return (
+                            <tr
+                              key={res.id}
+                              className={res.status === 'no_asistio' ? 'rx-table-row--inactive' : undefined}
+                            >
+                              <td>
+                                <div className="rx-table-product">
+                                  <span className="rx-avatar">{iniciales(res.client)}</span>
+                                  <div>
+                                    <span className="rx-table-product-name">{res.client}</span>
+                                    <span className="rx-cell-caption">
+                                      {res.type === 'visitante' ? 'Visitante' : 'Socio'}
+                                    </span>
+                                  </div>
+                                </div>
+                              </td>
+                              <td>
+                                <span className="rx-code">{res.codigo || '—'}</span>
+                                <span className="rx-cell-caption">
+                                  {res.codigo || res.id}
+                                  {res.origen === 'app' && (
+                                    <span className="rx-badge rx-badge--info" title="Reservada desde la app móvil">
+                                      App
+                                    </span>
+                                  )}
+                                </span>
+                              </td>
+                              <td>
+                                <span className="rx-cell-strong">
+                                  <span
+                                    className="rx-class-dot"
+                                    style={colorClase ? { '--class-color': colorClase } : undefined}
+                                  />{' '}
+                                  {res.class}
+                                </span>
+                                <span className="rx-cell-caption">
+                                  {formatFechaCorta(res.fecha)} · {res.time}
+                                  {res.reagendada && (
+                                    <span
+                                      className="rx-badge rx-badge--info"
+                                      title={`Antes: ${res.fechaOriginal || ''} ${res.horaOriginal || ''}`}
+                                    >
+                                      Reagendada
+                                    </span>
+                                  )}
+                                </span>
+                              </td>
+                              <td className="rx-cell-strong rx-table-number">
+                                {formatMoney(res.price)}
+                                {res.membresiaCompraId && <span className="rx-cell-caption">Cubierta por membresía · compra #{res.membresiaCompraId}</span>}
+                              </td>
+                              <td>
+                                <span className={`rx-badge rx-badge--${badge.tono}`}>{badge.etiqueta}</span>
+                                <span className="rx-cell-caption">{res.paymentStatus === 'pagado' ? 'Pago registrado' : 'Pago pendiente'} · {res.attendanceStatus === 'asistido' ? 'Asistió' : res.attendanceStatus === 'no_asistio' ? 'No asistió' : 'Asistencia pendiente'}</span>
+                              </td>
+                              <td>
+                                <span className={`rx-badge ${enEspera ? 'rx-badge--special' : 'rx-badge--neutral'}`}>
+                                  {enEspera ? 'En espera' : 'Confirmada'}
+                                </span>
+                              </td>
+                              <td>
+                                <div className="rx-row-actions">
+                                  {res.status === 'no_asistio' && (
+                                    <span className="rx-row-note" title="Sin reembolso y sin reagendar">
+                                      Sin reembolso
+                                    </span>
+                                  )}
+                                  {puedeConfirmar && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleConfirmAttendance(res.id)}
+                                      title="Confirmar asistencia"
+                                      aria-label={`Confirmar asistencia de ${res.client}`}
+                                      className="rx-compact-icon-button"
+                                    >
+                                      <MaterialIcon name="how_to_reg" className="text-lg" />
+                                    </button>
+                                  )}
+                                  {/* Reagendar: una sola vez y sin costo. Si ya no se puede,
+                                      al hacer clic se avisa el motivo. */}
+                                  {vigente && (
+                                    <button
+                                      type="button"
+                                      onClick={() => openReagendar(res)}
+                                      aria-disabled={res.puedeReagendar === false}
+                                      title={res.puedeReagendar === false
+                                        ? res.motivoNoReagendar || 'Ya no se puede reagendar'
+                                        : 'Reagendar (una sola vez, sin costo)'}
+                                      aria-label={`Reagendar la reservación de ${res.client}`}
+                                      className="rx-compact-icon-button"
+                                    >
+                                      <MaterialIcon name="event_repeat" className="text-lg" />
+                                    </button>
+                                  )}
+                                  {/* Cancelar: dentro de las 24 h de haber reservado, sin reembolso. */}
+                                  {vigente && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleCancel(res.id)}
+                                      aria-disabled={res.puedeCancelar === false}
+                                      title={res.puedeCancelar === false
+                                        ? res.motivoNoCancelar || 'Ya no se puede cancelar'
+                                        : res.cancelableHasta
+                                          ? `Cancelar (sin reembolso) · hasta ${formatTicketDate(res.cancelableHasta)}`
+                                          : 'Cancelar (sin reembolso)'}
+                                      aria-label={`Cancelar la reservación de ${res.client}`}
+                                      className="rx-compact-icon-button rx-compact-icon-button--danger"
+                                    >
+                                      <MaterialIcon name="event_busy" className="text-lg" />
+                                    </button>
+                                  )}
+                                  {cobrable && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handlePayment(res.id)}
+                                      className="rx-btn rx-btn--dark rx-btn--small"
+                                    >
+                                      <MaterialIcon name="point_of_sale" className="text-base" />
+                                      Cobrar
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 )}
               </div>
                 </section>
@@ -1490,11 +1748,13 @@ export default function Dashboard({ vista = 'recepcion' }) {
                       id="buscar-socio"
                       type="text"
                       autoComplete="off"
-                      placeholder="Escribe ID o nombre..."
+                      placeholder="Escribe nombre o apellido..."
                       value={newReservation.client}
                       onChange={(e) => {
                         const val = e.target.value;
-                        const match = clientes.find(c => String(c.id) === val);
+                        // Si lo escrito es exactamente el nombre de un único cliente, se selecciona.
+                        const coincidencias = clientes.filter(c => sinAcentos(c.nombre) === sinAcentos(val).trim());
+                        const match = coincidencias.length === 1 ? coincidencias[0] : null;
                         if (match) {
                           setSelectedClient(match);
                           // El precio depende de la clase ya elegida y de si el
@@ -1513,7 +1773,7 @@ export default function Dashboard({ vista = 'recepcion' }) {
                     />
 
                     {/* Al enfocar se muestran todos los socios; al escribir se
-                        filtran por nombre o apellido. */}
+                        filtran por nombre y/o apellido. */}
                     {showClientList && !selectedClient && (
                       <ul className="rx-suggestions" role="listbox" aria-label="Socios registrados">
                         {sociosFiltrados.map(c => (
@@ -1532,7 +1792,7 @@ export default function Dashboard({ vista = 'recepcion' }) {
                             className="rx-suggestion"
                           >
                             <span>
-                              {c.nombre} <span className="rx-cell-subtle">#{c.id}</span>
+                              {c.nombre} <span className="rx-cell-subtle">{c.codigo || c.id}</span>
                             </span>
                             <span className={`rx-badge ${c.tieneCompras ? 'rx-badge--accent' : 'rx-badge--neutral'}`}>
                               {c.membresiasCompradas?.map(compra => compra.nombre).join(' · ') || 'Sin membresías compradas'}
@@ -1881,7 +2141,7 @@ export default function Dashboard({ vista = 'recepcion' }) {
                     <p className="rx-context-meta">
                       {selectedReservationForPayment.codigo
                         ? `Código ${selectedReservationForPayment.codigo}`
-                        : `Reserva #${selectedReservationForPayment.id}`}
+                        : `Reserva ${selectedReservationForPayment.codigo || selectedReservationForPayment.id}`}
                     </p>
                   </div>
                 </div>
@@ -2047,7 +2307,7 @@ export default function Dashboard({ vista = 'recepcion' }) {
                     <p><span className="rx-receipt-label">Membresía:</span> {ticket.membresia}</p>
                     <p><span className="rx-receipt-label">Vigencia:</span> {ticket.fechaInicio} al {ticket.fechaFin}</p>
                   </> : <>
-                    <p><span className="rx-receipt-label">Reserva:</span> #{ticket.reservaId}</p>
+                    <p><span className="rx-receipt-label">Reserva:</span> {ticket.codigo || ticket.reservaId}</p>
                     <p><span className="rx-receipt-label">Clase:</span> {ticket.clase}</p>
                     <p><span className="rx-receipt-label">Horario:</span> {ticket.fechaClase} {ticket.horaClase}</p>
                   </>}

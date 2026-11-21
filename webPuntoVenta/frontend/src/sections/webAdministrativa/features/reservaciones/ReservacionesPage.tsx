@@ -16,8 +16,13 @@ interface ReservacionMongo {
   clase: string;
   entrenador: string;
   horaClase: string;
-  // Fecha de la clase, "AAAA-MM-DD".
-  fechaReservacion: string;
+  // Día de la clase, "AAAA-MM-DD" (fechaReservacion es el día en que se hizo la reservación).
+  fechaClase: string;
+  fechaReservacion?: string;
+  // Cupo, pago y tipo (cliente registrado o visitante): los llena la reservación sin importar de qué módulo vino.
+  estadoCupo?: 'confirmada' | 'espera';
+  estadoPago?: 'pendiente' | 'pagado';
+  tipo?: 'cliente' | 'visitante';
   estatus: 'pendiente' | 'confirmada' | 'cancelada' | 'no_asistio';
   asistenciaConfirmada: boolean;
   reagendada?: boolean;
@@ -189,11 +194,8 @@ export function ReservacionesPage() {
     try {
       const creada = await api.post<ReservacionMongo>('/reservaciones', {
         idCliente,
+        // La clase, la hora y la fecha las toma el servidor del horario elegido.
         idHorario: h.id,
-        clase: h.clase,
-        entrenador: h.entrenador,
-        horaClase: h.horaClase,
-        fechaReservacion: h.fecha,
       });
       setReservaciones(lista => [creada, ...lista]);
       setAviso(`Reservación creada. Código: ${creada.codigo ?? 'sin código'}`);
@@ -215,10 +217,6 @@ export function ReservacionesPage() {
     try {
       const actualizada = await api.patch<ReservacionMongo>(`/reservaciones/${reagendando.idReservacion}/reagendar`, {
         idHorario: h.id,
-        clase: h.clase,
-        entrenador: h.entrenador,
-        horaClase: h.horaClase,
-        fechaReservacion: h.fecha,
       });
       reemplazar(actualizada);
       setAviso(`Reservación ${actualizada.codigo ?? ''} reagendada. Ya no podrá reagendarse de nuevo.`);
@@ -265,7 +263,7 @@ export function ReservacionesPage() {
   const pendientes = reservaciones.filter(r => r.estatus === 'pendiente').length;
 
   const horariosReagendar = reagendando
-    ? horarios.filter(h => !(h.id === reagendando.idHorario && h.fecha === reagendando.fechaReservacion))
+    ? horarios.filter(h => h.clase === reagendando.clase && h.id !== reagendando.idHorario)
     : [];
 
   return (
@@ -333,7 +331,7 @@ export function ReservacionesPage() {
                 return (
                   <div>
                     <p className="font-medium text-gray-800">{r.clase}</p>
-                    <p className="text-xs text-gray-400">{r.entrenador} · {formatearFecha(r.fechaReservacion)} · {r.horaClase}</p>
+                    <p className="text-xs text-gray-400">{r.entrenador} · {formatearFecha(r.fechaClase)} · {r.horaClase}</p>
                   </div>
                 );
               }
@@ -404,7 +402,7 @@ export function ReservacionesPage() {
           <div className="grid grid-cols-1 gap-4">
             <div className="rounded-xl bg-gray-50 p-3 text-sm text-gray-700">
               <p className="font-medium">{reagendando.nombreCliente} · {reagendando.codigo}</p>
-              <p className="text-xs text-gray-500">Actual: {formatearFecha(reagendando.fechaReservacion)} {reagendando.horaClase} · {reagendando.clase} · {reagendando.entrenador}</p>
+              <p className="text-xs text-gray-500">Actual: {formatearFecha(reagendando.fechaClase)} {reagendando.horaClase} · {reagendando.clase} · {reagendando.entrenador}</p>
             </div>
             <SelectField label="Nuevo horario" value={nuevoHorario} onChange={e => setNuevoHorario(e.target.value)}
               options={[{ value: '', label: 'Selecciona el nuevo horario' }, ...horariosReagendar.map(h => ({ value: h.id, label: etiquetaHorario(h) }))]} />

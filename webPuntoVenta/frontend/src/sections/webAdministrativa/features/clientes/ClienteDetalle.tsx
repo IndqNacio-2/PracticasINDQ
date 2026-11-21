@@ -85,15 +85,18 @@ export function ClienteDetalle({ rutaClientes = '/clientes' }: { rutaClientes?: 
           if (!vigente) return;
           const socio = socios.find(c => String(c.id) === id);
           if (!socio) return;
-          setCliente({ idUsuario: String(socio.id), nombre: socio.nombre, apellidos: '', correo: socio.correo ?? '',
+          setCliente({
+            idUsuario: String(socio.id), nombre: socio.nombre, apellidos: '', correo: socio.correo ?? '',
             nombreTutor: socio.nombreTutor, claveElectorTutor: socio.claveElectorTutor, estadoDocumentacion: socio.estadoDocumentacion,
             telefono: socio.telefono ?? '', codigoAcceso: socio.codigo || `CLI-${socio.id}`, estatus: socio.activo ? 'activo' : 'inactivo',
             enfermedades: socio.enfermedades ?? [], lesiones: socio.lesiones ?? [],
-            rol: 'cliente', fechaCreacion: '', fechaRegistro: '', direccion: '', fechaNacimiento: socio.fechaNacimiento ?? '' });
+            rol: 'cliente', fechaCreacion: '', fechaRegistro: '', direccion: '', fechaNacimiento: socio.fechaNacimiento ?? ''
+          });
           setCompras(socio.membresiasCompradas ?? []);
           setReservas(historial.filter(r => r.clienteId === socio.id).map(r => ({
             idReservacion: String(r.id), idCliente: id!, nombreCliente: socio.nombre, idHorario: r.horarioId,
-            clase: r.class, entrenador: 'Consultar sesión en Horarios', horaClase: r.time, fechaReservacion: r.fecha,
+            clase: r.class, entrenador: 'Consultar sesión en Horarios', horaClase: r.time,
+            fechaClase: r.fecha, fechaReservacion: r.fecha,
             estatus: ['cancelado', 'no_asistio'].includes(r.status) ? 'cancelada' : ['pagado', 'asistido'].includes(r.status) ? 'confirmada' : 'pendiente',
             asistenciaConfirmada: r.attendanceStatus === 'asistido',
           })));
@@ -212,18 +215,18 @@ export function ClienteDetalle({ rutaClientes = '/clientes' }: { rutaClientes?: 
               <div><h3 className="font-semibold mb-2">Enfermedades</h3><SaludEtiquetas items={cliente.enfermedades} /></div>
               <div><h3 className="font-semibold mb-2">Lesiones</h3><SaludEtiquetas items={cliente.lesiones} /></div>
             </div> :
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              {saludListas.map(({ titulo, items }) => (
-                <div key={titulo}>
-                  <h3 className="font-semibold text-gray-900 mb-3" style={{ fontFamily: 'DM Sans, sans-serif' }}>{titulo}</h3>
-                  <div className="flex flex-wrap gap-1.5">
-                    {items.length > 0
-                      ? items.map(i => <span key={i} className="px-2 py-0.5 bg-[#F3F4F6] text-[#6B7280] text-xs rounded-lg">{i}</span>)
-                      : <span className="text-sm text-gray-400">Ninguna registrada</span>}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                {saludListas.map(({ titulo, items }) => (
+                  <div key={titulo}>
+                    <h3 className="font-semibold text-gray-900 mb-3" style={{ fontFamily: 'DM Sans, sans-serif' }}>{titulo}</h3>
+                    <div className="flex flex-wrap gap-1.5">
+                      {items.length > 0
+                        ? items.map(i => <span key={i} className="px-2 py-0.5 bg-[#F3F4F6] text-[#6B7280] text-xs rounded-lg">{i}</span>)
+                        : <span className="text-sm text-gray-400">Ninguna registrada</span>}
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
           )}
 
           {activeTab === 'membresia' && (
@@ -261,7 +264,7 @@ export function ClienteDetalle({ rutaClientes = '/clientes' }: { rutaClientes?: 
                 <div key={r.idReservacion} className="flex items-center justify-between p-3.5 bg-gray-50 rounded-xl">
                   <div>
                     <p className="font-medium text-gray-800 text-sm">{r.clase}</p>
-                    <p className="text-xs text-gray-400">{r.entrenador} · {r.horaClase} · {r.fechaReservacion}</p>
+                    <p className="text-xs text-gray-400">{r.entrenador} · {r.horaClase} · {r.fechaClase}</p>
                   </div>
                   <div className="flex items-center gap-2">
                     <Badge variant={r.estatus} />

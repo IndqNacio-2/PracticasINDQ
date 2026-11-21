@@ -8,6 +8,9 @@ import perfilRoutes from './routes/perfil.routes';
 import claseRoutes from './routes/clases.routes';
 import horarioRoutes from './routes/horarios.routes';
 import reservacionRoutes from './routes/reservaciones.routes';
+import membresiaRoutes from './routes/membresias.routes';
+import asistenciaRoutes from './routes/asistencia.routes';
+import { requirePersonal } from './middleware/personal';
 
 secreto(); // falla al arrancar si falta CLIENTES_JWT_SECRET
 
@@ -28,6 +31,9 @@ app.use('/api/me', requireCliente, perfilRoutes);
 app.use('/api/clases', requireCliente, claseRoutes);
 app.use('/api/horarios', requireCliente, horarioRoutes);
 app.use('/api/reservaciones', requireCliente, reservacionRoutes);
+app.use('/api/membresias', requireCliente, membresiaRoutes);
+// Solo personal (administrador o recepción): confirmar que el cliente llegó a su clase
+app.use('/api/asistencia', requirePersonal, asistenciaRoutes);
 
 app.use((_req, res) => res.status(404).json({ error: 'Ruta no encontrada' }));
 

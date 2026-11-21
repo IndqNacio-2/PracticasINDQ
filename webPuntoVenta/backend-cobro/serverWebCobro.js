@@ -13,13 +13,10 @@ const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
 const { imprimirTicket } = require('./ticketService');
-const flujoReservas = require('./reservasFlujo');
-const { esCorreoValido, esNombreValido, esTelefonoValido } = require('./validacionCliente');
-const { normalizarSalud } = require('./saludCliente');
-const { normalizarCodigoCliente } = require('./codigoCliente');
-const { normalizarMenor } = require('./menoresCliente');
-const { accesoClientes } = require('./permisosPersonal');
 const membresiasService = require('./membresiasService');
+const { requerirRol } = require('./autorizacion');
+const { crearClientesAdmin } = require('./clientesAdmin');
+const { crearReservasAdmin } = require('./reservasAdmin');
 
 const app = express();
 
@@ -32,6 +29,17 @@ app.use('/api/clientes', accesoClientes);
 // interna y no atraviesa el navegador. Cada POST /api/reservas consulta estos
 // horarios para garantizar que la clase + hora elegida existe de verdad.
 const ADMIN_API = process.env.ADMIN_API_URL ?? 'http://localhost:3000/admin/api';
+
+// Permisos por rol (administrador, recepcion = cobro, vendedor = punto de venta).
+// La sesión se valida contra la API administrativa: ver autorizacion.js.
+const adminORecepcion = requerirRol(ADMIN_API, 'administrador', 'recepcion');
+const soloRecepcion = requerirRol(ADMIN_API, 'recepcion');
+const soloAdministrador = requerirRol(ADMIN_API, 'administrador');
+const todoElPersonal = requerirRol(ADMIN_API, 'administrador', 'recepcion', 'vendedor');
+// Los clientes viven en MongoDB (administrativa): cobro los consulta por su API.
+const clientesAdmin = crearClientesAdmin(ADMIN_API);
+// Las reservaciones también: cobro las lee y escribe por la API de administrativa (MongoDB).
+const reservasAdmin = crearReservasAdmin(ADMIN_API);
 
 // Conexion con PostgreSQL /////////////////////////////////////
 const pool = new Pool({
@@ -69,21 +77,8 @@ pool.query = (texto, parametros) => {
 // Reglas de reservaciones (Release 1.2.0)
 // ===================================================================
 
-// Horas que tiene el cliente para cancelar, contadas desde que hizo la
-// reservación. Cancelar no genera reembolso.
-const VENTANA_CANCELACION_HORAS = 24;
 // Estados que ya no apartan lugar ni cuentan como reservación activa.
 const ESTADOS_INACTIVOS = ['cancelado', 'no_asistio'];
-
-// Columnas de una reservación con los nombres que usan las pantallas.
-const COLUMNAS_RESERVA = `id, cliente AS client, tipo AS type, clase AS class,
-  membresia_compra_id AS "membresiaCompraId", clase_id AS "claseId",
-  cliente_id AS "clienteId", estado_pago AS "paymentStatus", hora_fin AS "horaFin",
-  CASE WHEN estado IN ('asistido', 'no_asistio') THEN estado ELSE 'pendiente' END AS "attendanceStatus",
-  hora AS time, estado AS status, precio::float8 AS price, fecha,
-  horario_id AS "horarioId", estado_cupo AS "capacityStatus", codigo, origen,
-  reagendada, fecha_original AS "fechaOriginal", hora_original AS "horaOriginal",
-  creado_en AS "creadoEn"`;
 
 const dosDigitos = (n) => String(n).padStart(2, '0');
 
@@ -108,27 +103,20 @@ const MOTIVO_POR_ESTADO = {
 };
 
 /*
- * Decide si una reservación (con los nombres de COLUMNAS_RESERVA) se puede
+ * Decide si una reservación (con los nombres que devuelve reservasAdmin.js) se puede
  * cancelar o reagendar en este momento. Devuelve el motivo cuando no se puede,
  * o null cuando sí. Es la misma regla para recepción y para la app móvil.
  */
 const reglasDeReserva = (r, ahora = new Date()) => {
   const inicio = inicioDeClase(r.fecha, r.time);
   const yaInicio = inicio ? inicio.getTime() <= ahora.getTime() : false;
-  const creado = r.creadoEn ? new Date(r.creadoEn) : null;
-  const cancelableHasta = creado
-    ? new Date(creado.getTime() + VENTANA_CANCELACION_HORAS * 3600 * 1000)
-    : null;
   const motivoEstado = MOTIVO_POR_ESTADO[r.status] ?? null;
 
+  // Recepción puede cancelar hasta que empiece la clase (el plazo de 24 horas de antelación es para el
+  // cliente en la app móvil; administrativa lo aplica ahí y recepción lo salta con `forzar`).
   let motivoNoCancelar = motivoEstado;
   if (!motivoNoCancelar && yaInicio) {
     motivoNoCancelar = 'La clase ya comenzó, ya no se puede cancelar.';
-  }
-  // La lista de espera no aparta lugar: se puede abandonar en cualquier momento.
-  if (!motivoNoCancelar && r.capacityStatus !== 'espera' && cancelableHasta
-      && ahora.getTime() > cancelableHasta.getTime()) {
-    motivoNoCancelar = `El plazo de ${VENTANA_CANCELACION_HORAS} horas para cancelar venció el ${cancelableHasta.toLocaleString('es-MX')}.`;
   }
 
   let motivoNoReagendar = motivoEstado;
@@ -139,11 +127,7 @@ const reglasDeReserva = (r, ahora = new Date()) => {
     motivoNoReagendar = 'La clase ya comenzó, ya no se puede reagendar.';
   }
 
-  return {
-    motivoNoCancelar,
-    motivoNoReagendar,
-    cancelableHasta: cancelableHasta ? cancelableHasta.toISOString() : null,
-  };
+  return { motivoNoCancelar, motivoNoReagendar, cancelableHasta: null };
 };
 
 // Agrega a la reservación las banderas que usan recepción y la app móvil.
@@ -166,21 +150,29 @@ const decorarReserva = (r) => {
  * cliente nunca llegó a recepción, así que no hay reembolso ni reagenda.
  * Las reservas pagadas no se tocan: pagar en recepción implica que llegó.
  */
-const marcarInasistencias = async (db = pool) => {
-  return flujoReservas.marcarInasistencias(db);
-};
+// Ahora las marca administrativa (cada minuto y al consultar reservaciones): aquí ya no hay nada que hacer.
+const marcarInasistencias = async () => 0;
 
-// PQ: reserva cubierta por paquete; NU: reserva sin cobertura. CLI no cambia.
-const { normalizarCodigoReserva, generarCodigoReserva } = require('./codigosReserva');
+// El código de reserva (NU-XXXXX) lo genera administrativa al crear la reservación.
+// Acepta 'nu-48213', 'NU-48213' o 'PQ-07391'. Las reservas anteriores al cambio conservan su
+// código 'RSV-XXXXXX', que se sigue reconociendo para poder consultarlas.
+const normalizarCodigoReserva = (valor) => {
+  const limpio = String(valor ?? '').trim().toUpperCase();
+  if (/^(NU|PQ)-\d{5}$/.test(limpio)) return limpio;
+  if (/^RSV-[A-Z0-9]{6}$/.test(limpio)) return limpio;
+  return null;
+};
 
 /*
  * Busca en administrativa el horario activo de una fecha (por id o por
  * clase + hora) y la clase a la que pertenece (precio y capacidad).
  */
-const buscarHorarioActivo = async (fecha, { horarioId, clase, time }) => {
+const buscarHorarioActivo = async (fecha, { horarioId, clase, time }, autorizacion) => {
+  // Se reenvía la sesión de quien hace la petición: horarios y clases ya exigen token.
+  const cabeceras = autorizacion ? { Authorization: autorizacion } : {};
   const [resHorarios, resClases] = await Promise.all([
-    fetch(`${ADMIN_API}/horarios?fecha=${encodeURIComponent(fecha)}&estatus=activo`, { signal: AbortSignal.timeout(10000) }),
-    fetch(`${ADMIN_API}/clases`, { signal: AbortSignal.timeout(10000) }),
+    fetch(`${ADMIN_API}/horarios?fecha=${encodeURIComponent(fecha)}&estatus=activo`, { headers: cabeceras }),
+    fetch(`${ADMIN_API}/clases`, { headers: cabeceras }),
   ]);
   if (!resHorarios.ok) throw new Error(`horarios HTTP ${resHorarios.status}`);
   if (!resClases.ok) throw new Error(`clases HTTP ${resClases.status}`);
@@ -210,63 +202,55 @@ const buscarHorarioActivo = async (fecha, { horarioId, clase, time }) => {
   return { horario, clase: claseReal };
 };
 
-// Al liberarse un lugar confirmado, sube a la primera persona en lista de espera.
-const promoverListaEspera = async (conexion, horarioId) => (
-  await conexion.query(
-    `UPDATE webcobro.reservas
-        SET estado_cupo = 'confirmada'
-      WHERE id = (
-        SELECT id FROM webcobro.reservas
-         WHERE horario_id = $1 AND estado_cupo = 'espera'
-           AND estado NOT IN ('cancelado', 'no_asistio')
-         ORDER BY id
-         LIMIT 1
-         FOR UPDATE SKIP LOCKED
-      )
-      RETURNING ${COLUMNAS_RESERVA}`,
-    [horarioId],
-  )
-).rows[0] ?? null;
-
 //Modulo para recepcion y cobro
+// Las reservaciones viven en MongoDB (administrativa): aquí solo se traducen a la forma que usan las
+// pantallas de cobro y se resuelve el pago, que sí se guarda en Postgres.
+
+const ID_RESERVA = /^[a-f\d]{24}$/i;
+const hoyLocal = () => marcaLocal(new Date()).slice(0, 10);
+
+// Responde con el error de administrativa (reglas de negocio) o un mensaje genérico si algo se rompió.
+const responderError = (res, error, mensajeGenerico) => {
+  if (error.status) return res.status(error.status).json({ error: error.message });
+  console.error(mensajeGenerico, error);
+  return res.status(500).json({ error: mensajeGenerico });
+};
 
 //GET para las reservas
-app.get('/api/reservas', async (req, res) => {
-  // Antes de listar se marcan las inasistencias de las clases que ya pasaron.
-  await marcarInasistencias();
-  const resultado = await pool.query(
-    `SELECT ${COLUMNAS_RESERVA}
-       FROM webcobro.reservas
-      ORDER BY id`,
-  );
-  res.json(resultado.rows.map(decorarReserva));
+app.get('/api/reservas', adminORecepcion, async (req, res) => {
+  try {
+    const lista = await reservasAdmin.listar(req.headers.authorization);
+    // Más antiguas primero, como las devolvía el historial anterior.
+    lista.sort((a, b) => String(a.creadoEn).localeCompare(String(b.creadoEn)));
+    res.json(lista.map(decorarReserva));
+  } catch (error) {
+    responderError(res, error, 'No se pudieron consultar las reservaciones.');
+  }
 });
 
 /*
  * GET por código de reserva. Lo usa recepción para cobrar las reservaciones
- * hechas desde la app móvil cuando el cliente da su código (RSV-XXXXXX o solo
- * los 6 caracteres).
+ * hechas desde la app móvil cuando el cliente da su código (NU-XXXXX).
  */
-app.get('/api/reservas/codigo/:codigo', async (req, res) => {
+app.get('/api/reservas/codigo/:codigo', adminORecepcion, async (req, res) => {
   const codigo = normalizarCodigoReserva(req.params.codigo);
   if (!codigo) {
-    return res.status(400).json({ error: 'Código inválido. Usa NU-XXXXX, PQ-XXXXX o un código histórico RSV-XXXXXX.' });
+    return res.status(400).json({ error: 'El código de reserva no es válido. Ejemplo: NU-48213' });
   }
-  await marcarInasistencias();
-  const reserva = (
-    await pool.query(`SELECT ${COLUMNAS_RESERVA} FROM webcobro.reservas WHERE codigo = $1 OR codigo_anterior = $1`, [codigo])
-  ).rows[0];
-  if (!reserva) {
-    return res.status(404).json({ error: `No existe una reservación con el código ${codigo}.` });
+  try {
+    const reserva = await reservasAdmin.porCodigo(req.headers.authorization, codigo);
+    res.json(decorarReserva(reserva));
+  } catch (error) {
+    if (error.status === 404) return res.status(404).json({ error: `No existe una reservación con el código ${codigo}.` });
+    responderError(res, error, 'No se pudo consultar la reservación.');
   }
-  res.json(decorarReserva(reserva));
 });
 
 //POST para registrar una reservacion nueva (socio registrado o visitante)
-app.post('/api/reservas', async (req, res) => {
+app.post('/api/reservas', adminORecepcion, async (req, res) => {
   // 'price' NO se usa: el precio lo calcula el servidor con la tarifa de la
-  // clase (ver validacion 7). Solo se aceptan 'client', 'type', 'class',
-  // 'time', 'fecha', 'horarioId' y 'origen' ('recepcion' o 'app').
+  // clase. Solo se aceptan 'client', 'type', 'class', 'time', 'fecha',
+  // 'horarioId' y 'origen' ('recepcion' o 'app').
   const { client, type, class: clase, time, fecha, horarioId, clienteId } = req.body ?? {};
   const origen = req.body?.origen === undefined ? 'recepcion' : req.body.origen;
   if (origen !== 'recepcion' && origen !== 'app') {
@@ -283,16 +267,13 @@ app.post('/api/reservas', async (req, res) => {
     return res.status(400).json({ error: 'El tipo debe ser cliente o visitante.' });
   }
 
-  //validacion 3 el nombre de la clase es obligatorio. Ya NO se valida contra
-  //webcobro.clases: las clases se registran en el modulo administrativo
-  //(MongoDB) y el frontend envia el nombre de la clase elegida alli.
+  //validacion 3 el nombre de la clase es obligatorio (las clases viven en administrativa)
   if (typeof clase !== 'string' || clase.trim().length === 0) {
     return res.status(400).json({ error: 'La clase es obligatoria.' });
   }
 
   //validacion 4 la hora (HH:MM) y la fecha (YYYY-MM-DD) son obligatorias y
-  //no pueden estar en el pasado. La fecha coincide con un horario real de
-  //administrativa; no se puede inventar una fecha.
+  //no pueden estar en el pasado.
   if (typeof time !== 'string' || !/^\d{2}:\d{2}$/.test(time)) {
     return res.status(400).json({ error: 'El horario no es valido.' });
   }
@@ -319,16 +300,12 @@ app.post('/api/reservas', async (req, res) => {
     }
   }
 
-  //validacion 6 el horario real: la clase + hora deben coincidir exactamente
-  //con un horario activo de administracion para esa fecha. Si no existe
-  //ningun horario para esa fila, la reservacion no se acepta.
+  //validacion 5 el horario real: la clase + hora deben coincidir exactamente
+  //con un horario activo de administracion para esa fecha.
   let horarioActivo = null;
   let claseReal = null;
   try {
-    // Los horarios dicen en que clase y salon se da la sesion y cuantas
-    // plazas tiene; la clase del horario es la que manda: el precio y la
-    // capacidad salen de ella, no de lo que mande el navegador.
-    const encontrado = await buscarHorarioActivo(fecha, { horarioId, clase: clase.trim(), time });
+    const encontrado = await buscarHorarioActivo(fecha, { horarioId, clase: clase.trim(), time }, req.headers.authorization);
     horarioActivo = encontrado.horario;
     claseReal = encontrado.clase;
   } catch (err) {
@@ -349,383 +326,91 @@ app.post('/api/reservas', async (req, res) => {
     });
   }
 
-  //validacion 7 membresia del socio. Si es "cliente" se busca en
-  //webcobro.clientes para validar que este activo y vigente y definir si es
-  //Premium (no paga). El precio se define AQUI en el servidor, con la tarifa
-  //de la clase del catalogo de administrativa; NO se confia en el que manda
-  //el navegador. El visitante siempre paga la tarifa.
-  const monto = Number(claseReal.precio ?? 0);
-  if (!Number.isFinite(monto) || monto < 0) {
-    return res.status(409).json({
-      error: `La clase "${clase.trim()}" no tiene un precio valido. Corrigela en el modulo Clases.`,
-    });
-  }
-
-  let precioFinal = monto;
-  let clienteNombre = client.trim();
+  //validacion 6 el cliente: se busca en administrativa (fuente unica de clientes) y debe estar
+  //activo. Las reglas de tarifa, cupo, lista de espera y limite de reservaciones activas las aplica
+  //administrativa al crear la reservacion; aqui solo se revisa si una membresia comprada cubre la clase.
+  let nombreCliente = client.trim();
   if (type === 'cliente') {
-    if (!Number.isSafeInteger(clienteId) || clienteId <= 0) {
-      return res.status(400).json({ error: 'Selecciona un socio por su ID.' });
+    if (!clientesAdmin.esIdCliente(clienteId)) {
+      return res.status(400).json({ error: 'Selecciona un cliente registrado.' });
     }
-    const socio = (
-      await pool.query(
-        `SELECT nombre, membresia, activo, to_char(vigencia_hasta, 'YYYY-MM-DD') AS vigencia
-           FROM webcobro.clientes WHERE id = $1`,
-        [clienteId],
-      )
-    ).rows[0];
-
-    if (!socio) return res.status(404).json({ error: 'El socio seleccionado no existe.' });
-    clienteNombre = socio.nombre;
-    const inactivo = socio ? socio.activo === false : false;
-    const vencida = socio?.vigencia ? socio.vigencia < fecha : false;
-
-    if (inactivo) {
-      return res.status(409).json({ error: `El socio "${client.trim()}" esta inactivo. Registralo como visitante para continuar.` });
+    let socio;
+    try {
+      socio = await clientesAdmin.obtenerSocio(clienteId, req.headers.authorization);
+    } catch (error) {
+      return res.status(error.status || 503).json({ error: error.message });
     }
-    if (vencida && !(await pool.query('SELECT 1 FROM webcobro.membresias_compras WHERE cliente_id = $1 LIMIT 1', [clienteId])).rowCount) {
-      return res.status(409).json({ error: `La membresia de "${client.trim()}" esta vencida. Registralo como visitante para continuar.` });
+    if (!socio) return res.status(404).json({ error: 'El cliente seleccionado no existe.' });
+    nombreCliente = socio.nombre;
+    if (!socio.activo) {
+      return res.status(409).json({ error: `El cliente "${client.trim()}" esta inactivo. Registralo como visitante para continuar.` });
     }
-
-    // Premium vigente y activo: no paga. El resto paga la tarifa de la clase.
-    precioFinal = socio && socio.membresia === 'Premium' ? 0 : monto;
-    if (precioFinal <= 0 && socio && socio.membresia !== 'Premium') {
-      return res.status(400).json({ error: 'El socio debe pagar la tarifa de la clase.' });
-    }
-  } else {
-    // visitante: siempre paga
-    if (monto <= 0) {
-      return res.status(400).json({ error: 'El visitante debe pagar la tarifa de la clase.' });
-    }
-    precioFinal = monto;
   }
 
-  const capacidadTotal = Number(horarioActivo.capacidadTotal || 0);
-  const idHorario = horarioActivo.idHorario;
-  const listaEsperaHabilitada = horarioActivo.listaEsperaHabilitada === true;
-  const LIMITE_RESERVAS = 3;
-  const conexion = await pool.connect();
   try {
-    await conexion.query('BEGIN');
-    await conexion.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
-      type === 'cliente' ? `webcobro-cliente-${clienteId}` : `webcobro-visitante-${clienteNombre}`,
-    ]);
-    if (type === 'cliente') {
-      const socioActual = (await conexion.query(
-        `SELECT nombre, activo, membresia, to_char(vigencia_hasta, 'YYYY-MM-DD') AS vigencia
-           FROM webcobro.clientes WHERE id = $1 FOR SHARE`, [clienteId],
-      )).rows[0];
-      if (!socioActual || !socioActual.activo) {
-        await conexion.query('ROLLBACK');
-        return res.status(409).json({ error: 'El socio ya no esta disponible o vigente para la fecha de la sesion.' });
-      }
-      clienteNombre = socioActual.nombre;
-      const tieneCompras = (await conexion.query('SELECT 1 FROM webcobro.membresias_compras WHERE cliente_id = $1 LIMIT 1', [clienteId])).rowCount > 0;
-      if (!tieneCompras && socioActual.vigencia && socioActual.vigencia < fecha) {
-        await conexion.query('ROLLBACK');
-        return res.status(409).json({ error: 'La membresía histórica no está vigente para esta sesión.' });
-      }
-      // Premium solo conserva compatibilidad para socios aún no migrados.
-      precioFinal = !tieneCompras && socioActual.membresia === 'Premium' ? 0 : monto;
-      const sinConciliar = await conexion.query(
-        `SELECT 1 FROM webcobro.reservas WHERE tipo = 'cliente' AND cliente_id IS NULL
-          AND cliente = $1 AND estado IN ('pendiente', 'pagado')
-          AND fecha <> '' AND (fecha || ' ' || hora) > $2 LIMIT 1`,
-        [clienteNombre, marcaLocal(new Date())],
-      );
-      if (sinConciliar.rowCount) {
-        await conexion.query('ROLLBACK');
-        return res.status(409).json({ error: 'Hay reservas antiguas con este nombre sin ID. Concilialas antes de crear otras para evitar limites incorrectos.' });
-      }
-    }
-    // Un bloqueo por sesión serializa la revisión del último lugar y el INSERT.
-    await conexion.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`webcobro-horario-${idHorario}`]);
-
-    const duplicada = Number((await conexion.query(
-      `SELECT COUNT(*) AS n FROM webcobro.reservas
-        WHERE ((cliente_id = $6) OR ($6::integer IS NULL AND tipo = 'visitante' AND cliente = $1)) AND estado NOT IN ('cancelado', 'no_asistio')
-          AND (horario_id = $2 OR (horario_id = '' AND clase = $3 AND fecha = $4 AND hora = $5))`,
-      [clienteNombre, idHorario, clase.trim(), fecha, time, type === 'cliente' ? clienteId : null],
-    )).rows[0].n);
-    if (duplicada > 0) {
-      await conexion.query('ROLLBACK');
-      return res.status(409).json({ error: `"${client.trim()}" ya reservo esta sesión de "${clase.trim()}".` });
-    }
-
-    const activas = Number((await conexion.query(
-      `SELECT COUNT(*) AS n FROM webcobro.reservas
-        WHERE ((cliente_id = $2) OR ($2::integer IS NULL AND tipo = 'visitante' AND cliente = $1))
-          AND estado IN ('pendiente', 'pagado') AND fecha <> '' AND (fecha || ' ' || hora) > $3`,
-      [clienteNombre, type === 'cliente' ? clienteId : null, marcaLocal(new Date())],
-    )).rows[0].n);
-    if (activas >= LIMITE_RESERVAS) {
-      await conexion.query('ROLLBACK');
-      return res.status(409).json({ error: `"${client.trim()}" ya tiene ${LIMITE_RESERVAS} reservaciones activas. Cancela una para crear otra.` });
-    }
-
-    const confirmadas = Number((await conexion.query(
-      `SELECT COUNT(*) AS n FROM webcobro.reservas
-        WHERE estado_cupo = 'confirmada' AND estado NOT IN ('cancelado', 'no_asistio')
-          AND (horario_id = $1 OR (horario_id = '' AND clase = $2 AND fecha = $3 AND hora = $4))`,
-      [idHorario, clase.trim(), fecha, time],
-    )).rows[0].n);
-    const cupoLleno = capacidadTotal > 0 && confirmadas >= capacidadTotal;
-    if (cupoLleno && !listaEsperaHabilitada) {
-      await conexion.query('ROLLBACK');
-      return res.status(409).json({ error: `La clase "${clase.trim()}" a las ${time} no tiene cupo disponible y no admite lista de espera.` });
-    }
-
-    const estadoCupo = cupoLleno ? 'espera' : 'confirmada';
-    const cobertura = type === 'cliente'
-      ? await membresiasService.buscarCobertura(conexion, clienteId, claseReal.idClase, fecha) : null;
-    if (cobertura) precioFinal = 0;
-    // Código de reserva que el cliente presenta en recepción para pagar.
-    const codigo = await generarCodigoReserva(conexion, Boolean(cobertura));
-    let nueva = (await conexion.query(
-      `INSERT INTO webcobro.reservas
-         (cliente, tipo, clase, hora, estado, precio, fecha, horario_id, estado_cupo, codigo, origen, cliente_id, hora_fin)
-       VALUES ($1, $2, $3, $4, 'pendiente', $5, $6, $7, $8, $9, $10, $11, $12)
-       RETURNING ${COLUMNAS_RESERVA}`,
-      [clienteNombre, type, clase.trim(), time, precioFinal, fecha, idHorario, estadoCupo, codigo, origen, type === 'cliente' ? clienteId : null, horarioActivo.horaFin],
-    )).rows[0];
-
-    if (cobertura) {
-      nueva = (await conexion.query(`UPDATE webcobro.reservas
-        SET membresia_compra_id = $2, clase_id = $3, estado_pago = 'pagado', estado = 'pagado'
-        WHERE id = $1 RETURNING ${COLUMNAS_RESERVA}`, [nueva.id, cobertura.id, claseReal.idClase])).rows[0];
-    }
-
-    await conexion.query('COMMIT');
+    // Si el cliente tiene una membresía comprada y vigente que cubre la clase, administrativa la usa sola
+    // (precio 0, ya pagada); si no, la reservación queda pendiente de cobro.
+    const nueva = await reservasAdmin.crear(req.headers.authorization, {
+      tipo: type,
+      idCliente: type === 'cliente' ? clienteId : undefined,
+      nombreCliente,
+      idHorario: horarioActivo.idHorario,
+      origen,
+    });
     res.status(201).json({
-      mensaje: estadoCupo === 'espera'
-        ? `Sesión llena: cliente agregado a la lista de espera. Código: ${codigo}.`
-        : `Reservación confirmada. Código: ${codigo}.`,
+      mensaje: nueva.capacityStatus === 'espera'
+        ? `Sesión llena: cliente agregado a la lista de espera. Código: ${nueva.codigo}.`
+        : nueva.paymentStatus === 'pagado'
+          ? `Reservación confirmada con su membresía. Código: ${nueva.codigo}.`
+          : `Reservación confirmada. Código: ${nueva.codigo}.`,
       reservacion: decorarReserva(nueva),
     });
   } catch (error) {
-    await conexion.query('ROLLBACK');
-    console.error('No se pudo registrar la reservación:', error);
-    res.status(500).json({ error: 'No se pudo registrar la reservación.' });
-  } finally {
-    conexion.release();
+    responderError(res, error, 'No se pudo registrar la reservación.');
   }
-});
-//GET para clientes para llenar tabla del dashboard
-app.get('/api/clientes', async (req, res) => {
-  const resultado = await pool.query(
-    `SELECT id, nombre, membresia, telefono, correo, activo, enfermedades, lesiones,
-             to_char(fecha_nacimiento, 'YYYY-MM-DD') AS "fechaNacimiento",
-             nombre_tutor AS "nombreTutor", clave_elector_tutor AS "claveElectorTutor", estado_documentacion AS "estadoDocumentacion",
-            EXISTS (SELECT 1 FROM webcobro.membresias_compras mc WHERE mc.cliente_id = webcobro.clientes.id) AS "tieneCompras",
-             COALESCE((SELECT jsonb_agg(jsonb_build_object(
-               'id', mc.id, 'nombre', mc.condiciones->>'nombre',
-               'fechaInicio', to_char(mc.fecha_inicio, 'YYYY-MM-DD'),
-               'fechaFin', to_char(mc.fecha_fin, 'YYYY-MM-DD')
-             ) ORDER BY mc.fecha_fin DESC, mc.id DESC)
-               FROM webcobro.membresias_compras mc WHERE mc.cliente_id = webcobro.clientes.id), '[]'::jsonb) AS "membresiasCompradas",
-             COALESCE(to_jsonb(clientes)->>'codigo_usuario', 'CLI-' || id::text) AS codigo,
-             to_char(vigencia_hasta, 'YYYY-MM-DD') AS vigencia_hasta
-       FROM webcobro.clientes ORDER BY id`,
-  );
-  res.json(resultado.rows);
-});
-
-/*
- * POST para registrar un cliente nuevo (socio). Lo usa el módulo
- * administrativo: queda en webcobro.clientes y aparece al instante en cobro.
- */
-app.get('/api/clientes/codigo-disponible', async (req, res) => {
-  const id = typeof req.query.excluirId === 'string' && /^[1-9]\d*$/.test(req.query.excluirId) ? Number(req.query.excluirId) : null;
-  let codigo;
-  try { codigo = normalizarCodigoCliente(req.query.codigo, id); }
-  catch (error) { return res.status(400).json({ error: error.message }); }
-  res.set('Cache-Control', 'no-store');
-  if (!codigo) return res.json({ disponible: true });
-  const resultado = await pool.query(`SELECT id FROM webcobro.clientes
-    WHERE UPPER(to_jsonb(clientes)->>'codigo_usuario') = $1 AND ($2::integer IS NULL OR id <> $2)`, [codigo, id]);
-  res.json({ disponible: resultado.rows.length === 0 });
-});
-
-app.post('/api/clientes', async (req, res) => {
-  if (!req.body?.fechaNacimiento) return res.status(400).json({ error: 'La fecha de nacimiento es obligatoria para determinar si requiere tutor.' });
-  let menor;
-  try { menor = normalizarMenor(req.body ?? {}); }
-  catch (error) { return res.status(400).json({ error: error.message }); }
-  let codigoUsuario;
-  try { codigoUsuario = normalizarCodigoCliente(req.body?.codigo); }
-  catch (error) { return res.status(400).json({ error: error.message }); }
-  if (codigoUsuario) {
-    const usado = await pool.query(`SELECT id FROM webcobro.clientes WHERE UPPER(to_jsonb(clientes)->>'codigo_usuario') = $1`, [codigoUsuario]);
-    if (usado.rows.length) return res.status(409).json({ error: 'Ese código de usuario ya está en uso por otro cliente.' });
-  }
-  let salud;
-  try { salud = normalizarSalud(req.body ?? {}); }
-  catch (error) { return res.status(400).json({ error: error.message }); }
-  const { nombre, membresia, telefono, correo, activo, vigencia_hasta } = req.body ?? {};
-  if (!esCorreoValido(correo)) return res.status(400).json({ error: 'Introduce un correo electrónico válido.' });
-
-  if (!esNombreValido(nombre)) {
-    return res.status(400).json({ error: 'El nombre debe contener al menos 3 letras y solo admite letras y espacios.' });
-  }
-  if (!esTelefonoValido(telefono)) return res.status(400).json({ error: 'El teléfono solo admite números y un máximo de 10 dígitos.' });
-
-  const plan = typeof membresia === 'string' && membresia.trim() ? membresia.trim() : 'Sin membresía';
-  if (!['Sin membresía', 'Básica', 'Premium'].includes(plan)) {
-    return res.status(400).json({ error: 'Las membresías del catálogo se asignan mediante una compra en Recepción.' });
-  }
-
-  const correoLimpio = typeof correo === 'string' ? correo.trim().toLowerCase() : '';
-  if (correoLimpio) {
-    const duplicado = (
-      await pool.query(`SELECT id FROM webcobro.clientes WHERE LOWER(correo) = $1`, [correoLimpio])
-    ).rows[0];
-    if (duplicado) {
-      return res.status(409).json({ error: 'Ya existe un cliente registrado con ese correo.' });
-    }
-  }
-
-  const tel = typeof telefono === 'string' ? telefono.trim() : '';
-  const vig = typeof vigencia_hasta === 'string' ? vigencia_hasta : '';
-  const nuevo = (
-    await pool.query(
-      `INSERT INTO webcobro.clientes (nombre, membresia, telefono, correo, activo, vigencia_hasta, enfermedades, lesiones, fecha_nacimiento, nombre_tutor, clave_elector_tutor, estado_documentacion${codigoUsuario ? ', codigo_usuario' : ''})
-       VALUES ($1, $2, $3, $4, $5, NULLIF($6, '')::date, $7::text[], $8::text[], NULLIF($9, '')::date, $10, $11, $12${codigoUsuario ? ', $13' : ''})
-       RETURNING id, nombre, membresia, telefono, correo, activo, enfermedades, lesiones,
-                 to_char(fecha_nacimiento, 'YYYY-MM-DD') AS "fechaNacimiento",
-                 nombre_tutor AS "nombreTutor", clave_elector_tutor AS "claveElectorTutor", estado_documentacion AS "estadoDocumentacion",
-                 COALESCE(to_jsonb(clientes)->>'codigo_usuario', 'CLI-' || id::text) AS codigo,
-                 to_char(vigencia_hasta, 'YYYY-MM-DD') AS vigencia_hasta`,
-      [nombre.trim(), plan, tel, correoLimpio || null, activo === false ? false : true, vig, salud.enfermedades ?? [], salud.lesiones ?? [], menor.fechaNacimiento, menor.nombreTutor, menor.claveElectorTutor, menor.estadoDocumentacion, ...(codigoUsuario ? [codigoUsuario] : [])],
-    )
-  ).rows[0];
-
-  res.status(201).json({ mensaje: 'Cliente registrado', cliente: nuevo });
 });
 
 /*
  * PATCH para cambiar el estatus de una reservación (soft delete). NO se borra
  * el registro: se marca 'cancelado' o 'asistido' para conservar el historial.
- * El tablero de cobro oculta las canceladas y el módulo administrativo las
- * lista en sus filtros ("Canceladas" / "Asistidas").
+ * Las reglas (pago previo, mismo día, lista de espera) las aplica administrativa.
  */
-app.patch('/api/reservas/:id', async (req, res) => {
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id)) {
+app.patch('/api/reservas/:id', adminORecepcion, async (req, res) => {
+  const id = String(req.params.id);
+  if (!ID_RESERVA.test(id)) {
     return res.status(400).json({ error: 'El id de la reservación no es válido.' });
   }
-
-  // Estatus que se permite cambiar desde fuera: cancelar o confirmar asistencia.
   const { status } = req.body ?? {};
   if (status !== 'cancelado' && status !== 'asistido') {
-    return res.status(400).json({ error: "El estatus debe ser 'cancelado' o 'asistido'." });
+    return res.status(400).json({ error: "El estado debe ser 'cancelado' o 'asistido'." });
   }
 
-  // Las clases que ya pasaron sin que el cliente llegara quedan como inasistencia.
-  await marcarInasistencias();
-
-  const conexion = await pool.connect();
   try {
-    await conexion.query('BEGIN');
-    const existente = (await conexion.query(
-      `SELECT ${COLUMNAS_RESERVA} FROM webcobro.reservas WHERE id = $1 FOR UPDATE`,
-      [id],
-    )).rows[0];
-
-    if (!existente) {
-      await conexion.query('ROLLBACK');
-      return res.status(404).json({ error: 'La reservación no existe.' });
+    if (status === 'asistido') {
+      const reserva = await reservasAdmin.asistencia(req.headers.authorization, id);
+      return res.json({ mensaje: 'Asistencia confirmada.', reservacion: decorarReserva(reserva), promovida: null });
     }
-    if (status === 'asistido' && !flujoReservas.puedeConfirmarAsistencia(existente)) {
-      await conexion.query('ROLLBACK');
-      return res.status(409).json({ error: 'Primero registra el pago o la cobertura de esta reserva; debe estar vigente y con cupo confirmado.' });
-    }
-    if (status === 'asistido' && existente.fecha !== marcaLocal(new Date()).slice(0, 10)) {
-      await conexion.query('ROLLBACK');
-      return res.status(409).json({ error: 'La asistencia solo se confirma el dia de la sesion.' });
-    }
-    if (existente.status === status) {
-      await conexion.query('ROLLBACK');
-      return res.status(409).json({ error: status === 'asistido'
-        ? 'Este cliente ya tiene asistencia confirmada.'
-        : 'La reservación ya estaba cancelada.' });
-    }
-    if (status === 'asistido' && existente.status === 'cancelado') {
-      await conexion.query('ROLLBACK');
-      return res.status(409).json({ error: 'No se puede confirmar asistencia de una reservación cancelada.' });
-    }
-    if (status === 'asistido' && existente.status === 'no_asistio') {
-      await conexion.query('ROLLBACK');
-      return res.status(409).json({ error: 'La clase ya pasó y quedó registrada como inasistencia.' });
-    }
-    if (status === 'asistido' && existente.capacityStatus === 'espera') {
-      await conexion.query('ROLLBACK');
-      return res.status(409).json({ error: 'No se puede confirmar asistencia mientras el cliente siga en lista de espera.' });
-    }
-
-    // Cancelación: solo dentro de las 24 horas siguientes a la reservación,
-    // antes de que inicie la clase, y sin reembolso (el pago, si lo hubo, se
-    // conserva en webcobro.pagos).
-    if (status === 'cancelado') {
-      const { motivoNoCancelar } = reglasDeReserva(existente);
-      if (motivoNoCancelar) {
-        await conexion.query('ROLLBACK');
-        return res.status(409).json({ error: motivoNoCancelar });
-      }
-    }
-
-    if (existente.horarioId) {
-      await conexion.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`webcobro-horario-${existente.horarioId}`]);
-    }
-    const actualizada = (await conexion.query(
-      `UPDATE webcobro.reservas
-          SET estado = $2::text,
-              cancelada_en = CASE WHEN $2::text = 'cancelado' THEN NOW() ELSE cancelada_en END
-        WHERE id = $1
-        RETURNING ${COLUMNAS_RESERVA}`,
-      [id, status],
-    )).rows[0];
-
-    let promovida = null;
-    if (status === 'cancelado' && existente.capacityStatus === 'confirmada' && existente.horarioId) {
-      promovida = await promoverListaEspera(conexion, existente.horarioId);
-    }
-
-    await conexion.query('COMMIT');
-    const sinReembolso = existente.status === 'pagado' ? ' El pago no se reembolsa.' : '';
+    const { reservacion, promovida } = await reservasAdmin.cancelar(req.headers.authorization, id);
+    const sinReembolso = reservacion.paymentStatus === 'pagado' ? ' El pago no se reembolsa.' : '';
     res.json({
-      mensaje: status === 'asistido'
-        ? 'Asistencia confirmada'
-        : promovida
-          ? `Reservación cancelada.${sinReembolso} ${promovida.client} fue promovido desde la lista de espera.`
-          : `Reservación cancelada.${sinReembolso}`,
-      reservacion: decorarReserva(actualizada),
+      mensaje: promovida
+        ? `Reservación cancelada.${sinReembolso} ${promovida.client} subió de la lista de espera.`
+        : `Reservación cancelada.${sinReembolso}`,
+      reservacion: decorarReserva(reservacion),
       promovida: decorarReserva(promovida),
     });
   } catch (error) {
-    await conexion.query('ROLLBACK');
-    console.error('No se pudo actualizar la reservación:', error);
-    res.status(500).json({ error: 'No se pudo actualizar la reservación.' });
-  } finally {
-    conexion.release();
+    responderError(res, error, 'No se pudo actualizar la reservación.');
   }
 });
 
 /*
- * POST para reagendar una reservación: solo UNA vez y sin costo.
- * Body: { horarioId, fecha } del nuevo horario (de administrativa).
- *
- * Reglas:
- *  - Solo reservaciones pendientes o pagadas; las inasistencias, canceladas y
- *    asistidas no se reagendan.
- *  - La clase original no debe haber comenzado.
- *  - El nuevo horario debe ser de la MISMA clase (por eso no cambia el precio),
- *    estar activo, no haber pasado y tener cupo (no se reagenda a lista de espera).
- *  - El precio y el pago, si ya lo hubo, se conservan: reagendar no cuesta.
- *  - El lugar que se libera se ofrece a la primera persona en lista de espera.
+ * Reagendar sin costo: una sola vez, a otro horario de la MISMA clase, con lugar disponible.
+ * Conserva el código y no consume otro acceso de la membresía.
  */
-app.post('/api/reservas/:id/reagendar', async (req, res) => {
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id)) {
+app.post('/api/reservas/:id/reagendar', adminORecepcion, async (req, res) => {
+  const id = String(req.params.id);
+  if (!ID_RESERVA.test(id)) {
     return res.status(400).json({ error: 'El id de la reservación no es válido.' });
   }
   const { horarioId, fecha } = req.body ?? {};
@@ -736,268 +421,45 @@ app.post('/api/reservas/:id/reagendar', async (req, res) => {
     return res.status(400).json({ error: 'La fecha del nuevo horario es obligatoria (YYYY-MM-DD).' });
   }
 
-  await marcarInasistencias();
-
-  const actual = (
-    await pool.query(`SELECT ${COLUMNAS_RESERVA} FROM webcobro.reservas WHERE id = $1`, [id])
-  ).rows[0];
-  if (!actual) {
-    return res.status(404).json({ error: 'La reservación no existe.' });
-  }
-  const reglasPrevias = reglasDeReserva(actual);
-  if (reglasPrevias.motivoNoReagendar) {
-    return res.status(409).json({ error: reglasPrevias.motivoNoReagendar });
-  }
-  if (actual.horarioId === horarioId.trim()) {
-    return res.status(409).json({ error: 'Elige un horario distinto al que ya tiene reservado.' });
-  }
-
-  let destino;
   try {
-    destino = await buscarHorarioActivo(fecha, { horarioId: horarioId.trim() });
-  } catch (err) {
-    console.error('No se pudieron validar los horarios de administrativa:', err);
-    return res.status(500).json({ error: 'No se pudieron validar los horarios disponibles.' });
-  }
-  const nuevoHorario = destino.horario;
-  if (!nuevoHorario) {
-    return res.status(409).json({ error: `El horario elegido no existe o no está activo el ${fecha}.` });
-  }
-  if (nuevoHorario.nombreClase !== actual.class) {
-    return res.status(409).json({
-      error: `Solo se puede reagendar a otro horario de la misma clase ("${actual.class}").`,
-    });
-  }
-  const inicioNuevo = inicioDeClase(nuevoHorario.fecha || fecha, nuevoHorario.horaInicio);
-  if (!inicioNuevo || inicioNuevo.getTime() <= Date.now()) {
-    return res.status(409).json({ error: `La clase de las ${nuevoHorario.horaInicio} del ${fecha} ya pasó, elige otro horario.` });
-  }
-
-  const capacidadTotal = Number(nuevoHorario.capacidadTotal || 0);
-  const conexion = await pool.connect();
-  try {
-    await conexion.query('BEGIN');
-    // Se bloquean ambos horarios en orden fijo para evitar interbloqueos.
-    const candados = [actual.horarioId, nuevoHorario.idHorario].filter(Boolean).sort();
-    for (const candado of candados) {
-      await conexion.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`webcobro-horario-${candado}`]);
-    }
-
-    // Se vuelve a leer bloqueada por si cambió mientras se consultaba administrativa.
-    const bloqueada = (await conexion.query(
-      `SELECT ${COLUMNAS_RESERVA} FROM webcobro.reservas WHERE id = $1 FOR UPDATE`,
-      [id],
-    )).rows[0];
-    if (!bloqueada) {
-      await conexion.query('ROLLBACK');
-      return res.status(404).json({ error: 'La reservación ya no existe.' });
-    }
-    const reglas = reglasDeReserva(bloqueada);
+    const actual = await reservasAdmin.porId(req.headers.authorization, id);
+    const reglas = reglasDeReserva(actual);
     if (reglas.motivoNoReagendar) {
-      await conexion.query('ROLLBACK');
       return res.status(409).json({ error: reglas.motivoNoReagendar });
     }
-
-    await membresiasService.validarReagenda(conexion, bloqueada, nuevoHorario.fecha || fecha, nuevoHorario.idClase);
-
-    const duplicada = Number((await conexion.query(
-      `SELECT COUNT(*) AS n FROM webcobro.reservas
-        WHERE ((cliente_id = $4) OR ($4::integer IS NULL AND tipo = 'visitante' AND cliente = $1)) AND id <> $2 AND horario_id = $3
-          AND estado NOT IN ('cancelado', 'no_asistio')`,
-      [bloqueada.client, id, nuevoHorario.idHorario, bloqueada.clienteId],
-    )).rows[0].n);
-    if (duplicada > 0) {
-      await conexion.query('ROLLBACK');
-      return res.status(409).json({ error: `"${bloqueada.client}" ya tiene una reservación en ese horario.` });
+    if (actual.horarioId === horarioId.trim()) {
+      return res.status(409).json({ error: 'Elige un horario distinto al que ya tiene reservado.' });
     }
 
-    const confirmadas = Number((await conexion.query(
-      `SELECT COUNT(*) AS n FROM webcobro.reservas
-        WHERE horario_id = $1 AND estado_cupo = 'confirmada'
-          AND estado NOT IN ('cancelado', 'no_asistio')`,
-      [nuevoHorario.idHorario],
-    )).rows[0].n);
-    if (capacidadTotal > 0 && confirmadas >= capacidadTotal) {
-      await conexion.query('ROLLBACK');
-      return res.status(409).json({ error: `El horario de las ${nuevoHorario.horaInicio} del ${fecha} ya no tiene cupo.` });
+    const destino = await buscarHorarioActivo(fecha, { horarioId: horarioId.trim() }, req.headers.authorization);
+    const nuevoHorario = destino.horario;
+    if (!nuevoHorario) {
+      return res.status(409).json({ error: `El horario elegido no existe o no está activo el ${fecha}.` });
+    }
+    if (nuevoHorario.nombreClase !== actual.class) {
+      return res.status(409).json({ error: `Solo se puede reagendar a otro horario de la misma clase ("${actual.class}").` });
     }
 
-    // En un UPDATE los valores de la derecha son los anteriores, así que
-    // fecha_original/hora_original guardan el horario que se deja.
-    const reagendada = (await conexion.query(
-      `UPDATE webcobro.reservas
-          SET fecha_original = fecha,
-              hora_original  = hora,
-              fecha          = $2,
-              hora           = $3,
-              horario_id     = $4,
-              hora_fin       = $5,
-              estado_cupo    = 'confirmada',
-              reagendada     = TRUE,
-              reagendada_en  = NOW()
-        WHERE id = $1
-        RETURNING ${COLUMNAS_RESERVA}`,
-      [id, nuevoHorario.fecha || fecha, nuevoHorario.horaInicio, nuevoHorario.idHorario, nuevoHorario.horaFin],
-    )).rows[0];
+    // Si la reserva usa una membresía comprada, administrativa valida que el nuevo horario caiga en su vigencia y clases.
 
-    let promovida = null;
-    if (bloqueada.capacityStatus === 'confirmada' && bloqueada.horarioId) {
-      promovida = await promoverListaEspera(conexion, bloqueada.horarioId);
-    }
-
-    await conexion.query('COMMIT');
+    const { reservacion, promovida } = await reservasAdmin.reagendar(req.headers.authorization, id, nuevoHorario.idHorario);
     res.json({
-      mensaje: `Reservación reagendada sin costo al ${reagendada.fecha} a las ${reagendada.time}. Ya no se podrá volver a reagendar.`,
-      reservacion: decorarReserva(reagendada),
+      mensaje: `Reservación reagendada sin costo al ${reservacion.fecha} a las ${reservacion.time}. Ya no se podrá volver a reagendar.`,
+      reservacion: decorarReserva(reservacion),
       promovida: decorarReserva(promovida),
     });
   } catch (error) {
-    await conexion.query('ROLLBACK');
-    console.error('No se pudo reagendar la reservación:', error);
-    res.status(error.status || 500).json({ error: error.status ? error.message : 'No se pudo reagendar la reservación.' });
-  } finally {
-    conexion.release();
+    responderError(res, error, 'No se pudo reagendar la reservación.');
   }
 });
 
 /*
- * PATCH para editar un cliente (nombre, membresía, teléfono, correo, activo,
- * vigencia). Lo usa el módulo administrativo; cobro lo refleja al recargar.
+ * Clientes: ya no existen endpoints de clientes en cobro. La fuente única es MongoDB y todos los
+ * módulos (cobro, administrativa y app móvil) usan /admin/api/clientes.
  */
-app.patch('/api/clientes/:id', async (req, res) => {
-  let salud;
-  try { salud = normalizarSalud(req.body ?? {}); }
-  catch (error) { return res.status(400).json({ error: error.message }); }
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id)) {
-    return res.status(400).json({ error: 'El id del cliente no es válido.' });
-  }
-
-  const existe = (
-    await pool.query(`SELECT id, to_char(fecha_nacimiento, 'YYYY-MM-DD') AS "fechaNacimiento",
-      nombre_tutor AS "nombreTutor", clave_elector_tutor AS "claveElectorTutor", estado_documentacion AS "estadoDocumentacion"
-      FROM webcobro.clientes WHERE id = $1`, [id])
-  ).rows[0];
-  if (!existe) {
-    return res.status(404).json({ error: 'El cliente no existe.' });
-  }
-
-  const { nombre, membresia, telefono, correo, activo, vigencia_hasta } = req.body ?? {};
-  const campos = [];
-  const valores = [];
-  if (['fechaNacimiento', 'nombreTutor', 'claveElectorTutor', 'estadoDocumentacion'].some(c => req.body?.[c] !== undefined)) {
-    let menor;
-    try { menor = normalizarMenor(req.body, existe); }
-    catch (error) { return res.status(400).json({ error: error.message }); }
-    for (const [campo, valor] of [['fecha_nacimiento', menor.fechaNacimiento || null], ['nombre_tutor', menor.nombreTutor], ['clave_elector_tutor', menor.claveElectorTutor], ['estado_documentacion', menor.estadoDocumentacion]]) {
-      valores.push(valor); campos.push(`${campo} = $${valores.length}`);
-    }
-  }
-  if (req.body?.codigo !== undefined) {
-    let codigo;
-    try { codigo = normalizarCodigoCliente(req.body.codigo, id); }
-    catch (error) { return res.status(400).json({ error: error.message }); }
-    if (codigo) {
-      const usado = await pool.query(`SELECT id FROM webcobro.clientes WHERE UPPER(to_jsonb(clientes)->>'codigo_usuario') = $1 AND id <> $2`, [codigo, id]);
-      if (usado.rows.length) return res.status(409).json({ error: 'Ese código de usuario ya está en uso por otro cliente.' });
-    }
-    valores.push(codigo); campos.push(`codigo_usuario = $${valores.length}`);
-  }
-  for (const campo of ['enfermedades', 'lesiones']) {
-    if (salud[campo] !== undefined) {
-      valores.push(salud[campo]);
-      campos.push(`${campo} = $${valores.length}::text[]`);
-    }
-  }
-
-  if (nombre !== undefined) {
-    if (!esNombreValido(nombre)) {
-      return res.status(400).json({ error: 'El nombre debe contener al menos 3 letras y solo admite letras y espacios.' });
-    }
-    valores.push(nombre.trim());
-    campos.push(`nombre = $${valores.length}`);
-  }
-  if (membresia !== undefined) {
-    if (!['Sin membresía', 'Básica', 'Premium'].includes(membresia)) {
-      return res.status(400).json({ error: 'Las membresías del catálogo se asignan mediante una compra en Recepción.' });
-    }
-    valores.push(membresia);
-    campos.push(`membresia = $${valores.length}`);
-  }
-  if (telefono !== undefined) {
-    if (!esTelefonoValido(telefono)) return res.status(400).json({ error: 'El teléfono solo admite números y un máximo de 10 dígitos.' });
-    valores.push((telefono ?? '').trim());
-    campos.push(`telefono = $${valores.length}`);
-  }
-  if (correo !== undefined) {
-    if (!esCorreoValido(correo)) return res.status(400).json({ error: 'Introduce un correo electrónico válido.' });
-    const limpio = (correo ?? '').trim().toLowerCase();
-    if (limpio) {
-      const enUso = (
-        await pool.query(`SELECT id FROM webcobro.clientes WHERE LOWER(correo) = $1 AND id <> $2`, [limpio, id])
-      ).rows[0];
-      if (enUso) {
-        return res.status(409).json({ error: 'Ese correo ya está en uso por otro cliente.' });
-      }
-    }
-    valores.push(limpio || null);
-    campos.push(`correo = $${valores.length}`);
-  }
-  if (activo !== undefined) {
-    valores.push(activo === false ? false : true);
-    campos.push(`activo = $${valores.length}`);
-  }
-  if (vigencia_hasta !== undefined) {
-    // '' o null = sin vencimiento (no expira).
-    valores.push(typeof vigencia_hasta === 'string' && vigencia_hasta ? vigencia_hasta : null);
-    campos.push(`vigencia_hasta = $${valores.length}::date`);
-  }
-
-  if (campos.length === 0) {
-    return res.status(400).json({ error: 'No hay cambios para guardar.' });
-  }
-
-  valores.push(id);
-  const actualizado = (
-    await pool.query(
-      `UPDATE webcobro.clientes SET ${campos.join(', ')} WHERE id = $${valores.length}
-       RETURNING id, nombre, membresia, telefono, correo, activo, enfermedades, lesiones,
-                 to_char(fecha_nacimiento, 'YYYY-MM-DD') AS "fechaNacimiento",
-                 nombre_tutor AS "nombreTutor", clave_elector_tutor AS "claveElectorTutor", estado_documentacion AS "estadoDocumentacion",
-                 COALESCE(to_jsonb(clientes)->>'codigo_usuario', 'CLI-' || id::text) AS codigo,
-                 to_char(vigencia_hasta, 'YYYY-MM-DD') AS vigencia_hasta`,
-      valores,
-    )
-  ).rows[0];
-
-  res.json({ mensaje: 'Cliente actualizado', cliente: actualizado });
-});
-
-// Compatibilidad con clientes antiguos: DELETE ahora aplica una baja lógica.
-app.delete('/api/clientes/:id', async (req, res) => {
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id)) {
-    return res.status(400).json({ error: 'El id del cliente no es válido.' });
-  }
-
-  try {
-    const borrado = (
-      await pool.query(`UPDATE webcobro.clientes SET activo = FALSE WHERE id = $1 RETURNING id, nombre, activo`, [id])
-    ).rows[0];
-    if (!borrado) {
-      return res.status(404).json({ error: 'El cliente no existe.' });
-    }
-    res.json({ mensaje: 'Cliente desactivado. Su información e historial se conservaron.', cliente: borrado });
-  } catch (err) {
-    if (err && err.code === '23503') {
-      return res.status(409).json({ error: 'No se puede eliminar: el cliente tiene reservaciones o pagos registrados.' });
-    }
-    throw err;
-  }
-});
 
 //GET para el dropdown del modal de reservas
-app.get('/api/clases', async (req, res) => {
+app.get('/api/clases', adminORecepcion, async (req, res) => {
   const resultado = await pool.query(
     'SELECT id, nombre, precio::float8 AS precio FROM webcobro.clases ORDER BY id',
   );
@@ -1013,8 +475,8 @@ app.get('/api/clases', async (req, res) => {
 //   2) registra el pago en webcobro.pagos junto con su forma de pago,
 //   3) marca la reservación como 'pagado'.
 // El monto se toma del precio real guardado en la reservación, no del navegador.
-app.post('/api/cobros', async (req, res) => {
-  const reservaId = Number(req.body?.reservaId);
+app.post('/api/cobros', soloRecepcion, async (req, res) => {
+  const reservaId = String(req.body?.reservaId ?? '').trim();
   const metodoPago = String(req.body?.metodoPago ?? 'efectivo');
   const usuario =
     typeof req.body?.usuario === 'string' && req.body.usuario.trim()
@@ -1025,7 +487,7 @@ app.post('/api/cobros', async (req, res) => {
   const METODOS_PAGO = ['efectivo', 'tarjeta', 'transferencia'];
 
   //validacion 1 el id de la reservación es obligatorio
-  if (!Number.isInteger(reservaId) || reservaId <= 0) {
+  if (!ID_RESERVA.test(reservaId)) {
     return res.status(400).json({ error: 'El id de la reservación es obligatorio.' });
   }
 
@@ -1051,57 +513,52 @@ app.post('/api/cobros', async (req, res) => {
       ? String(req.body.referencia).trim()
       : null;
 
-  // Si la clase ya pasó sin que el cliente llegara, queda como inasistencia.
-  await marcarInasistencias();
+  let reserva;
+  try {
+    //validacion 4 la reservación debe existir (vive en administrativa)
+    reserva = await reservasAdmin.porId(req.headers.authorization, reservaId);
+  } catch (error) {
+    if (error.status === 404) return res.status(404).json({ error: 'Reservación no encontrada.' });
+    return responderError(res, error, 'No se pudo consultar la reservación.');
+  }
 
+  //validacion 5 solo se puede cobrar una reservación pendiente
+  if (reserva.paymentStatus === 'pagado') {
+    return res.status(400).json({ error: 'Esta reservación ya fue cobrada.' });
+  }
+  if (reserva.status === 'cancelado') {
+    return res.status(400).json({ error: 'No se puede cobrar una reservación cancelada.' });
+  }
+  if (reserva.status === 'no_asistio') {
+    return res.status(409).json({ error: 'El cliente no asistió a esta clase: la reservación ya no se puede cobrar.' });
+  }
+  if (reserva.capacityStatus === 'espera') {
+    return res.status(409).json({ error: 'No se puede cobrar una reservación que sigue en lista de espera.' });
+  }
+  if (reserva.type === 'cliente' && !reserva.clienteId) {
+    return res.status(409).json({ error: 'Reserva antigua sin cliente identificado: requiere conciliacion antes de cobrar.' });
+  }
+
+  const monto = Number(reserva.price);
+
+  //validacion 6 en efectivo, el cliente debe alcanzar el monto a cobrar
+  if (metodoPago === 'efectivo' && efectivoRecibido < monto) {
+    return res.status(400).json({ error: 'El efectivo recibido no alcanza para cubrir el monto.' });
+  }
+
+  // El cambio solo existe cuando se paga en efectivo de más (igual que el POS).
+  const cambio = metodoPago === 'efectivo' ? Math.max(efectivoRecibido - monto, 0) : null;
+
+  const COLUMNAS_PAGO = `id, folio, monto::float8 AS monto, metodo_pago,
+                   efectivo_recibido::float8 AS efectivo_recibido,
+                   cambio::float8 AS cambio, referencia, usuario, creado_en`;
+
+  // 1) El pago se guarda primero en cobro (es el registro del dinero). Una reservación solo admite un pago
+  //    (índice único por reserva_ref): si un intento anterior quedó a medias, se retoma ese mismo pago.
+  let nuevoPago;
   const conexion = await pool.connect();
   try {
     await conexion.query('BEGIN');
-
-    //validacion 4 la reservación debe existir (bloqueada para el cobro)
-    const reserva = (
-      await conexion.query(
-        `SELECT id, cliente, cliente_id, tipo, clase, hora, fecha, estado, estado_pago, estado_cupo, precio
-           FROM webcobro.reservas
-          WHERE id = $1
-          FOR UPDATE`,
-        [reservaId],
-      )
-    ).rows[0];
-    if (!reserva) {
-      await conexion.query('ROLLBACK');
-      return res.status(404).json({ error: 'Reservación no encontrada.' });
-    }
-
-    //validacion 5 solo se puede cobrar una reservación pendiente
-    if (reserva.estado_pago === 'pagado') {
-      await conexion.query('ROLLBACK');
-      return res.status(400).json({ error: 'Esta reservación ya fue cobrada.' });
-    }
-    if (reserva.estado === 'cancelado') {
-      await conexion.query('ROLLBACK');
-      return res.status(400).json({ error: 'No se puede cobrar una reservación cancelada.' });
-    }
-    if (reserva.estado === 'no_asistio') {
-      await conexion.query('ROLLBACK');
-      return res.status(409).json({ error: 'El cliente no asistió a esta clase: la reservación ya no se puede cobrar.' });
-    }
-    if (reserva.estado_cupo === 'espera') {
-      await conexion.query('ROLLBACK');
-      return res.status(409).json({ error: 'No se puede cobrar una reservación que sigue en lista de espera.' });
-    }
-
-    const monto = Number(reserva.precio);
-
-    //validacion 6 en efectivo, el cliente debe alcanzar el monto a cobrar
-    if (metodoPago === 'efectivo' && efectivoRecibido < monto) {
-      await conexion.query('ROLLBACK');
-      return res.status(400).json({ error: 'El efectivo recibido no alcanza para cubrir el monto.' });
-    }
-
-    // El cambio solo existe cuando se paga en efectivo de más (igual que el POS).
-    const cambio = metodoPago === 'efectivo' ? Math.max(efectivoRecibido - monto, 0) : null;
-
     /*
      * Folio diario basado en la fecha de PostgreSQL, no en el reloj del navegador.
      * El bloqueo transaccional serializa únicamente la generación de folios del
@@ -1126,25 +583,17 @@ app.post('/api/cobros', async (req, res) => {
     ).rows[0].numero;
     const folio = `NCC-${fechaFolio.fecha}-${String(consecutivo).padStart(4, '0')}`;
 
-    // El socio puede tener ficha en webcobro.clientes; el visitante no.
-    if (reserva.tipo === 'cliente' && !reserva.cliente_id) {
-      await conexion.query('ROLLBACK');
-      return res.status(409).json({ error: 'Reserva antigua sin socio identificado: requiere conciliacion por ID antes de cobrar.' });
-    }
-
-    const nuevoPago = (
+    nuevoPago = (
       await conexion.query(
         `INSERT INTO webcobro.pagos
-           (reserva_id, cliente_id, cliente_nombre, monto, metodo_pago,
+           (reserva_ref, cliente_ref, cliente_nombre, monto, metodo_pago,
             efectivo_recibido, cambio, referencia, folio, usuario)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-         RETURNING id, folio, monto::float8 AS monto, metodo_pago,
-                   efectivo_recibido::float8 AS efectivo_recibido,
-                   cambio::float8 AS cambio, referencia, usuario, creado_en`,
+         RETURNING ${COLUMNAS_PAGO}`,
         [
           reserva.id,
-          reserva.cliente_id,
-          reserva.cliente,
+          reserva.clienteId,
+          reserva.client,
           monto,
           metodoPago,
           metodoPago === 'efectivo' ? efectivoRecibido : null,
@@ -1155,93 +604,98 @@ app.post('/api/cobros', async (req, res) => {
         ],
       )
     ).rows[0];
-
-    // Se marca la reservación como pagada y se devuelve con los mismos nombres
-    // de campo que GET /api/reservas para que el dashboard la reemplace tal cual.
-    const reservaPagada = (
-      await conexion.query(
-        `UPDATE webcobro.reservas
-            SET estado_pago = 'pagado', estado = CASE WHEN estado = 'pendiente' THEN 'pagado' ELSE estado END
-          WHERE id = $1
-          RETURNING ${COLUMNAS_RESERVA}`,
-        [reserva.id],
-      )
-    ).rows[0];
-
     await conexion.query('COMMIT');
-
-    const fechaPago = new Date(nuevoPago.creado_en);
-    const ticket = {
-      folio: nuevoPago.folio,
-      fecha: fechaPago.toISOString(),
-      cliente: reserva.cliente,
-      reservaId: reserva.id,
-      clase: reserva.clase,
-      fechaClase: reserva.fecha,
-      horaClase: reserva.hora,
-      usuario: nuevoPago.usuario,
-      metodoPago: nuevoPago.metodo_pago,
-      total: nuevoPago.monto,
-      efectivoRecibido: nuevoPago.efectivo_recibido,
-      cambio: nuevoPago.cambio,
-      referencia: nuevoPago.referencia,
-      items: [
-        {
-          descripcion: reserva.clase || 'Clase de gimnasio',
-          cantidad: 1,
-          precioUnitario: nuevoPago.monto,
-          importe: nuevoPago.monto,
-        },
-      ],
-    };
-
-    // El pago ya está confirmado. La impresora es opcional y se atiende aparte.
-    void imprimirTicket(ticket).then((enviado) => {
-      if (process.env.TICKET_IMPRESION_HABILITADA === 'true' && !enviado) {
-        console.warn('Cobro registrado; no se pudo enviar el comprobante a la impresora.');
-      }
-    }).catch((error) => console.error('Fallo de impresión:', error.message));
-
-    res.status(201).json({
-      mensaje: 'Cobro registrado',
-      reserva: decorarReserva(reservaPagada),
-      ticket,
-      pago: {
-        id: Number(nuevoPago.id),
-        folio: nuevoPago.folio,
-        reservaId: reserva.id,
-        monto: nuevoPago.monto,
-        metodoPago: nuevoPago.metodo_pago,
-        efectivoRecibido: nuevoPago.efectivo_recibido,
-        cambio: nuevoPago.cambio,
-        referencia: nuevoPago.referencia,
-        usuario: nuevoPago.usuario,
-        fecha: fechaPago.toISOString(),
-      },
-    });
   } catch (error) {
     await conexion.query('ROLLBACK');
-    console.error('Error al registrar el cobro:', error);
-    res.status(500).json({ error: 'No se pudo registrar el cobro.' });
+    if (error.code === '23505') {
+      // Ya había un pago de esta reservación (el intento anterior no alcanzó a marcarla como pagada).
+      nuevoPago = (await pool.query(`SELECT ${COLUMNAS_PAGO} FROM webcobro.pagos WHERE reserva_ref = $1`, [reserva.id])).rows[0];
+    }
+    if (!nuevoPago) {
+      console.error('Error al registrar el cobro:', error);
+      return res.status(500).json({ error: 'No se pudo registrar el cobro.' });
+    }
   } finally {
     conexion.release();
   }
+
+  // 2) Se marca la reservación como pagada en administrativa, para que la vean todos los módulos.
+  let reservaPagada;
+  try {
+    reservaPagada = await reservasAdmin.pago(req.headers.authorization, reserva.id, {
+      metodoPago: nuevoPago.metodo_pago,
+      folioPago: nuevoPago.folio,
+    });
+  } catch (error) {
+    console.error('El cobro quedó registrado pero no se pudo marcar la reservación:', error);
+    return res.status(error.status || 502).json({
+      error: `El cobro se registró con el folio ${nuevoPago.folio}, pero no se pudo actualizar la reservación (${error.message}). Vuelve a intentar el cobro: no se duplicará.`,
+    });
+  }
+
+  const fechaPago = new Date(nuevoPago.creado_en);
+  const ticket = {
+    folio: nuevoPago.folio,
+    fecha: fechaPago.toISOString(),
+    cliente: reserva.client,
+    reservaId: reserva.id,
+    codigo: reserva.codigo,
+    clase: reserva.class,
+    fechaClase: reserva.fecha,
+    horaClase: reserva.time,
+    usuario: nuevoPago.usuario,
+    metodoPago: nuevoPago.metodo_pago,
+    total: nuevoPago.monto,
+    efectivoRecibido: nuevoPago.efectivo_recibido,
+    cambio: nuevoPago.cambio,
+    referencia: nuevoPago.referencia,
+    items: [
+      {
+        descripcion: reserva.class || 'Clase de gimnasio',
+        cantidad: 1,
+        precioUnitario: nuevoPago.monto,
+        importe: nuevoPago.monto,
+      },
+    ],
+  };
+
+  // El pago ya está confirmado. La impresora es opcional y se atiende aparte.
+  void imprimirTicket(ticket).then((enviado) => {
+    if (process.env.TICKET_IMPRESION_HABILITADA === 'true' && !enviado) {
+      console.warn('Cobro registrado; no se pudo enviar el comprobante a la impresora.');
+    }
+  }).catch((error) => console.error('Fallo de impresión:', error.message));
+
+  res.status(201).json({
+    mensaje: 'Cobro registrado',
+    reserva: decorarReserva(reservaPagada),
+    ticket,
+    pago: {
+      id: Number(nuevoPago.id),
+      folio: nuevoPago.folio,
+      reservaId: reserva.id,
+      monto: nuevoPago.monto,
+      metodoPago: nuevoPago.metodo_pago,
+      efectivoRecibido: nuevoPago.efectivo_recibido,
+      cambio: nuevoPago.cambio,
+      referencia: nuevoPago.referencia,
+      usuario: nuevoPago.usuario,
+      fecha: fechaPago.toISOString(),
+    },
+  });
 });
 
 //GET para tarjetas superiores del dashboard
-app.get('/api/kpis', async (req, res) => {
-  await marcarInasistencias();
-  const resumen = (
-    await pool.query(
-      `SELECT COUNT(*) FILTER (
-                WHERE estado = 'pendiente' AND estado_cupo = 'confirmada' AND fecha = CURRENT_DATE::text
-              )::int AS pendientes,
-              COUNT(*) FILTER (
-                WHERE estado NOT IN ('cancelado', 'no_asistio') AND estado_cupo = 'confirmada' AND fecha = CURRENT_DATE::text
-              )::int AS total
-         FROM webcobro.reservas`,
-    )
-  ).rows[0];
+app.get('/api/kpis', adminORecepcion, async (req, res) => {
+  let delDia;
+  try {
+    delDia = await reservasAdmin.listar(req.headers.authorization, { fecha: hoyLocal() });
+  } catch (error) {
+    return responderError(res, error, 'No se pudieron consultar las reservaciones del día.');
+  }
+  const confirmadas = delDia.filter((r) => r.capacityStatus === 'confirmada');
+  const pendientes = confirmadas.filter((r) => r.status === 'pendiente').length;
+  const total = confirmadas.filter((r) => !ESTADOS_INACTIVOS.includes(r.status)).length;
 
   const ingresosHoy = (
     await pool.query(
@@ -1252,9 +706,9 @@ app.get('/api/kpis', async (req, res) => {
   ).rows[0].total;
 
   res.json({
-    clientesEsperados: resumen.pendientes,
+    clientesEsperados: pendientes,
     ingresosHoy,
-    totalReservas: resumen.total,
+    totalReservas: total,
   });
 });
 
@@ -1265,6 +719,9 @@ app.get('/api/checador/acceso', accesoChecador, (_req, res) => res.json({ autori
 app.use('/api/asistencia', accesoChecador);
 const asistencia = montarAsistencia(app, pool, {
   turnosHabilitados: process.env.ASISTENCIA_TURNOS_HABILITADOS === 'true',
+  // El reloj checador solo lo opera el administrador.
+  proteger: [requerirRol(ADMIN_API, 'administrador')],
+  clientesAdmin,
 });
 if (process.env.ASISTENCIA_TURNOS_HABILITADOS === 'true' &&
     process.env.ASISTENCIA_FALTAS_AUTOMATICAS === 'true') {

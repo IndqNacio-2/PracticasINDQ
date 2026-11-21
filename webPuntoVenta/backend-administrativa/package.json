@@ -12,8 +12,7 @@
     "db:seed": "tsx src/db/seed-usuarios.ts",
     "db:migrar-hora-clase": "tsx src/db/migrar-hora-clase.ts",
     "db:cargar-programacion": "tsx src/db/cargar-programacion-semanal.ts",
-    "db:crear-checador": "tsx src/db/crear-checador.ts",
-    "db:migrar-inventario": "tsx scripts/migrar-inventario.ts"
+    "db:reconciliar-cupos": "tsx src/db/reconciliar-cupos.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

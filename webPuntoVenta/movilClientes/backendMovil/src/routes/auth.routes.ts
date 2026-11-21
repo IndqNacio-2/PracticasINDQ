@@ -7,6 +7,8 @@ import { limitar } from '../middleware/limitar';
 import { perfilPublico } from '../lib/vista';
 import { validarCorreo, validarPassword } from '../lib/validar';
 import { MENSAJE_SIN_ACTIVAR, registrarCliente } from '../clientes-core/cliente.core';
+import { resumenMembresiaDe } from '../lib/membresia';
+import { fechaLocal } from '../lib/fecha';
 
 const router = Router();
 
@@ -52,7 +54,7 @@ router.post('/login', limite, async (req, res) => {
     if (String(cliente.estatus) !== 'activo') return res.status(403).json({ error: 'Tu cuenta está inactiva' });
 
     await Cliente.updateOne({ _id: cliente._id }, { ultimoAcceso: new Date() });
-    res.json({ token: firmar(String(cliente._id), cliente.tokenVersion ?? 0), cliente: perfilPublico(cliente) });
+    res.json({ token: firmar(String(cliente._id), cliente.tokenVersion ?? 0), cliente: perfilPublico(cliente, await resumenMembresiaDe(String(cliente._id), fechaLocal())) });
 });
 
 // POST /api/auth/activar-cuenta  { correo, codigoAcceso, password, confirmarPassword }
@@ -72,7 +74,7 @@ router.post('/activar-cuenta', limite, async (req, res) => {
 
     cliente.password = bcrypt.hashSync(password.valor, 10);
     await cliente.save();
-    res.json({ token: firmar(String(cliente._id), cliente.tokenVersion ?? 0), cliente: perfilPublico(cliente) });
+    res.json({ token: firmar(String(cliente._id), cliente.tokenVersion ?? 0), cliente: perfilPublico(cliente, await resumenMembresiaDe(String(cliente._id), fechaLocal())) });
 });
 
 export default router;

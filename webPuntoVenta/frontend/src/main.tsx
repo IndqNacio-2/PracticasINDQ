@@ -36,8 +36,13 @@ if (isLogin) {
       <WebAdministrativaSection />
     </ModuleGuard>
   )
-} else if (path === '/cobro/asistencia' || path === '/cobro/asistencia/') {
-  content = <ChecadorGuard><WebCobroSection /></ChecadorGuard>
+} else if (path.startsWith('/cobro/asistencia')) {
+  // Reloj checador: solo el administrador lo abre (no aparece en el menú de recepción).
+  content = (
+    <ModuleGuard allowedRole="administrador">
+      <WebCobroSection />
+    </ModuleGuard>
+  )
 } else if (path.startsWith('/cobro')) {
   content = (
     <ModuleGuard allowedRole="recepcion">

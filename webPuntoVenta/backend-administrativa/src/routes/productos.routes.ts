@@ -8,6 +8,7 @@ const router = Router();
 router.use(requireAuth);
 // Los tres roles consultan el mismo inventario; Recepción no lo modifica.
 const acceso = requireRole('administrador', 'vendedor');
+// Inventario compartido: recepción también lo consulta (solo lectura).
 const consulta = requireRole('administrador', 'vendedor', 'recepcion');
 
 const T = 'webpontoventa.products';

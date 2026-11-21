@@ -106,8 +106,8 @@ export function ClientesPage({ soloRegistro = false, rutaClientes = '/clientes',
     nombre: avisos.nombre || (!esNombreValido(form.nombre) ? 'El nombre debe contener al menos 3 letras y solo admite letras y espacios.' : ''),
     correo: !form.correo.trim() ? 'El correo es obligatorio.'
       : !esCorreoValido(form.correo) ? 'Introduce un correo electrónico válido.'
-      : clientes.some(s => s.id !== editando?.id && s.correo?.trim().toLowerCase() === form.correo.trim().toLowerCase())
-        ? 'Ese correo ya está en uso por otro cliente.' : '',
+        : clientes.some(s => s.id !== editando?.id && s.correo?.trim().toLowerCase() === form.correo.trim().toLowerCase())
+          ? 'Ese correo ya está en uso por otro cliente.' : '',
     telefono: avisos.telefono || (!esTelefonoValido(form.telefono) ? 'El teléfono solo admite números y un máximo de 10 dígitos.' : ''),
   };
 
@@ -322,90 +322,90 @@ export function ClientesPage({ soloRegistro = false, rutaClientes = '/clientes',
       </header>
 
       <div className="rx-page-content rx-clientes-content">
-      <div className="rx-clientes-list-heading">
-        <div>
-          <h2>Clientes registrados</h2>
-          <p>Consulta los datos de contacto, las membresías compradas y el estatus de cada cliente.</p>
+        <div className="rx-clientes-list-heading">
+          <div>
+            <h2>Clientes registrados</h2>
+            <p>Consulta los datos de contacto, las membresías compradas y el estatus de cada cliente.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={abrirNuevo}
+              className="rx-btn rx-btn--accent">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+              Nuevo cliente
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={abrirNuevo}
-            className="rx-btn rx-btn--accent">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-            Nuevo cliente
-          </button>
-        </div>
-      </div>
 
-      {(accionError || (!loading && error)) && (
-        <div role="alert" className="rx-alert rx-alert--danger">
-          {accionError || error}
-        </div>
-      )}
-      <DataState loading={loading}>
-        <DataTable
-          variant="spaced"
-          searchPlaceholder="Buscar por nombre o apellido…"
-          searchKeys={['nombre']}
-          normalizeSearch
-          data={clientes.map(s => ({ ...s, codigo: s.codigo || `CLI-${s.id}` })) as unknown as Record<string, unknown>[]}
-          emptyMessage="No hay clientes que mostrar"
-          columns={[
-            {
-              key: 'codigo', header: 'Código Usuario',
-              render: row => <span className="rx-code">{String(row.codigo ?? '—')}</span>,
-            },
-            {
-              key: 'nombre', header: 'Cliente',
-              render: row => {
-                const s = row as unknown as SocioCobro;
-                const ini = s.nombre.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase();
-                return (
-                  <div className="flex items-center gap-3">
-                    <div className="rx-clientes-avatar" aria-hidden="true">{ini}</div>
-                    <div>
-                      <p className="rx-clientes-name">{s.nombre}</p>
-                      <p className="rx-clientes-meta">{s.correo || 'Sin correo'}</p>
+        {(accionError || (!loading && error)) && (
+          <div role="alert" className="rx-alert rx-alert--danger">
+            {accionError || error}
+          </div>
+        )}
+        <DataState loading={loading}>
+          <DataTable
+            variant="spaced"
+            searchPlaceholder="Buscar por nombre o apellido…"
+            searchKeys={['nombre']}
+            normalizeSearch
+            data={clientes.map(s => ({ ...s, codigo: s.codigo || `CLI-${s.id}` })) as unknown as Record<string, unknown>[]}
+            emptyMessage="No hay clientes que mostrar"
+            columns={[
+              {
+                key: 'codigo', header: 'Código Usuario',
+                render: row => <span className="rx-code">{String(row.codigo ?? '—')}</span>,
+              },
+              {
+                key: 'nombre', header: 'Cliente',
+                render: row => {
+                  const s = row as unknown as SocioCobro;
+                  const ini = s.nombre.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase();
+                  return (
+                    <div className="flex items-center gap-3">
+                      <div className="rx-clientes-avatar" aria-hidden="true">{ini}</div>
+                      <div>
+                        <p className="rx-clientes-name">{s.nombre}</p>
+                        <p className="rx-clientes-meta">{s.correo || 'Sin correo'}</p>
+                      </div>
                     </div>
-                  </div>
-                );
-              }
-            },
-            { key: 'telefono', header: 'Teléfono' },
-            { key: 'estadoDocumentacion', header: 'Documentación', render: row => !row.fechaNacimiento ? 'Sin fecha de nacimiento' : String(row.fechaNacimiento) > `${hoy.getFullYear() - 18}${hoyISO.slice(4)}` ? <span className={`rx-badge rx-badge--${row.estadoDocumentacion === 'validada' ? 'success' : 'warning'}`}>{row.estadoDocumentacion === 'validada' ? 'Validada' : 'Pendiente'}</span> : 'No aplica' },
-            { key: 'enfermedades', header: 'Enfermedades', render: row => <SaludEtiquetas items={(row as unknown as SocioCobro).enfermedades} /> },
-            { key: 'lesiones', header: 'Lesiones', render: row => <SaludEtiquetas items={(row as unknown as SocioCobro).lesiones} /> },
-            {
-              key: 'membresiasCompradas', header: 'Membresías compradas',
-              render: row => <MembresiasCliente compras={(row as unknown as SocioCobro).membresiasCompradas} />
-            },
-            {
-              key: 'activo', header: 'Estatus',
-              render: row => <span className={`rx-badge ${estatusDe(row as unknown as SocioCobro) === 'activo' ? 'rx-badge--success' : 'rx-badge--neutral'}`}>{estatusDe(row as unknown as SocioCobro) === 'activo' ? 'Activo' : 'Inactivo'}</span>
-            },
-          ]}
-          actions={soloRegistro ? undefined : row => {
-            const s = row as unknown as SocioCobro;
-            const activoManual = s.activo !== false;
-            return (
-              <div className="flex items-center gap-2 justify-end">
-                <button type="button" onClick={() => navigate(`${rutaClientes}/${s.id}`)} className="rx-btn rx-btn--outline" title="Ver perfil e historial">Ver perfil</button>
-              {permiteActivacion && <button type="button" disabled={procesando !== null || actualizando || !s.activo || !s.correo} onClick={() => void habilitarMovil(s)} className="rx-btn rx-btn--outline" title="Generar código temporal para activar la cuenta móvil">Acceso móvil</button>}
-                <button type="button" disabled={procesando !== null || actualizando} onClick={() => abrirEditar(s)} className="rx-icon-btn" title="Editar" aria-label={`Editar a ${s.nombre}`}>
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                </button>
-                <button type="button" disabled={procesando !== null || actualizando} onClick={() => void toggleEstatus(s)} className={`rx-icon-btn ${activoManual ? 'rx-btn--danger' : 'rx-btn--dark'}`} aria-label={`${activoManual ? 'Desactivar' : 'Activar'} a ${s.nombre}`} title={activoManual ? 'Desactivar (dar de baja)' : 'Activar (no renueva la membresía)'}>
-                  {activoManual
-                    ? <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
-                    : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                  }
-                </button>
-                <button type="button" disabled={procesando !== null || actualizando || !activoManual} onClick={() => void eliminar(s)} className="rx-icon-btn rx-btn--danger" title="Dar de baja conservando historial" aria-label={`Dar de baja a ${s.nombre} conservando historial`}>
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                </button>
-              </div>
-            );
-          }}
-        />
+                  );
+                }
+              },
+              { key: 'telefono', header: 'Teléfono' },
+              { key: 'estadoDocumentacion', header: 'Documentación', render: row => !row.fechaNacimiento ? 'Sin fecha de nacimiento' : String(row.fechaNacimiento) > `${hoy.getFullYear() - 18}${hoyISO.slice(4)}` ? <span className={`rx-badge rx-badge--${row.estadoDocumentacion === 'validada' ? 'success' : 'warning'}`}>{row.estadoDocumentacion === 'validada' ? 'Validada' : 'Pendiente'}</span> : 'No aplica' },
+              { key: 'enfermedades', header: 'Enfermedades', render: row => <SaludEtiquetas items={(row as unknown as SocioCobro).enfermedades} /> },
+              { key: 'lesiones', header: 'Lesiones', render: row => <SaludEtiquetas items={(row as unknown as SocioCobro).lesiones} /> },
+              {
+                key: 'membresiasCompradas', header: 'Membresías compradas',
+                render: row => <MembresiasCliente compras={(row as unknown as SocioCobro).membresiasCompradas} />
+              },
+              {
+                key: 'activo', header: 'Estatus',
+                render: row => <span className={`rx-badge ${estatusDe(row as unknown as SocioCobro) === 'activo' ? 'rx-badge--success' : 'rx-badge--neutral'}`}>{estatusDe(row as unknown as SocioCobro) === 'activo' ? 'Activo' : 'Inactivo'}</span>
+              },
+            ]}
+            actions={soloRegistro ? undefined : row => {
+              const s = row as unknown as SocioCobro;
+              const activoManual = s.activo !== false;
+              return (
+                <div className="flex items-center gap-2 justify-end">
+                  <button type="button" onClick={() => navigate(`${rutaClientes}/${s.id}`)} className="rx-btn rx-btn--outline" title="Ver perfil e historial">Ver perfil</button>
+                  {permiteActivacion && <button type="button" disabled={procesando !== null || actualizando || !s.activo || !s.correo} onClick={() => void habilitarMovil(s)} className="rx-btn rx-btn--outline" title="Generar código temporal para activar la cuenta móvil">Acceso móvil</button>}
+                  <button type="button" disabled={procesando !== null || actualizando} onClick={() => abrirEditar(s)} className="rx-icon-btn" title="Editar" aria-label={`Editar a ${s.nombre}`}>
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                  </button>
+                  <button type="button" disabled={procesando !== null || actualizando} onClick={() => void toggleEstatus(s)} className={`rx-icon-btn ${activoManual ? 'rx-btn--danger' : 'rx-btn--dark'}`} aria-label={`${activoManual ? 'Desactivar' : 'Activar'} a ${s.nombre}`} title={activoManual ? 'Desactivar (dar de baja)' : 'Activar (no renueva la membresía)'}>
+                    {activoManual
+                      ? <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
+                      : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    }
+                  </button>
+                  <button type="button" disabled={procesando !== null || actualizando || !activoManual} onClick={() => void eliminar(s)} className="rx-icon-btn rx-btn--danger" title="Dar de baja conservando historial" aria-label={`Dar de baja a ${s.nombre} conservando historial`}>
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                  </button>
+                </div>
+              );
+            }}
+          />
         </DataState>
       </div>
 
@@ -419,43 +419,43 @@ export function ClientesPage({ soloRegistro = false, rutaClientes = '/clientes',
           </button>
         </>}>
         <form id="form-cliente" noValidate className="rx-modal-body rx-form-stack" onSubmit={async e => { e.preventDefault(); await save(); }}>
-        <fieldset disabled={guardando} className="rx-form-stack rx-membership-fields">
-          <InputField label="Fecha de nacimiento" type="date" required={!editando} max={hoyISO} value={form.fechaNacimiento} onChange={e => setForm(f => ({ ...f, fechaNacimiento: e.target.value }))} />
-          {requiereTutor && <>
-            <InputField label="Nombre completo del tutor" required maxLength={200} value={form.nombreTutor} onChange={e => setForm(f => ({ ...f, nombreTutor: e.target.value }))} />
-            <InputField label="Clave de elector del tutor" required maxLength={18} value={form.claveElectorTutor} onChange={e => setForm(f => ({ ...f, claveElectorTutor: e.target.value.toUpperCase() }))} />
-            <SelectField label="Validación documental" value={form.estadoDocumentacion} onChange={e => setForm(f => ({ ...f, estadoDocumentacion: e.target.value as 'pendiente' | 'validada' }))} options={[{ value: 'pendiente', label: 'Documentos pendientes' }, { value: 'validada', label: 'Documentación validada' }]} />
-            <p className="rx-help-text">Se permite registrar con documentos pendientes. El expediente se conserva en las renovaciones. La lista de cuatro documentos está pendiente de confirmación; este estado no sustituye su revisión.</p>
-          </>}
-          <InputField label="Código Usuario" aria-label="Código Usuario" autoComplete="off" maxLength={30}
-            value={form.codigo ?? ''} placeholder="Automático si se deja vacío (CLI-ID)"
-            error={tocados.codigo ? errores.codigo : undefined} onBlur={() => tocar('codigo')}
-            onChange={e => { tocar('codigo'); setConsultaCodigo(null); setFormError(null); setForm(f => ({ ...f, codigo: e.target.value.toUpperCase() })); }} />
-          <span className="rx-help-text" role="status" aria-live="polite">{codigoPendiente ? 'Comprobando disponibilidad del código…' : 'De 3 a 30 letras, números o guiones. Vacío conserva el código automático. No cambia el ID ni el historial.'}</span>
-          <InputField label="Nombre completo" required autoComplete="name" aria-label="Nombre completo" error={tocados.nombre ? errores.nombre : undefined} onBlur={() => tocar('nombre')} value={form.nombre} onChange={e => {
-            const texto = e.target.value.normalize('NFC');
-            const nombre = texto.replace(/[^\p{L}\p{M} ]/gu, '');
-            tocar('nombre'); setFormError(null);
-            setAvisos(prev => ({ ...prev, nombre: texto !== nombre ? 'Solo se permiten letras y espacios; se eliminaron los caracteres no válidos.' : '' }));
-            setForm(f => ({ ...f, nombre }));
-          }} placeholder="Ej. Juan Pérez" />
-          <InputField label="Correo" required type="email" maxLength={254} autoComplete="email" aria-label="Correo" error={tocados.correo ? errores.correo : undefined} onBlur={() => tocar('correo')} value={form.correo} onChange={e => {
-            tocar('correo'); setFormError(null);
-            setForm(f => ({ ...f, correo: e.target.value }));
-          }} placeholder="Ej. nombre@ejemplo.com" />
-          <InputField label="Teléfono" type="tel" inputMode="numeric" autoComplete="tel-national" aria-label="Teléfono" maxLength={10} pattern="[0-9]{0,10}" title="Solo números, máximo 10 dígitos" error={tocados.telefono ? errores.telefono : undefined} onBlur={() => tocar('telefono')} value={form.telefono} onChange={e => {
-            const texto = e.target.value;
-            const telefono = texto.replace(/[^0-9]/g, '').slice(0, 10);
-            tocar('telefono'); setFormError(null);
-            setAvisos(prev => ({ ...prev, telefono: texto !== telefono ? 'Solo se permiten números y un máximo de 10 dígitos; se ajustó el valor ingresado.' : '' }));
-            setForm(f => ({ ...f, telefono }));
-          }} />
-          <SelectField label="Estatus" value={form.activo ? 'activo' : 'inactivo'} onChange={e => setForm(f => ({ ...f, activo: e.target.value === 'activo' }))} options={[{ value: 'activo', label: 'Activo' }, { value: 'inactivo', label: 'Inactivo' }]} />
-          <ListaSalud key={`enfermedades-${editando?.id ?? 'nuevo'}-${modal}`} label="Enfermedades" items={form.enfermedades} onChange={enfermedades => setForm(f => ({ ...f, enfermedades }))} />
-          <ListaSalud key={`lesiones-${editando?.id ?? 'nuevo'}-${modal}`} label="Lesiones" items={form.lesiones} onChange={lesiones => setForm(f => ({ ...f, lesiones }))} />
-          <span className="rx-help-text">Las membresías se venden desde Recepción. Las compras y sus vigencias se consultan en la tabla de clientes.</span>
-        </fieldset>
-        {formError && <p className="rx-alert rx-alert--danger" role="alert">{formError}</p>}
+          <fieldset disabled={guardando} className="rx-form-stack rx-membership-fields">
+            <InputField label="Fecha de nacimiento" type="date" required={!editando} max={hoyISO} value={form.fechaNacimiento} onChange={e => setForm(f => ({ ...f, fechaNacimiento: e.target.value }))} />
+            {requiereTutor && <>
+              <InputField label="Nombre completo del tutor" required maxLength={200} value={form.nombreTutor} onChange={e => setForm(f => ({ ...f, nombreTutor: e.target.value }))} />
+              <InputField label="Clave de elector del tutor" required maxLength={18} value={form.claveElectorTutor} onChange={e => setForm(f => ({ ...f, claveElectorTutor: e.target.value.toUpperCase() }))} />
+              <SelectField label="Validación documental" value={form.estadoDocumentacion} onChange={e => setForm(f => ({ ...f, estadoDocumentacion: e.target.value as 'pendiente' | 'validada' }))} options={[{ value: 'pendiente', label: 'Documentos pendientes' }, { value: 'validada', label: 'Documentación validada' }]} />
+              <p className="rx-help-text">Se permite registrar con documentos pendientes. El expediente se conserva en las renovaciones. La lista de cuatro documentos está pendiente de confirmación; este estado no sustituye su revisión.</p>
+            </>}
+            <InputField label="Código Usuario" aria-label="Código Usuario" autoComplete="off" maxLength={30}
+              value={form.codigo ?? ''} placeholder="Automático si se deja vacío (CLI-ID)"
+              error={tocados.codigo ? errores.codigo : undefined} onBlur={() => tocar('codigo')}
+              onChange={e => { tocar('codigo'); setConsultaCodigo(null); setFormError(null); setForm(f => ({ ...f, codigo: e.target.value.toUpperCase() })); }} />
+            <span className="rx-help-text" role="status" aria-live="polite">{codigoPendiente ? 'Comprobando disponibilidad del código…' : 'De 3 a 30 letras, números o guiones. Vacío conserva el código automático. No cambia el ID ni el historial.'}</span>
+            <InputField label="Nombre completo" required autoComplete="name" aria-label="Nombre completo" error={tocados.nombre ? errores.nombre : undefined} onBlur={() => tocar('nombre')} value={form.nombre} onChange={e => {
+              const texto = e.target.value.normalize('NFC');
+              const nombre = texto.replace(/[^\p{L}\p{M} ]/gu, '');
+              tocar('nombre'); setFormError(null);
+              setAvisos(prev => ({ ...prev, nombre: texto !== nombre ? 'Solo se permiten letras y espacios; se eliminaron los caracteres no válidos.' : '' }));
+              setForm(f => ({ ...f, nombre }));
+            }} placeholder="Ej. Juan Pérez" />
+            <InputField label="Correo" required type="email" maxLength={254} autoComplete="email" aria-label="Correo" error={tocados.correo ? errores.correo : undefined} onBlur={() => tocar('correo')} value={form.correo} onChange={e => {
+              tocar('correo'); setFormError(null);
+              setForm(f => ({ ...f, correo: e.target.value }));
+            }} placeholder="Ej. nombre@ejemplo.com" />
+            <InputField label="Teléfono" type="tel" inputMode="numeric" autoComplete="tel-national" aria-label="Teléfono" maxLength={10} pattern="[0-9]{0,10}" title="Solo números, máximo 10 dígitos" error={tocados.telefono ? errores.telefono : undefined} onBlur={() => tocar('telefono')} value={form.telefono} onChange={e => {
+              const texto = e.target.value;
+              const telefono = texto.replace(/[^0-9]/g, '').slice(0, 10);
+              tocar('telefono'); setFormError(null);
+              setAvisos(prev => ({ ...prev, telefono: texto !== telefono ? 'Solo se permiten números y un máximo de 10 dígitos; se ajustó el valor ingresado.' : '' }));
+              setForm(f => ({ ...f, telefono }));
+            }} />
+            <SelectField label="Estatus" value={form.activo ? 'activo' : 'inactivo'} onChange={e => setForm(f => ({ ...f, activo: e.target.value === 'activo' }))} options={[{ value: 'activo', label: 'Activo' }, { value: 'inactivo', label: 'Inactivo' }]} />
+            <ListaSalud key={`enfermedades-${editando?.id ?? 'nuevo'}-${modal}`} label="Enfermedades" items={form.enfermedades} onChange={enfermedades => setForm(f => ({ ...f, enfermedades }))} />
+            <ListaSalud key={`lesiones-${editando?.id ?? 'nuevo'}-${modal}`} label="Lesiones" items={form.lesiones} onChange={lesiones => setForm(f => ({ ...f, lesiones }))} />
+            <span className="rx-help-text">Las membresías se venden desde Recepción. Las compras y sus vigencias se consultan en la tabla de clientes.</span>
+          </fieldset>
+          {formError && <p className="rx-alert rx-alert--danger" role="alert">{formError}</p>}
         </form>
       </Modal>
     </section>

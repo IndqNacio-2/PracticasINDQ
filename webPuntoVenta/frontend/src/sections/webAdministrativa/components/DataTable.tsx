@@ -1,6 +1,5 @@
 import { useEffect, useState, ReactNode } from 'react';
 import { Icon } from './Icon';
-import { normalizarNombre } from '../../../services/busquedaClientes';
 
 interface Column<T> {
   key: string;
@@ -13,24 +12,38 @@ interface DataTableProps<T> {
   columns: Column<T>[];
   data: T[];
   searchKeys?: (keyof T)[];
+  searchPlaceholder?: string;
   pageSize?: number;
   emptyMessage?: string;
   actions?: (row: T) => ReactNode;
   variant?: 'default' | 'spaced' | 'panel';
-  searchPlaceholder?: string;
   normalizeSearch?: boolean;
 }
 
+// La búsqueda no distingue mayúsculas ni acentos: "pedro paramo" encuentra "Pedro Páramo".
+const plano = (valor: unknown) =>
+  String(valor ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+
+const simple = (valor: unknown) => String(valor ?? '').toLowerCase();
+
 export function DataTable<T extends Record<string, unknown>>({
-  columns, data, searchKeys = [], pageSize = 10, emptyMessage = 'Sin registros', actions, variant = 'default', searchPlaceholder = 'Buscar...', normalizeSearch = false
+  columns,
+  data,
+  searchKeys = [],
+  searchPlaceholder = 'Buscar...',
+  pageSize = 10,
+  emptyMessage = 'Sin registros',
+  actions,
+  variant = 'default',
+  normalizeSearch = true,
 }: DataTableProps<T>) {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
 
-  const filtered = search
-    ? data.filter(row =>
-      searchKeys.some(k => normalizeSearch ? normalizarNombre(row[k]).includes(normalizarNombre(search)) : String(row[k] ?? '').toLowerCase().includes(search.toLowerCase()))
-    )
+  const norm = normalizeSearch ? plano : simple;
+  const termino = norm(search);
+  const filtered = search.trim()
+    ? data.filter(row => searchKeys.some(k => norm(row[k]).includes(termino)))
     : data;
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
@@ -54,7 +67,6 @@ export function DataTable<T extends Record<string, unknown>>({
           <input
             type="text"
             placeholder={searchPlaceholder}
-            aria-label="Buscar registros"
             value={search}
             onChange={e => { setSearch(e.target.value); setPage(1); }}
             className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-[#111827] focus:border-transparent"

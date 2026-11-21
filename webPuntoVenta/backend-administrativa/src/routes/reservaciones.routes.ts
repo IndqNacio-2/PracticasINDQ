@@ -1,87 +1,93 @@
 import { Router } from 'express';
-import movilRoutes from './reservaciones-movil.routes';
-import { Reservacion } from '../models/Reservaciones/reservacion';
-import { Horario } from '../models/Horarios/horarios';
-import { esObjectId, esFechaISO } from '../lib/validacion';
+import { isValidObjectId } from 'mongoose';
+import { asyncHandler, manejarErrores } from '../lib/asynchandler';
+import {
+    buscarPorCodigo,
+    buscarPorId,
+    cambiarEstatus,
+    cancelarReservacion,
+    crearReservacion,
+    listarReservaciones,
+    manejarReglas,
+    marcarAsistencia,
+    marcarInasistencia,
+    reagendarReservacion,
+    registrarPago,
+} from '../services/reservaciones.service';
 
+// Rutas de la plataforma web (staff). Móntalas detrás de tu middleware de autenticación de administrador.
+// Reglas (24 h para cancelar, reagendar una sola vez, inasistencia) en services/reservaciones.service.ts.
+// El personal puede enviar { "forzar": true } en cancelar/reagendar para saltarse esas reglas.
 const router = Router();
-const COBRO_API = process.env.COBRO_API_URL ?? 'http://localhost:3000/cobro/api';
 
-// Todas las escrituras pasan por las transacciones y reglas de Recepción.
-async function enviarCobro(res: any, ruta: string, metodo: string, datos: unknown) {
-    try {
-        const respuesta = await fetch(`${COBRO_API}${ruta}`, {
-            method: metodo, headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(datos), signal: AbortSignal.timeout(15000),
-        });
-        const cuerpo = await respuesta.json();
-        return res.status(respuesta.status).json(cuerpo);
-    } catch {
-        return res.status(503).json({ error: 'No se pudo contactar con Recepción. No se confirmó ningún cambio; consulta la reservación antes de reintentar.' });
-    }
-}
-
-// GET /api/reservaciones?idCliente=...&idHorario=...&estatus=...
-router.get('/', async (req, res) => {
-    const { idCliente, idHorario, estatus } = req.query;
-    const filtro: Record<string, unknown> = {};
-    if (idCliente) filtro.idCliente = idCliente;
-    if (idHorario) filtro.idHorario = idHorario;
-    if (estatus) filtro.estatus = estatus;
-
-    const reservaciones = await Reservacion.find(filtro).sort({ fechaReservacion: -1 });
-    res.json(reservaciones);
+router.param('id', (_req, res, next, id) => {
+    if (!isValidObjectId(id)) return res.status(400).json({ error: 'ID de reservación inválido' });
+    next();
 });
 
-// POST /api/reservaciones
-// Adaptador del contrato administrativo al registro único de Recepción.
-router.post('/', async (req, res) => {
-    const { idCliente, idHorario, fechaReservacion, horaClase } = req.body ?? {};
-    const clienteId = Number(idCliente);
-    if (!Number.isSafeInteger(clienteId) || clienteId <= 0) return res.status(400).json({ error: 'Selecciona un cliente registrado en Recepción por su ID numérico.' });
-    if (!esObjectId(idHorario) || !esFechaISO(fechaReservacion)) return res.status(400).json({ error: 'Selecciona un horario y una fecha válidos.' });
-    const horario: any = await Horario.findById(idHorario);
-    if (!horario) return res.status(404).json({ error: 'El horario seleccionado no existe.' });
-    if (horario.fecha !== fechaReservacion || (horaClase !== undefined && horaClase !== horario.horaInicio)) {
-        return res.status(409).json({ error: 'La fecha y hora no coinciden con la sesión seleccionada.' });
-    }
-    return enviarCobro(res, '/reservas', 'POST', {
-        clienteId, client: 'Cliente registrado', type: 'cliente', horarioId: idHorario,
-        class: horario.nombreClase, time: horario.horaInicio, fecha: fechaReservacion, origen: 'recepcion',
-    });
+const forzar = (body: any) => body?.forzar === true;
+
+// Consulta: ?idCliente= & ?idHorario= & ?estatus= & ?codigo= & ?fecha=AAAA-MM-DD (día de la clase)
+//           & ?tipo=cliente|visitante & ?estadoPago=pendiente|pagado & ?membresiaCompraId=
+router.get('/', asyncHandler(async (req, res) => {
+    res.json(await listarReservaciones(req.query as Record<string, unknown>));
+}));
+
+// Consulta por folio.
+router.get('/codigo/:codigo', asyncHandler(async (req, res) => {
+    res.json(await buscarPorCodigo(String(req.params.codigo)));
+}));
+
+router.get('/:id', asyncHandler(async (req, res) => {
+    res.json(await buscarPorId(String(req.params.id)));
+}));
+
+// Alta. Body: idHorario (la clase, la hora y la fecha salen del horario) y
+//   - cliente registrado: idCliente (el nombre se toma de su registro), o
+//   - visitante: tipo = "visitante" + nombreCliente.
+// Opcionales: origen ("recepcion" | "app"), membresiaCompraId (la membresía comprada cubre la clase).
+// Si la sesión está llena y tiene lista de espera, queda con estadoCupo = "espera".
+// El precio lo calcula el servidor con la tarifa de la clase. Devuelve la reservación con su código.
+router.post('/', asyncHandler(async (req, res) => {
+    const reservacion = await crearReservacion(req.body, String(req.body?.idCliente ?? ''), req.body?.estatus);
+    res.status(201).json(reservacion);
+}));
+
+// Edición de estado: solo pendiente <-> confirmada.
+router.patch('/:id', asyncHandler(async (req, res) => {
+    res.json(await cambiarEstatus(String(req.params.id), req.body?.estatus));
+}));
+
+// Baja: cancelación (no se borra el registro).
+router.patch('/:id/cancelar', asyncHandler(async (req, res) => {
+    res.json(await cancelarReservacion(String(req.params.id), { forzar: forzar(req.body) }));
+}));
+
+// Reagendar. Body: idHorario del nuevo horario (clase, hora y fecha salen de ahí).
+router.patch('/:id/reagendar', asyncHandler(async (req, res) => {
+    res.json(await reagendarReservacion(String(req.params.id), req.body, { forzar: forzar(req.body) }));
+}));
+
+// Confirma la asistencia: debe estar pagada o cubierta y ser el día de la sesión (salvo `forzar`).
+router.patch('/:id/asistencia', asyncHandler(async (req, res) => {
+    res.json(await marcarAsistencia(String(req.params.id), { forzar: forzar(req.body) }));
+}));
+
+// Marca la reservación como pagada. Body: metodoPago, folioPago (el pago en sí lo guarda el módulo de cobro).
+router.patch('/:id/pago', asyncHandler(async (req, res) => {
+    res.json(await registrarPago(String(req.params.id), req.body ?? {}));
+}));
+
+router.patch('/:id/inasistencia', asyncHandler(async (req, res) => {
+    res.json(await marcarInasistencia(String(req.params.id)));
+}));
+
+// Las reservaciones no se eliminan.
+router.delete('/:id', (_req, res) => {
+    res.status(405).json({ error: 'Las reservaciones no se eliminan. Usa PATCH /:id/cancelar.' });
 });
 
-router.post('/:id/reagendar', async (req, res) => {
-    if (!/^[1-9]\d*$/.test(req.params.id)) return res.status(409).json({ error: 'Esta reservación histórica no tiene un ID de Recepción. Su historial se conserva; requiere conciliación antes de reagendar.' });
-    return enviarCobro(res, `/reservas/${req.params.id}/reagendar`, 'POST', {
-        horarioId: req.body?.horarioId ?? req.body?.idHorario,
-        fecha: req.body?.fecha ?? req.body?.fechaReservacion,
-    });
-});
+router.use(manejarReglas);
+router.use(manejarErrores);
 
-// PATCH /api/reservaciones/:id
-// Usado para cambiar estatus (confirmar/cancelar) y/o confirmar asistencia.
-router.patch('/:id', async (req, res) => {
-    if (!/^[1-9]\d*$/.test(req.params.id)) return res.status(409).json({ error: 'Esta reservación histórica no tiene un ID de Recepción. Su historial se conserva; requiere conciliación antes de modificarla.' });
-    const datos = req.body ?? {};
-    const esCambioHorario = datos.idHorario !== undefined || datos.horarioId !== undefined;
-    if (esCambioHorario) {
-        const campos = ['idHorario', 'horarioId', 'fecha', 'fechaReservacion'];
-        if (Object.keys(datos).some(campo => !campos.includes(campo))) return res.status(400).json({ error: 'Envía únicamente el nuevo horario y fecha para reagendar.' });
-        return enviarCobro(res, `/reservas/${req.params.id}/reagendar`, 'POST', {
-            horarioId: datos.idHorario ?? datos.horarioId, fecha: datos.fechaReservacion ?? datos.fecha,
-        });
-    }
-    if (Object.keys(datos).some(campo => !['status', 'estatus', 'asistenciaConfirmada'].includes(campo))) return res.status(400).json({ error: 'No se permite modificar directamente los datos de la reservación.' });
-    const status = datos.status ?? (datos.estatus === 'cancelada' ? 'cancelado' : datos.asistenciaConfirmada === true ? 'asistido' : undefined);
-    return enviarCobro(res, `/reservas/${req.params.id}`, 'PATCH', { status });
-});
-
-const combinado = Router();
-combinado.use((req, res, next) => {
-    const numericId = /^\/[1-9]\d*(?:\/|$)/.test(req.path);
-    const numericClient = /^[1-9]\d*$/.test(String(req.body?.idCliente ?? req.query.idCliente ?? ''));
-    if (numericId || (req.method === 'POST' && numericClient)) return router(req, res, next);
-    return movilRoutes(req, res, next);
-});
-export default combinado;
+export default router;

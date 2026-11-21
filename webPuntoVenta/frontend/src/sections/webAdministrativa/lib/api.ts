@@ -1,12 +1,11 @@
 // Cliente HTTP centralizado para consumir la API real.
-// Ajusta VITE_API_URL en tu archivo .env (por ejemplo: VITE_API_URL=http://localhost:3000/api)
-// Este backend (el de webAdministrativa) escucha en el puerto 3001 fijo del
-// Backend unificado: la sección administrativa se monta bajo /admin/api en
-// el mismo puerto que el frontend (Vite lo reenvía al gateway en el 3000).
+// El backend unificado (gateway, puerto 3000) monta cada módulo bajo su prefijo:
+//   /admin/api -> API administrativa (MongoDB): clientes, reservaciones, horarios, ventas, etc.
+//   /cobro/api -> API de cobro (PostgreSQL): pagos, kpis, asistencias, etc.
+// Vite reenvía ambos prefijos al gateway.
 const API_BASE_URL = '/admin/api';
-// Base del módulo de Cobro (front desk). La administrativa consulta desde aquí
-// las reservaciones: se guardan en la tabla webcobro.reservas (PostgreSQL) que
-// alimenta el módulo de cobro, y su backend ya las expone con GET /reservas.
+// Base del módulo de Cobro (front desk). Los clientes y las reservaciones viven
+// en MongoDB (API administrativa); cobro conserva pagos, KPIs y asistencias.
 const COBRO_BASE_URL = '/cobro/api';
 
 export class ApiError extends Error {
@@ -41,10 +40,8 @@ async function request<T>(path: string, options: RequestInit = {}, baseUrl: stri
     }
     // 401 = token vencido o inválido: se limpia la sesión local y se regresa al
     // login para que, al volver a iniciar sesión, el backend emita un token
-    // nuevo. Sin esto el usuario quedaría pegado viendo "Token inválido o
-    // expirado" en todas las pantallas. (El 401 del propio /auth/login son
-    // credenciales incorrectas: se muestra en la pantalla de login y ahí NO se
-    // cierra la sesión.)
+    // nuevo. (El 401 del propio /auth/login son credenciales incorrectas: se
+    // muestra en la pantalla de login y ahí NO se cierra la sesión.)
     if (res.status === 401 && path !== '/auth/login') {
       localStorage.removeItem('token');
       localStorage.removeItem('administrativa_sesion');
@@ -68,8 +65,8 @@ export const api = {
 };
 
 // Cliente para hablar con el módulo de Cobro (front desk) desde la
-// administrativa. Se usa en ReservacionesPage (solo lectura) y en
-// ClientesPage (CRUD completo contra webcobro.clientes).
+// administrativa: KPIs, pagos y demás datos que siguen en PostgreSQL.
+// NO usar para /clientes: los clientes ahora se consultan con `api`.
 export const apiCobro = {
   get: <T>(path: string) => request<T>(path, {}, COBRO_BASE_URL),
   post: <T>(path: string, body?: unknown) => request<T>(path, { method: 'POST', body: body !== undefined ? JSON.stringify(body) : undefined }, COBRO_BASE_URL),

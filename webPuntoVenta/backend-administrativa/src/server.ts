@@ -13,11 +13,12 @@ import usuarioRoutes from './routes/usuarios.routes';
 import ventaRoutes from './routes/ventas.routes';
 import membresiaRoutes from './routes/membresia.routes';
 import reportesRoutes from './routes/reportes.routes';
-import { requireAuth, requireRole } from './middleware/auth';
-import { accesoProgramacion } from './middleware/programacion';
-import { connectDB } from './lib/mongo';
-import { pool } from './lib/post';
+import comprasMembresiaRoutes from './routes/compras-membresia.routes';
 import { crearRutasClientesMovil } from './routes/clientes-movil.routes';
+import { pool } from './lib/post';
+import { permitir, PERMISOS } from './middleware/permisos';
+import { connectDB } from './lib/mongo';
+import { marcarInasistenciasVencidas } from './services/reservaciones.service';
 import { iniciarMantenimientoHorizonte } from './services/mantener-horizonte-sesiones';
 import { iniciarCumpleanos } from './services/cumpleanos.service';
 
@@ -36,25 +37,20 @@ app.use(express.json());
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 app.use('/api/auth', authRoutes);
 app.use('/api/movil', crearRutasClientesMovil(pool));
-// Catálogos compartidos no conceden permisos administrativos de escritura.
-app.use(['/api/clases', '/api/horarios', '/api/plantillas-horarios'], accesoProgramacion);
-app.use('/api/reservaciones', (req, res, next) => {
-  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
-  requireAuth(req, res, () => requireRole('administrador')(req, res, next));
-});
-app.use('/api/ventas', requireAuth, requireRole('administrador'));
-app.use('/api/clientes', requireAuth, requireRole('administrador', 'recepcion', 'vendedor'));
-app.use('/api/clientes', clienteRoutes);
-app.use('/api/reservaciones', reservacionRoutes);
-app.use('/api/horarios', horarioRoutes);
-app.use('/api/clases', claseRoutes);
-app.use('/api/plantillas-horarios', plantillaHorarioRoutes);
+// Permisos por rol: ver src/middleware/permisos.ts (productos, movimientos, membresías y usuarios
+// ya validan su rol dentro de su propio router).
+app.use('/api/clientes', permitir(PERMISOS.clientes), clienteRoutes);
+app.use('/api/reservaciones', permitir(PERMISOS.reservaciones), reservacionRoutes);
+app.use('/api/horarios', permitir(PERMISOS.clasesYHorarios), horarioRoutes);
+app.use('/api/clases', permitir(PERMISOS.clasesYHorarios), claseRoutes);
+app.use('/api/plantillas-horarios', permitir(PERMISOS.clasesYHorarios), plantillaHorarioRoutes);
 app.use('/api/productos', productoRoutes);
 app.use('/api/movimientos', movimientoRoutes);
 app.use('/api/usuarios', usuarioRoutes);
-app.use('/api/ventas', ventaRoutes);
+app.use('/api/ventas', permitir(PERMISOS.ventas), ventaRoutes);
 app.use('/api/membresias', membresiaRoutes);
-app.use('/api/reportes', requireAuth, requireRole('administrador'), reportesRoutes);
+app.use('/api/reportes', permitir(PERMISOS.reportes), reportesRoutes);
+app.use('/api/membresias-compras', permitir(PERMISOS.membresiasCompras), comprasMembresiaRoutes);
 
 // Exporta la app para que el gateway unificado pueda montarla bajo su prefijo
 // (/admin) en un solo puerto. Con GATEWAY_MODE no abre su propio puerto y un
@@ -65,6 +61,10 @@ connectDB()
   .then(() => {
     iniciarMantenimientoHorizonte();
     iniciarCumpleanos();
+    // Cada minuto: las clases que ya pasaron sin asistencia quedan como inasistencia (antes lo hacía cobro).
+    setInterval(() => {
+      marcarInasistenciasVencidas().catch((error) => console.error('Revisión de inasistencias:', error.message));
+    }, 60_000).unref();
     if (process.env.GATEWAY_MODE) {
       console.log('API administrativa conectada a MongoDB (gateway unificado)');
       return;

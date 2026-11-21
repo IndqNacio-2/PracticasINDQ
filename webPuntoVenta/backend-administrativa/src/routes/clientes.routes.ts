@@ -7,6 +7,8 @@ import { asyncHandler, manejarErrores } from '../lib/asynchandler';
 import { fechaISO, hoyEnZona } from '../lib/edad';
 import { errorPassword, normalizarPerfil, registrarCliente } from '../services/cliente.service';
 import { felicitarSiCumple } from '../services/cumpleanos.service';
+import { filtroBusquedaClientes } from '../clientes-core/busqueda';
+import { esMenorDeEdad, normalizarDocumentos, validarTutor } from '../clientes-core/menor';
 
 // Rutas de la plataforma web (staff). Móntalas detrás de tu middleware de autenticación de administrador.
 const router = Router();
@@ -24,15 +26,19 @@ const listaTexto = (v: unknown): string[] | null =>
         ? [...new Set(v.map(x => String(x).trim()).filter(Boolean))]
         : null;
 
-// Consulta: ?estatus=activo|inactivo & ?q=texto (nombre, apellidos, correo, código)
+// Consulta: ?estatus=activo|inactivo & ?q=texto & ?codigoAcceso=CLI001
+// El buscador (q) solo busca por nombre y/o apellidos, sin importar acentos ni mayúsculas
+// ("pedro paramo", "PÉDRÓ PÁRÁMÓ" y "Pedro Páramo" devuelven el mismo registro).
+// ?pendientes=1 lista los registros hechos desde la app móvil que aún faltan por terminar en recepción.
 router.get('/', asyncHandler(async (req, res) => {
     const filtro: Record<string, any> = {};
-    const { estatus, q } = req.query;
+    const { estatus, q, codigoAcceso } = req.query;
     if (estatus === 'activo' || estatus === 'inactivo') filtro.estatus = estatus;
-    if (typeof q === 'string' && q.trim()) {
-        const rx = new RegExp(q.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-        filtro.$or = [{ nombre: rx }, { apellidos: rx }, { correo: rx }, { codigoAcceso: rx }];
-    }
+    // Búsqueda exacta por código de acceso (CLI001): la usa el reloj checador. El buscador (q) es solo por nombre.
+    if (typeof codigoAcceso === 'string' && codigoAcceso.trim()) filtro.codigoAcceso = codigoAcceso.trim().toUpperCase();
+    const busqueda = filtroBusquedaClientes(q);
+    if (busqueda) Object.assign(filtro, busqueda);
+    if (req.query.pendientes === '1' || req.query.pendientes === 'true') filtro.registroPendiente = true;
     const clientes = await Cliente.find(filtro).sort({ fechaRegistro: -1, fechaCreacion: -1 });
     res.json(clientes);
 }));
@@ -82,6 +88,29 @@ router.patch('/:id', asyncHandler(async (req, res) => {
     if (req.body.pin !== undefined && req.body.pin !== '') {
         datos.pin = await bcrypt.hash(String(req.body.pin), 10);
     }
+
+    // Menor de edad: tutor y clave de elector obligatorios; los 4 documentos pueden faltar.
+    // Los documentos se piden una sola vez: menorValidado, una vez en true, no se vuelve a exigir al renovar.
+    const nacimiento = datos.fechaNacimiento !== undefined ? datos.fechaNacimiento : cliente.fechaNacimiento;
+    if (esMenorDeEdad(nacimiento as string | null)) {
+        const hayTutorNuevo = req.body.tutor !== undefined || req.body.tutorNombre !== undefined || req.body.claveElector !== undefined;
+        if (hayTutorNuevo || !cliente.tutor) {
+            const t = validarTutor({ ...(cliente.tutor ? { tutor: cliente.tutor.toObject?.() ?? cliente.tutor } : {}), ...req.body });
+            if ('error' in t) return res.status(400).json({ error: t.error });
+            datos.tutor = t.tutor;
+        }
+        if (req.body.documentosMenor !== undefined || req.body.menorValidado !== undefined || !cliente.documentosMenor) {
+            const actual = cliente.documentosMenor?.toObject?.() ?? cliente.documentosMenor ?? {};
+            const d = normalizarDocumentos(
+                req.body.documentosMenor !== undefined ? req.body.documentosMenor : actual,
+                req.body.menorValidado !== undefined ? req.body.menorValidado : cliente.menorValidado
+            );
+            datos.documentosMenor = d.documentos;
+            datos.menorValidado = d.validado;
+        }
+    }
+    // Al terminar el registro en recepción (cliente que se registró desde la app) se quita la marca de pendiente.
+    if (req.body.registroPendiente === false) datos.registroPendiente = false;
 
     cliente.set(datos);
     await cliente.save();

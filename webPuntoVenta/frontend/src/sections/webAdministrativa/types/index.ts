@@ -213,7 +213,8 @@ export interface Reservacion {
   clase: string;
   entrenador: string;
   horaClase: string;
-  fechaReservacion: string;
+  // Día de la clase, "AAAA-MM-DD".
+  fechaClase: string;
   estatus: ReservaEstatus;
   asistenciaConfirmada: boolean;
 }

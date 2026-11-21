@@ -1,10 +1,12 @@
 // Convierte documentos de Mongo en las respuestas que consume la app.
 import { fechaLocal } from './fecha';
 import {
-    duracionMin, estadoReserva, iniciales, claseIniciada, membresiaVigente, nivelCupo, paqueteCubre,
-    precioClase, puedeCancelar, puedeReagendar, resumenMembresia, separarHoras,
-    type MembresiaDoc,
+    duracionMin, estadoReserva, iniciales, claseIniciada, nivelCupo,
+    precioClase, puedeCancelar, puedeReagendar, separarHoras,
+    type ResumenMembresia,
 } from './reglas';
+import { infoParaClase, type InfoPaquete } from './membresia';
+import type { Cartera } from '../membresias-core/compras';
 
 export const precioPorDefecto = () => Number(process.env.PRECIO_CLASE_SUELTA ?? 180);
 
@@ -21,7 +23,8 @@ interface ClienteLike {
     membresia?: unknown;
 }
 
-export function perfilPublico(c: ClienteLike, hoy: string = fechaLocal()) {
+/** `membresia` es el resumen de su membresía comprada (lib/membresia.ts: resumenMembresiaDe); null si no tiene. */
+export function perfilPublico(c: ClienteLike, membresia: ResumenMembresia | null = null) {
     return {
         idCliente: String(c._id),
         nombre: c.nombre,
@@ -33,7 +36,7 @@ export function perfilPublico(c: ClienteLike, hoy: string = fechaLocal()) {
         fechaNacimiento: c.fechaNacimiento ?? '',
         direccion: c.direccion ?? '',
         foto: c.avatar ?? '',
-        membresia: resumenMembresia(c.membresia as MembresiaDoc | null, hoy),
+        membresia,
     };
 }
 
@@ -54,7 +57,8 @@ interface HorarioLike {
 export interface ContextoHorarios {
     ahora: Date;
     hoy: string;
-    membresia: MembresiaDoc | null;
+    /** Membresías compradas del cliente y lo que ya consumieron */
+    cartera: Cartera;
     /** idClase → precio propio de la clase */
     precios: Map<string, number>;
     /** idHorario → idReservacion vigente del cliente */
@@ -66,7 +70,7 @@ export function itemHorario(h: HorarioLike, ctx: ContextoHorarios) {
     const disponibles = Math.max(0, h.capacidadDisponible);
     const iniciada = claseIniciada(h.fecha, h.horaInicio, ctx.ahora);
     const estado = iniciada ? 'finalizada' : disponibles <= 0 ? 'llena' : 'disponible';
-    const incluida = paqueteCubre(ctx.membresia, h.nombreClase, ctx.hoy);
+    const incluida = infoParaClase(ctx.cartera, String(h.idClase), h.fecha).cubre;
     const precio = precioClase(ctx.precios.get(h.idClase), precioPorDefecto());
     const idReservacion = ctx.reservadas.get(id) ?? null;
 
@@ -96,14 +100,16 @@ export function itemHorario(h: HorarioLike, ctx: ContextoHorarios) {
 }
 
 /** Lo que verá el cliente en la hoja de confirmación antes de reservar */
-export function detallePago(item: ReturnType<typeof itemHorario>, membresia: MembresiaDoc | null, hoy: string) {
+export function detallePago(item: ReturnType<typeof itemHorario>, info: InfoPaquete) {
     if (item.incluidaEnPaquete) {
-        const total = Number(membresia?.clasesTotal ?? 0);
-        const restantes = Math.max(0, total - Number(membresia?.clasesUsadas ?? 0));
-        // "Te quedarán 6 de 12": accesosRestantesDespues y accesosTotal
-        return { tipo: 'paquete' as const, monto: 0, accesosRestantesDespues: restantes - 1, accesosTotal: total, paqueteVigente: membresiaVigente(membresia, hoy) };
+        // "Te quedarán 6 de 12": accesosRestantesDespues y accesosTotal (null = ilimitados)
+        return {
+            tipo: 'paquete' as const, monto: 0,
+            accesosRestantesDespues: info.restantes === null ? null : info.restantes - 1,
+            accesosTotal: info.total, paqueteVigente: info.vigente,
+        };
     }
-    return { tipo: 'recepcion' as const, monto: item.precio, accesosRestantesDespues: null, accesosTotal: null, paqueteVigente: membresiaVigente(membresia, hoy) };
+    return { tipo: 'recepcion' as const, monto: item.precio, accesosRestantesDespues: null, accesosTotal: null, paqueteVigente: info.vigente };
 }
 
 // ---------- Reservaciones ----------
@@ -120,6 +126,7 @@ interface ReservaLike {
     codigo?: string | null;
     pagoTipo?: string | null;
     monto?: number | null;
+    precio?: number | null;
     reagendada?: boolean | null;
 }
 
@@ -138,8 +145,10 @@ export function itemReserva(r: ReservaLike, ahora: Date) {
         horaFin: fin,
         fechaReservacion: r.fechaReservacion ?? '',
         estado, // proxima | asistio | no_asistio | cancelada
+        // Confirmación de la reservación: 'pendiente' hasta que el personal confirma que el cliente llegó
+        confirmacion: r.asistenciaConfirmada || r.estatus === 'confirmada' ? 'confirmada' : r.estatus === 'cancelada' ? 'cancelada' : 'pendiente',
         reagendada: !!r.reagendada,
-        pago: r.pagoTipo ? { tipo: r.pagoTipo, monto: r.monto ?? 0 } : null,
+        pago: r.pagoTipo ? { tipo: r.pagoTipo, monto: r.monto ?? r.precio ?? 0 } : null,
         puedeCancelar: puedeCancelar(r, ahora),
         puedeReagendar: puedeReagendar(r, ahora),
         penalizacion: estado === 'no_asistio',
