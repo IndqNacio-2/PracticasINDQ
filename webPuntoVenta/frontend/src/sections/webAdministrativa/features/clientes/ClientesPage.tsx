@@ -9,6 +9,7 @@ import { useNavigate } from 'react-router';
 import { MembresiasCliente, type MembresiaComprada } from './MembresiasCliente';
 import ListaSalud, { SaludEtiquetas } from './SaludEtiquetas';
 import { esNombreValido, esTelefonoValido, esCorreoValido, errorCodigoCliente } from './validacionCliente';
+import { SeccionMenor, contarDocumentos, documentosDe, documentosVacios, type DocumentosMenor } from './seccionMenor';
 
 // Cliente tal como lo devuelve la API administrativa (GET /admin/api/clientes, MongoDB).
 // Los campos son opcionales porque se aceptan las variantes de nombre más comunes.
@@ -27,6 +28,10 @@ interface ClienteAdmin {
   nombreTutor?: string;
   claveElectorTutor?: string;
   estadoDocumentacion?: 'pendiente' | 'validada';
+  // El servidor guarda al tutor y los documentos del menor así (clientes-core)
+  tutor?: { nombreCompleto?: string; claveElector?: string } | null;
+  documentosMenor?: Partial<Record<string, boolean>> | null;
+  menorValidado?: boolean;
   perfilSalud?: { enfermedades?: string[]; lesiones?: string[] };
   enfermedades?: string[];
   lesiones?: string[];
@@ -47,6 +52,7 @@ interface SocioCobro {
   nombreTutor?: string;
   claveElectorTutor?: string;
   estadoDocumentacion?: 'pendiente' | 'validada';
+  documentosMenor?: DocumentosMenor;
   enfermedades?: string[];
   lesiones?: string[];
   membresiasCompradas?: MembresiaComprada[];
@@ -66,9 +72,11 @@ function aSocio(c: ClienteAdmin, idRespaldo = ''): SocioCobro {
     correo: c.correo ?? null,
     activo: c.estatus !== undefined ? c.estatus === 'activo' : c.activo !== false,
     fechaNacimiento: c.fechaNacimiento ? String(c.fechaNacimiento).slice(0, 10) : '',
-    nombreTutor: c.nombreTutor,
-    claveElectorTutor: c.claveElectorTutor,
-    estadoDocumentacion: c.estadoDocumentacion,
+    nombreTutor: c.tutor?.nombreCompleto ?? c.nombreTutor,
+    claveElectorTutor: c.tutor?.claveElector ?? c.claveElectorTutor,
+    // Validada cuando ya entregó sus 4 copias (menorValidado); mientras tanto, pendiente.
+    estadoDocumentacion: c.menorValidado ? 'validada' : (c.estadoDocumentacion ?? 'pendiente'),
+    documentosMenor: documentosDe(c.documentosMenor),
     enfermedades: c.perfilSalud?.enfermedades ?? c.enfermedades ?? [],
     lesiones: c.perfilSalud?.lesiones ?? c.lesiones ?? [],
     membresiasCompradas: c.membresiasCompradas ?? [],
@@ -85,7 +93,7 @@ interface SocioForm {
   fechaNacimiento: string;
   nombreTutor: string;
   claveElectorTutor: string;
-  estadoDocumentacion: 'pendiente' | 'validada';
+  documentosMenor: DocumentosMenor;
   codigo?: string;
   enfermedades: string[];
   lesiones: string[];
@@ -96,7 +104,7 @@ interface SocioForm {
 }
 
 const FORM_VACIO: SocioForm = {
-  fechaNacimiento: '', nombreTutor: '', claveElectorTutor: '', estadoDocumentacion: 'pendiente',
+  fechaNacimiento: '', nombreTutor: '', claveElectorTutor: '', documentosMenor: documentosVacios(),
   codigo: '',
   enfermedades: [],
   lesiones: [],
@@ -245,7 +253,7 @@ export function ClientesPage({ soloRegistro = false, rutaClientes = '/clientes',
     setEditando(s);
     setForm({
       fechaNacimiento: s.fechaNacimiento ?? '', nombreTutor: s.nombreTutor ?? '',
-      claveElectorTutor: s.claveElectorTutor ?? '', estadoDocumentacion: s.estadoDocumentacion ?? 'pendiente',
+      claveElectorTutor: s.claveElectorTutor ?? '', documentosMenor: documentosDe(s.documentosMenor),
       codigo: s.codigo || '',
       enfermedades: s.enfermedades ?? [],
       lesiones: s.lesiones ?? [],
@@ -303,8 +311,13 @@ export function ClientesPage({ soloRegistro = false, rutaClientes = '/clientes',
     try {
       const { nombre, apellidos } = separarNombre(form.nombre, editando);
       const cuerpo = {
-        fechaNacimiento: form.fechaNacimiento, nombreTutor: form.nombreTutor,
-        claveElectorTutor: form.claveElectorTutor, estadoDocumentacion: form.estadoDocumentacion,
+        fechaNacimiento: form.fechaNacimiento,
+        // Menor de edad: tutor y clave de elector obligatorios; los 4 documentos pueden faltar y se piden una sola vez.
+        ...(requiereTutor ? {
+          tutor: { nombreCompleto: form.nombreTutor.trim(), claveElector: form.claveElectorTutor.trim().toUpperCase() },
+          documentosMenor: form.documentosMenor,
+          menorValidado: contarDocumentos(form.documentosMenor) === 4,
+        } : {}),
         ...(codigoLimpio && (!editando || codigoLimpio !== (editando.codigo || '').toUpperCase()) ? { codigoAcceso: codigoLimpio } : {}),
         perfilSalud: { enfermedades: form.enfermedades, lesiones: form.lesiones },
         nombre,
@@ -496,12 +509,16 @@ export function ClientesPage({ soloRegistro = false, rutaClientes = '/clientes',
         <form id="form-cliente" noValidate className="rx-modal-body rx-form-stack" onSubmit={async e => { e.preventDefault(); await save(); }}>
           <fieldset disabled={guardando} className="rx-form-stack rx-membership-fields">
             <InputField label="Fecha de nacimiento" type="date" required={!editando} max={hoyISO} value={form.fechaNacimiento} onChange={e => setForm(f => ({ ...f, fechaNacimiento: e.target.value }))} />
-            {requiereTutor && <>
-              <InputField label="Nombre completo del tutor" required maxLength={200} value={form.nombreTutor} onChange={e => setForm(f => ({ ...f, nombreTutor: e.target.value }))} />
-              <InputField label="Clave de elector del tutor" required maxLength={18} value={form.claveElectorTutor} onChange={e => setForm(f => ({ ...f, claveElectorTutor: e.target.value.toUpperCase() }))} />
-              <SelectField label="Validación documental" value={form.estadoDocumentacion} onChange={e => setForm(f => ({ ...f, estadoDocumentacion: e.target.value as 'pendiente' | 'validada' }))} options={[{ value: 'pendiente', label: 'Documentos pendientes' }, { value: 'validada', label: 'Documentación validada' }]} />
-              <p className="rx-help-text">Se permite registrar con documentos pendientes. El expediente se conserva en las renovaciones. La lista de cuatro documentos está pendiente de confirmación; este estado no sustituye su revisión.</p>
-            </>}
+            {requiereTutor && (
+              <SeccionMenor
+                nombreTutor={form.nombreTutor}
+                claveElector={form.claveElectorTutor}
+                documentos={form.documentosMenor}
+                onNombre={(nombreTutor: string) => setForm(f => ({ ...f, nombreTutor }))}
+                onClaveElector={(claveElectorTutor: string) => setForm(f => ({ ...f, claveElectorTutor }))}
+                onDocumentos={(documentosMenor: DocumentosMenor) => setForm(f => ({ ...f, documentosMenor }))}
+              />
+            )}
             <InputField label="Código Usuario" aria-label="Código Usuario" autoComplete="off" maxLength={30}
               value={form.codigo ?? ''} placeholder="Automático si se deja vacío"
               error={tocados.codigo ? errores.codigo : undefined} onBlur={() => tocar('codigo')}
