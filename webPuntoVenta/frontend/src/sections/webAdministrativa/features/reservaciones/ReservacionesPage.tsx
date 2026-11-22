@@ -252,6 +252,14 @@ export function ReservacionesPage() {
     if (ok) void ejecutar(r, '/cancelar', {}, 'Reservación cancelada.');
   };
 
+  // Antes de registrar la asistencia se pide confirmación: el cambio es inmediato y la reservación pasa a "Asistió".
+  const confirmarAsistencia = (r: ReservacionMongo) => {
+    const ok = window.confirm(
+      `¿Confirmar la asistencia de ${r.nombreCliente} a ${r.clase} (${r.horaClase})?\n\nLa reservación ${r.codigo ?? ''} quedará como "Asistió".`,
+    );
+    if (ok) void ejecutar(r, '/asistencia', {}, 'Asistencia registrada.');
+  };
+
   const noAsistio = (r: ReservacionMongo) => {
     const ok = window.confirm(
       `¿Marcar que ${r.nombreCliente} no asistió?\n\nNo hay reembolso y ya no podrá reagendar.`,
@@ -364,7 +372,7 @@ export function ReservacionesPage() {
                 <button type="button" disabled={ocupado || !vigente || !!r.reagendada} onClick={() => void abrirReagendar(r)} className="rx-icon-btn" title={r.reagendada ? 'Ya se reagendó una vez' : 'Reagendar (una sola vez, sin costo)'}>
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                 </button>
-                <button type="button" disabled={ocupado || !vigente} onClick={() => void ejecutar(r, '/asistencia', {}, 'Asistencia registrada.')} className="rx-icon-btn" title="Registrar asistencia">
+                <button type="button" disabled={ocupado || !vigente} onClick={() => confirmarAsistencia(r)} className="rx-icon-btn" title="Registrar asistencia">
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                 </button>
                 <button type="button" disabled={ocupado || !vigente} onClick={() => noAsistio(r)} className="rx-icon-btn" title="Marcar inasistencia">

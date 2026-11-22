@@ -1,11 +1,9 @@
-import { Pool } from 'pg';
+import { pool } from '../lib/post';
 import { isValidObjectId } from 'mongoose';
 import { Horario } from '../models/Horarios/horarios';
 import { Reservacion } from '../models/Reservaciones/reservacion';
 
 // =====================================================================
-// Reportes de la administrativa (sección 3.1.6).
-//
 // Todas las cifras salen de PostgreSQL, que es la fuente operativa:
 //   - Ventas e inventario  -> esquema webpontoventa (sales, sale_items, products, waste_records)
 //   - Visitas y personal   -> webcobro.asistencias / webcobro.empleados (reloj checador)
@@ -26,25 +24,10 @@ const MAX_REGISTROS_PERSONAL = 500;
 // Conexión
 // ---------------------------------------------------------------------
 
-// Pool propio y perezoso. Usa las mismas variables POSTGRES_* que cobro y POS (con el
-// gateway ya vienen cargadas); como respaldo acepta las PG_* del .env de esta sección.
-let pool: Pool | null = null;
-function getPool(): Pool {
-    if (!pool) {
-        pool = new Pool({
-            host: process.env.POSTGRES_HOST ?? process.env.PG_HOST,
-            port: Number(process.env.POSTGRES_PORT ?? process.env.PG_PORT ?? 5432),
-            database: process.env.POSTGRES_DB ?? process.env.PG_DB,
-            user: process.env.POSTGRES_USER ?? process.env.PG_USER,
-            password: process.env.POSTGRES_PASSWORD ?? process.env.PG_PASSWORD,
-        });
-        pool.on('error', (err) => console.error('[reportes] Error inesperado en el pool de Postgres:', err));
-    }
-    return pool;
-}
-
+// Misma conexión a Postgres que inventario y el resto de la sección administrativa (respeta DATABASE_URL).
+// Antes tenía un pool propio que ignoraba DATABASE_URL y por eso los reportes fallaban con error 500.
 async function consulta<T>(sql: string, params: unknown[] = []): Promise<T[]> {
-    const resultado = await getPool().query(sql, params);
+    const resultado = await pool.query(sql, params);
     return resultado.rows as T[];
 }
 

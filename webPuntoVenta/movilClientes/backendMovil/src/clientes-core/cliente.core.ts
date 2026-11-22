@@ -10,6 +10,9 @@ import bcrypt from 'bcryptjs';
 import { Cliente } from './cliente.model';
 import { esFechaNacimientoValida } from './fechas';
 import { esMenorDeEdad, normalizarDocumentos, validarTutor } from './menor';
+import { validarCodigoUsuario } from './codigos';
+
+export const MENSAJE_CODIGO_EN_USO = 'Ese código de usuario ya está en uso por otro cliente.';
 
 export type Origen = 'web' | 'movil';
 
@@ -245,11 +248,21 @@ export async function registrarCliente(body: unknown, origen: Origen): Promise<R
     if (traePassword) datos.password = await bcrypt.hash(b.password, 10);
     if (datos.avatar === '') delete datos.avatar;
 
+    // Código Usuario personalizado (solo desde la web): si se deja vacío se asigna el siguiente automático.
+    let codigoFijo: string | null = null;
+    const pedido = b.codigo ?? b.codigoAcceso;
+    if (!movil && typeof pedido === 'string' && pedido.trim()) {
+        const v = validarCodigoUsuario(pedido);
+        if (!v.ok) return falla(400, v.error);
+        if (await Cliente.exists({ codigoAcceso: v.codigo })) return falla(409, MENSAJE_CODIGO_EN_USO);
+        codigoFijo = v.codigo;
+    }
+
     for (let intento = 0; intento < 8; intento++) {
         try {
             const cliente = await Cliente.create({
                 ...datos,
-                codigoAcceso: await siguienteCodigo(),
+                codigoAcceso: codigoFijo ?? await siguienteCodigo(),
                 estatus: 'activo',
                 rol: 'cliente',
                 membresia: null,
@@ -264,6 +277,7 @@ export async function registrarCliente(body: unknown, origen: Origen): Promise<R
             const campo = campoDuplicado(err);
             if (campo === 'correo') return falla(409, mensajeDuplicado); // dos altas simultáneas con el mismo correo
             if (campo !== 'codigoAcceso') throw err;
+            if (codigoFijo) return falla(409, MENSAJE_CODIGO_EN_USO); // otro alta tomó ese código al mismo tiempo
             await alinearContador(); // el código ya existía: se alinea el contador y se reintenta
         }
     }

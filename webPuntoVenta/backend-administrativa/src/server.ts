@@ -14,6 +14,7 @@ import ventaRoutes from './routes/ventas.routes';
 import membresiaRoutes from './routes/membresia.routes';
 import reportesRoutes from './routes/reportes.routes';
 import comprasMembresiaRoutes from './routes/compras-membresia.routes';
+import dashboardRoutes from './routes/dashboard.routes';
 import { enfermedadesRoutes, lesionesRoutes } from './routes/salud.routes';
 import { sembrarCatalogoSalud } from './salud-core/catalogo.model';
 import { crearRutasClientesMovil } from './routes/clientes-movil.routes';
@@ -54,6 +55,7 @@ app.use('/api/membresias', membresiaRoutes);
 app.use('/api/reportes', permitir(PERMISOS.reportes), reportesRoutes);
 app.use('/api/enfermedades', permitir(PERMISOS.catalogoSalud), enfermedadesRoutes);
 app.use('/api/lesiones', permitir(PERMISOS.catalogoSalud), lesionesRoutes);
+app.use('/api/dashboard', permitir(PERMISOS.reportes), dashboardRoutes);
 app.use('/api/membresias-compras', permitir(PERMISOS.membresiasCompras), comprasMembresiaRoutes);
 
 // Exporta la app para que el gateway unificado pueda montarla bajo su prefijo

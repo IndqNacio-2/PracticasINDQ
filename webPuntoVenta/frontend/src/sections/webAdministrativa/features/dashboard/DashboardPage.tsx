@@ -131,7 +131,8 @@ export function DashboardPage() {
 
       api.get<HorarioClase[]>(`/horarios?fecha=${hoy}&estatus=activo`),
 
-      api.get<Venta[]>(`/ventas?desde=${inicioMes}&hasta=${hoy}`),
+      // Ventas del punto de venta + cobros de recepción (ambos viven en Postgres)
+      api.get<Venta[]>(`/dashboard/ingresos?desde=${inicioMes}&hasta=${hoy}`),
     ])
 
     const [
@@ -193,6 +194,10 @@ export function DashboardPage() {
     clienteVigente(cliente, hoy),
   ).length
 
+  // Ingresos de hoy: punto de venta + cobros de recepción (antes solo se contaban los cobros)
+  const ingresosHoy = ventasMes
+    .filter((venta) => venta.fecha.slice(0, 10) === hoy)
+    .reduce((suma, venta) => suma + Number(venta.total ?? 0), 0)
   const ingresosMes = ventasMes.reduce(
     (total, venta) => total + Number(venta.total || 0),
 
@@ -318,7 +323,7 @@ export function DashboardPage() {
             value={
               cargando
                 ? "—"
-                : `$${Number(kpis?.ingresosHoy ?? 0).toLocaleString("es-MX")}`
+                : `$${ingresosHoy.toLocaleString("es-MX")}`
             }
             icon="payments"
             tone="success"

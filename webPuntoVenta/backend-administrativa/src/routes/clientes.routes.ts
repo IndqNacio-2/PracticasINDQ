@@ -8,6 +8,8 @@ import { fechaISO, hoyEnZona } from '../lib/edad';
 import { errorPassword, normalizarPerfil, registrarCliente } from '../services/cliente.service';
 import { felicitarSiCumple } from '../services/cumpleanos.service';
 import { filtroBusquedaClientes } from '../clientes-core/busqueda';
+import { validarCodigoUsuario } from '../clientes-core/codigos';
+import { MENSAJE_CODIGO_EN_USO } from '../clientes-core/cliente.core';
 import { esMenorDeEdad, normalizarDocumentos, validarTutor } from '../clientes-core/menor';
 
 // Rutas de la plataforma web (staff). Móntalas detrás de tu middleware de autenticación de administrador.
@@ -44,6 +46,16 @@ router.get('/', asyncHandler(async (req, res) => {
 }));
 
 // Perfil completo (datos generales, salud y membresía).
+// ¿Está libre ese Código Usuario? ?codigo=ALE12- & ?excluirId=<id del cliente que se está editando>
+// El formulario lo consulta mientras se escribe el código (debe declararse antes de /:id).
+router.get('/codigo-disponible', asyncHandler(async (req, res) => {
+    const v = validarCodigoUsuario(req.query.codigo);
+    if (!v.ok) return res.status(400).json({ error: v.error });
+    const filtro: Record<string, any> = { codigoAcceso: v.codigo };
+    if (typeof req.query.excluirId === 'string' && isValidObjectId(req.query.excluirId)) filtro._id = { $ne: req.query.excluirId };
+    res.json({ disponible: !(await Cliente.exists(filtro)), codigo: v.codigo });
+}));
+
 router.get('/:id', asyncHandler(async (req, res) => {
     const cliente = await Cliente.findById(req.params.id);
     if (!cliente) return res.status(404).json({ error: 'Cliente no encontrado' });
@@ -66,6 +78,23 @@ router.post('/', asyncHandler(async (req, res) => {
 router.patch('/:id', asyncHandler(async (req, res) => {
     const cliente = await Cliente.findById(req.params.id);
     if (!cliente) return res.status(404).json({ error: 'Cliente no encontrado' });
+
+    // La pantalla de clientes da de baja y reactiva mandando solo { estatus }: equivale a /baja y /reactivar.
+    // (Antes este cambio se ignoraba: la baja y la reactivación parecían funcionar pero no cambiaban nada.)
+    const claves = Object.keys(req.body ?? {});
+    if (claves.length === 1 && claves[0] === 'estatus') {
+        if (req.body.estatus === 'inactivo') {
+            return res.json(await Cliente.findByIdAndUpdate(
+                cliente._id,
+                { estatus: 'inactivo', fechaBaja: fechaISO(hoyEnZona()), $inc: { tokenVersion: 1 } },
+                { new: true }
+            ));
+        }
+        if (req.body.estatus === 'activo') {
+            return res.json(await Cliente.findByIdAndUpdate(cliente._id, { estatus: 'activo', fechaBaja: null }, { new: true }));
+        }
+        return res.status(400).json({ error: "El estatus debe ser 'activo' o 'inactivo'" });
+    }
 
     const { error, datos: base } = normalizarPerfil(req.body, { parcial: true });
     if (error) return res.status(400).json({ error });
@@ -112,8 +141,24 @@ router.patch('/:id', asyncHandler(async (req, res) => {
     // Al terminar el registro en recepción (cliente que se registró desde la app) se quita la marca de pendiente.
     if (req.body.registroPendiente === false) datos.registroPendiente = false;
 
+    // Código Usuario: se puede cambiar por otro libre. Vacío o igual al actual = no se toca.
+    const pedido = req.body.codigo ?? req.body.codigoAcceso;
+    if (typeof pedido === 'string' && pedido.trim() && pedido.trim().toUpperCase() !== cliente.codigoAcceso) {
+        const v = validarCodigoUsuario(pedido);
+        if (!v.ok) return res.status(400).json({ error: v.error });
+        if (await Cliente.exists({ codigoAcceso: v.codigo, _id: { $ne: cliente._id } })) {
+            return res.status(409).json({ error: MENSAJE_CODIGO_EN_USO });
+        }
+        datos.codigoAcceso = v.codigo;
+    }
+
     cliente.set(datos);
-    await cliente.save();
+    try {
+        await cliente.save();
+    } catch (err: any) {
+        if (err?.code === 11000 && err?.keyPattern?.codigoAcceso) return res.status(409).json({ error: MENSAJE_CODIGO_EN_USO });
+        throw err;
+    }
     // Si el staff cambia la contraseña, se cierran las sesiones abiertas del cliente.
     if (cambiaPassword) await Cliente.updateOne({ _id: cliente._id }, { $inc: { tokenVersion: 1 } });
 

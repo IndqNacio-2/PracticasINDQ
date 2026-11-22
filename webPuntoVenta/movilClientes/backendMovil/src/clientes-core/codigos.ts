@@ -28,6 +28,22 @@ export function normalizarCodigo(valor: unknown): string | null {
     return FORMATO.test(limpio) ? limpio : null;
 }
 
+/**
+ * Código Usuario escrito a mano al registrar o editar un cliente en la web (3 a 30 caracteres: letras, números o
+ * guiones). Los códigos solo numéricos y los prefijos CLI- y EMP- están reservados. Si se deja vacío se asigna
+ * uno automático (CLI001, CLI002...). Misma regla que valida el formulario (validacionCliente.ts).
+ */
+export function validarCodigoUsuario(valor: unknown): { ok: true; codigo: string } | { ok: false; error: string } {
+    const codigo = typeof valor === 'string' ? valor.trim().toUpperCase() : '';
+    if (!/^[A-Z0-9][A-Z0-9-]{2,29}$/.test(codigo)) {
+        return { ok: false, error: 'El código debe tener de 3 a 30 caracteres: letras, números o guiones.' };
+    }
+    if (/^\d+$/.test(codigo) || codigo.startsWith('CLI-') || codigo.startsWith('EMP-')) {
+        return { ok: false, error: 'Los códigos numéricos y los prefijos CLI- y EMP- están reservados.' };
+    }
+    return { ok: true, codigo };
+}
+
 export function campoDuplicado(err: unknown): string | null {
     const e = err as { code?: number; keyPattern?: Record<string, unknown> };
     if (e?.code !== 11000) return null;
