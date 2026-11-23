@@ -21,7 +21,15 @@ import { TOKEN_KEY } from '../auth/session';
  * replace (/\, "") elimina una diagonal final para evitar URLs
  * como http://localhost:3003//api/health.
  */
-const API_URL = import.meta.env.VITE_API_URL.replace(/\$/, "");
+const API_CONFIGURADA = import.meta.env.VITE_API_URL;
+const API_URL = (API_CONFIGURADA ?? '').trim().replace(/\/+$/, '');
+
+function exigirConfiguracion(): void {
+    // Una cadena vacía es válida para una API servida en el mismo origen.
+    if (API_CONFIGURADA === undefined) {
+        throw new ApiError({ message: 'Falta configurar VITE_API_URL en el archivo .env del frontend. Reinicia el servidor después de configurarla.' }, 0);
+    }
+}
 
 /**
  * representa el posible de cada servicio revisado
@@ -49,6 +57,7 @@ export interface HealthResponse {
  * una opcion operacion HTTP asincrona
  */
 export async function getHealth(): Promise<HealthResponse> {
+    exigirConfiguracion();
     const response = await fetch(`${API_URL}/api/health`);
 
     /**
@@ -102,6 +111,7 @@ export class ApiError extends Error {
  * reviso response.ok a mano y convierto la respuesta en un ApiError.
  */
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+    exigirConfiguracion();
     const response = await fetch(`${API_URL}${path}`, {
         ...options,
         headers: {

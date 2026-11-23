@@ -51,4 +51,35 @@ router.get('/me', requireAuth, async (req, res) => {
   return res.json({ user: usuario.toJSON() });
 });
 
+// Solo permite cambiar la contraseña de la identidad autenticada.
+router.post('/cambiar-password', requireAuth, async (req, res) => {
+  const { passwordActual, passwordNueva } = req.body ?? {};
+  if (typeof passwordActual !== 'string' || typeof passwordNueva !== 'string' || !passwordActual) {
+    return res.status(400).json({ message: 'La contraseña actual y la nueva son obligatorias.' });
+  }
+  // bcrypt solo utiliza hasta 72 bytes; no aceptar contraseñas truncadas.
+  if (passwordNueva.length < 8 || Buffer.byteLength(passwordNueva, 'utf8') > 72) {
+    return res.status(400).json({ message: 'La nueva contraseña debe tener al menos 8 caracteres y no superar 72 bytes.' });
+  }
+  if (passwordNueva === passwordActual) {
+    return res.status(400).json({ message: 'La nueva contraseña debe ser distinta a la actual.' });
+  }
+
+  const usuario: any = await Usuario.findById(req.auth!.id).select('+password');
+  if (!usuario || usuario.estatus !== 'activo' || !await bcrypt.compare(passwordActual, usuario.password)) {
+    return res.status(401).json({ message: 'La contraseña actual no es correcta o el usuario no está disponible.' });
+  }
+  const password = await bcrypt.hash(passwordNueva, 10);
+  // Evita sobreescribir otro cambio de contraseña realizado simultáneamente.
+  const resultado = await Usuario.updateOne(
+    { _id: usuario._id, password: usuario.password, estatus: 'activo' },
+    { $set: { password } },
+    { runValidators: true },
+  );
+  if (resultado.modifiedCount !== 1) {
+    return res.status(409).json({ message: 'La cuenta cambió durante la operación. Vuelve a iniciar sesión.' });
+  }
+  return res.json({ message: 'Contraseña actualizada. Inicia sesión con tu nueva contraseña.' });
+});
+
 export default router;

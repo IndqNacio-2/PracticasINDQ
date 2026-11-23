@@ -1,4 +1,5 @@
 import { useState } from "react"
+import CambiarPassword from "./CambiarPassword"
 import BrandLogo from "../components/BrandLogo"
 import MaterialIcon from "../components/MaterialIcon"
 import {
@@ -19,10 +20,15 @@ export default function LoginPage() {
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
   const [mostrarPassword, setMostrarPassword] = useState(false)
+  const [cambiarPassword, setCambiarPassword] = useState(false)
+  const [tokenCambio, setTokenCambio] = useState<string | null>(null)
+  const [aviso, setAviso] = useState("")
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
+    if (loading) return
     setError("")
+    setAviso("")
     setLoading(true)
 
     try {
@@ -39,6 +45,13 @@ export default function LoginPage() {
             ? data.message
             : "No se pudo iniciar sesión.",
         )
+      }
+
+      if (cambiarPassword) {
+        clearSession()
+        setPassword("")
+        setTokenCambio(data.token)
+        return
       }
 
       const modulePath = getModulePath(data.user.rol)
@@ -86,13 +99,20 @@ export default function LoginPage() {
             <p className="rx-label">
               Comienza tu jornada
             </p>
-            <h2 id="login-title">Iniciar sesión</h2>
+            <h2 id="login-title">{tokenCambio ? "Cambiar contraseña" : "Iniciar sesión"}</h2>
             <p className="rx-login-description">
               Ingresa tus credenciales para continuar.
             </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="rx-login-form" aria-busy={loading}>
+          {aviso && <p role="status">{aviso}</p>}
+          {tokenCambio ? <CambiarPassword token={tokenCambio} onFinish={message => {
+            setTokenCambio(null)
+            setCambiarPassword(false)
+            setPassword("")
+            setAviso(message)
+            clearSession()
+          }} /> : <form onSubmit={handleSubmit} className="rx-login-form" aria-busy={loading}>
             <label className="rx-field">
               <span className="rx-label">Correo electrónico</span>
               <input
@@ -132,6 +152,10 @@ export default function LoginPage() {
               </div>
             </div>
 
+            <label className="rx-label">
+              <input type="checkbox" checked={cambiarPassword} onChange={e => setCambiarPassword(e.target.checked)} /> Cambiar mi contraseña al iniciar sesión
+            </label>
+
             {error && (
               <div className="rx-login-error" role="alert">
                 {error}
@@ -145,7 +169,7 @@ export default function LoginPage() {
             >
               {loading ? "Verificando..." : "Ingresar al sistema"}
             </button>
-          </form>
+          </form>}
         </section>
       </div>
     </main>
