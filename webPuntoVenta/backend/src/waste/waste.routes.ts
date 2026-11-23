@@ -11,8 +11,10 @@ import { Router, type Response } from "express";
 import * as wasteRepository from "./waste.repository.js";
 import { validateWasteInput } from "./waste.validation.js";
 import type { ValidationIssue } from "./waste.types.js";
+import { requirePosUser } from '../auth.js';
 
 export const wasteRouter = Router();
+wasteRouter.use(requirePosUser);
 
 /**
  * Respondo los errores de validacion con el mismo formato siempre,

@@ -8,6 +8,11 @@ import perfilRoutes from './routes/perfil.routes';
 import claseRoutes from './routes/clases.routes';
 import horarioRoutes from './routes/horarios.routes';
 import reservacionRoutes from './routes/reservaciones.routes';
+import membresiaRoutes from './routes/membresias.routes';
+import asistenciaRoutes from './routes/asistencia.routes';
+import saludRoutes from './routes/salud.routes';
+import { sembrarCatalogoSalud } from './salud-core/catalogo.model';
+import { requirePersonal } from './middleware/personal';
 
 secreto(); // falla al arrancar si falta CLIENTES_JWT_SECRET
 
@@ -28,6 +33,11 @@ app.use('/api/me', requireCliente, perfilRoutes);
 app.use('/api/clases', requireCliente, claseRoutes);
 app.use('/api/horarios', requireCliente, horarioRoutes);
 app.use('/api/reservaciones', requireCliente, reservacionRoutes);
+app.use('/api/membresias', requireCliente, membresiaRoutes);
+// Solo personal (administrador o recepción): confirmar que el cliente llegó a su clase
+app.use('/api/asistencia', requirePersonal, asistenciaRoutes);
+// Catálogos de enfermedades y lesiones para el registro (públicos, de solo lectura)
+app.use('/api/salud', saludRoutes);
 
 app.use((_req, res) => res.status(404).json({ error: 'Ruta no encontrada' }));
 
@@ -40,6 +50,9 @@ app.use((err: { status?: number; type?: string }, _req: Request, res: Response, 
 });
 
 connectDB()
+    .then(() => {
+        sembrarCatalogoSalud().catch((error) => console.error('Catálogo de salud:', error.message));
+    })
     .then(() => app.listen(PORT, () => console.log(`API de clientes escuchando en http://localhost:${PORT}`)))
     .catch((err) => {
         console.error('No se pudo conectar a MongoDB:', err);

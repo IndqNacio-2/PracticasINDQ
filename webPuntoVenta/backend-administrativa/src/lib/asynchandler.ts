@@ -7,7 +7,7 @@ export const asyncHandler =
             fn(req, res, next).catch(next);
         };
 
-/** Manejador de errores de los routers de clientes (se monta con router.use al final). */
+/** Manejador compartido de errores (se monta con router.use al final). */
 export function manejarErrores(err: any, _req: Request, res: Response, _next: NextFunction) {
     if (err?.code === 11000) {
         const campo = Object.keys(err.keyPattern ?? {})[0];
@@ -23,6 +23,9 @@ export function manejarErrores(err: any, _req: Request, res: Response, _next: Ne
     if (err?.name === 'CastError') {
         return res.status(400).json({ error: 'Dato con formato inválido' });
     }
-    console.error('[clientes]', err);
+    console.error(`[administrativa ${_req.baseUrl}]`, err);
+    if (err?.code === '42P01') {
+        return res.status(503).json({ error: 'Falta una tabla requerida. Para el historial de inventario ejecuta npm run db:migrar-inventario desde backend-administrativa.' });
+    }
     return res.status(500).json({ error: 'Error interno del servidor' });
 }

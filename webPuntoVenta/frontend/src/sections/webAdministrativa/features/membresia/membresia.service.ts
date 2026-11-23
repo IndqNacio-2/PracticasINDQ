@@ -3,7 +3,7 @@ import type { Estatus } from '../../types';
 import type { Membresia, MembresiaInput } from './types';
 
 // Servicio de membresías: habla con la API del backend (/api/membresias).
-// Lectura: administrador y recepción. Alta, edición y baja: solo administrador.
+// Lectura y alta: administrador y recepción. Edición y baja: solo administrador.
 // La baja es lógica: la membresía pasa a "inactivo", no se borra.
 export const membresiasService = {
     listar: () => api.get<Membresia[]>('/membresias'),

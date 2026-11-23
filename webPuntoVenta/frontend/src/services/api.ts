@@ -8,19 +8,26 @@
  */
 
 import type {
-  Product,
-  WasteRecord,
-  WasteReason,
-  SaleRecord,
-  CashClosingRecord,
+    Product,
+    WasteRecord,
+    WasteReason,
+    SaleRecord,
+    CashClosingRecord,
 } from '../types';
+import { TOKEN_KEY } from '../auth/session';
 /**
- * obtiene la direccion base del backend desde las variables de Vite
- * 
- * replace (/\, "") elimina una diagonal final para evitar URLs
- * como http://localhost:3003//api/health.
+ * Direccion base del backend.
+ *
+ * Con el backend unificado (gateway en el 3000), el Punto de Venta se monta
+ * bajo /pos y Vite reenvia /pos/api al gateway. Cada ruta de este archivo ya
+ * empieza con /api, por eso la base es solo "/pos".
+ *
+ * Si defines VITE_API_URL (por ejemplo http://localhost:3003 para correr el
+ * backend del POS por separado), se usa ese valor.
+ *
+ * El replace elimina una diagonal final para evitar URLs como //api/health.
  */
-const API_URL = import.meta.env.VITE_API_URL.replace(/\$/, "");
+const API_URL = (import.meta.env.VITE_API_URL ?? "/pos").replace(/\/$/, "");
 
 /**
  * representa el posible de cada servicio revisado
@@ -105,6 +112,8 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
         ...options,
         headers: {
             "Content-Type": "application/json",
+            // Las rutas del punto de venta exigen la sesión del personal.
+            Authorization: `Bearer ${localStorage.getItem("token") ?? ""}`,
             ...options.headers,
         },
     });
@@ -274,7 +283,7 @@ export async function getCashClosings(): Promise<CashClosingRecord[]> {
 }
 
 // Datos del cierre de turno que arma la pantalla de Corte de caja.
-export type CashClosingPayload = Omit<CashClosingRecord, "folio" | "date" | "time">;
+export type CashClosingPayload = Omit<CashClosingRecord, "folio" | "date" | "time"> & { saleIds: number[] };
 
 // Registrar el cierre de un turno.
 export async function createCashClosing(

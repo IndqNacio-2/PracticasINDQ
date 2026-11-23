@@ -28,7 +28,7 @@ function preparar({ error = '', loading = false, fetchImpl } = {}) {
   };
   const sessionModule = { exports: {} };
   vm.runInNewContext(sessionCompiled, { module: sessionModule, exports: sessionModule.exports, localStorage });
-  const valores = ['personal@nuucleo.test', 'clave-de-prueba', error, loading];
+  const valores = ['personal@nuucleo.test', 'clave-de-prueba', error, loading, false];
   let indice = 0;
   const modulo = { exports: {} };
   vm.runInNewContext(compiled, {
@@ -41,6 +41,7 @@ function preparar({ error = '', loading = false, fetchImpl } = {}) {
       if (nombre === 'react/jsx-runtime') return require(nombre);
       if (nombre === './session') return sessionModule.exports;
       if (nombre.endsWith('/BrandLogo')) return { default: () => React.createElement('img', { alt: 'NUUCLEO', src: '/branding/nuucleo-logo.png' }) };
+      if (nombre.endsWith('/MaterialIcon')) return { default: ({ name }) => React.createElement('span', { 'aria-hidden': true }, name) };
       throw Error(`Importación inesperada: ${nombre}`);
     },
     fetch: fetchImpl ?? (() => { throw Error('No se permiten llamadas reales'); }),
@@ -69,7 +70,7 @@ test('login: bienvenida breve, identidad compartida y sin textos anteriores', ()
 
 test('login: carga bloquea el botón y el error se anuncia', () => {
   const pagina = preparar({ loading: true, error: 'Credenciales incorrectas' });
-  assert.equal(pagina.botones[0].props.disabled, true);
+  assert.equal(pagina.botones.find(boton => boton.props.type === 'submit').props.disabled, true);
   assert.equal(pagina.formulario.props['aria-busy'], true);
   assert.match(pagina.html, /Verificando/);
   assert.match(pagina.html, /role="alert"/);

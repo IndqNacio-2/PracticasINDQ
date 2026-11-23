@@ -1,11 +1,20 @@
 import { useState, useEffect } from 'react';
-import { Link, NavLink } from 'react-router-dom';
+import { NavLink } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import MaterialIcon from '../../../components/MaterialIcon';
 import BrandLogo from '../../../components/BrandLogo';
 import { LOGIN_PATH } from '../../../auth/session';
 import MembresiasRecepcion, { membresiasRequest, SaldosMembresias } from './MembresiasRecepcion';
+import CobroApartada from './CobroApartada';
+// Clientes: recepción usa la misma pantalla (y la misma API) que administrativa: una sola fuente de clientes.
+import { ClientesPage } from '../../webAdministrativa/features/clientes/ClientesPage';
 import { EVENTO_CAMBIO_APLICACION, CLAVE_CAMBIO_APLICACION } from '../../../services/cambiosAplicacion';
+import RecepcionDetalle from './RecepcionDetalle';
+import InventarioRecepcion from './InventarioRecepcion';
+import ClasesHorariosPage from '../../webAdministrativa/features/clasesHorarios/ClasesHorariosPage';
+import MembresiasPage from '../../webAdministrativa/features/membresia/membresia';
+import { ClienteDetalle } from '../../webAdministrativa/features/clientes/ClienteDetalle';
+import '../../../styles/recepcion-workspace.css';
 
 /*
  * Diseño: sistema visual compartido rx- (src/styles/pos-ui.css), el mismo que
@@ -18,6 +27,12 @@ import { EVENTO_CAMBIO_APLICACION, CLAVE_CAMBIO_APLICACION } from '../../../serv
  * Las reservaciones se cargan desde el backend (esquema webcobro). Ya no hay
  * datos de ejemplo: la tabla inicia vacía y se llena con la respuesta de la API.
  */
+
+/*
+ * Backend unificado: la sección de cobro se monta bajo /cobro en el mismo
+ * puerto del frontend (Vite lo reenvía al gateway en el 3000).
+ */
+const API = '/cobro';
 
 /*
  * Las mismas formas de pago que maneja el Punto de Venta: efectivo, tarjeta
@@ -57,10 +72,51 @@ const hoyISO = () => {
 };
 
 /*
- * Código de reserva que da el cliente en recepción (lo genera el backend al
- * reservar, también desde la app móvil): RSV-7K2M9Q o solo 7K2M9Q.
+ * Encabezado con el token de la sesión. Las rutas de /admin (clases, horarios...)
+ * ya exigen sesión y rol, así que toda llamada a ellas debe enviarlo.
  */
-const pareceCodigoReserva = (valor) => /^(RSV-)?[A-Z0-9]{6}$/i.test((valor || '').trim());
+const authAdmin = () => ({ Authorization: `Bearer ${localStorage.getItem('token') || ''}` });
+
+// fetch con la sesión del personal: las rutas de cobro y de administrativa exigen token y rol.
+const fetchAuth = (url, opciones = {}) =>
+  fetch(url, { ...opciones, headers: { ...authAdmin(), ...(opciones.headers || {}) } });
+
+// Quita acentos y pasa a minúsculas: "Pédro" -> "pedro" (el buscador de clientes es solo por nombre y/o apellido).
+const sinAcentos = (valor) => String(valor ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+/*
+ * Clientes: la fuente única es administrativa (MongoDB), la misma que usa la app móvil.
+ * Se completan con las compras de membresía que guarda cobro (cliente_ref = id del cliente).
+ */
+const cargarClientes = async () => {
+  const [resClientes, resCompras] = await Promise.all([
+    fetchAuth('/admin/api/clientes'),
+    fetchAuth('/cobro/api/membresias/compras-resumen'),
+  ]);
+  if (!resClientes.ok) throw new Error(`No se pudieron consultar los clientes. HTTP ${resClientes.status}`);
+  const lista = await resClientes.json();
+  const compras = resCompras.ok ? await resCompras.json() : {};
+  return (Array.isArray(lista) ? lista : []).map((c) => ({
+    id: c.idUsuario,
+    codigo: c.codigoAcceso,
+    nombre: [c.nombre, c.apellidos].filter(Boolean).join(' '),
+    telefono: c.telefono ?? '',
+    correo: c.correo ?? '',
+    activo: c.estatus === 'activo',
+    membresia: 'Sin membresía',
+    vigencia_hasta: null,
+    tieneCompras: Boolean(compras[c.idUsuario]?.tieneCompras),
+    membresiasCompradas: compras[c.idUsuario]?.membresiasCompradas ?? [],
+  }));
+};
+
+/*
+ * Código que da el cliente en recepción (lo genera el backend al reservar, también
+ * desde la app móvil). Todos siguen PREFIJO-XXXXX (prefijo + guion + 5 dígitos):
+ * NU-48213 (clase individual) o PQ-07391 (membresía/paquete apartado).
+ */
+// Las reservas anteriores al cambio conservan su código RSV-XXXXXX, que se sigue reconociendo.
+const pareceCodigoReserva = (valor) => /^((NU|PQ)-\d{5}|RSV-[A-Z0-9]{6})$/i.test((valor || '').trim());
 
 // Estados que ya no apartan lugar ni cuentan como reservación activa.
 const ESTADOS_INACTIVOS = ['cancelado', 'no_asistio'];
@@ -84,7 +140,8 @@ const ESTADO_BADGE = {
 
 // Pestañas de filtro de la tabla (mismo componente rx-tab que el Punto de Venta).
 const FILTROS_ESTADO = [
-  { key: 'todas', etiqueta: 'Todas', coincide: () => true },
+  { key: 'todas', etiqueta: 'Todos', coincide: () => true },
+  { key: 'por_llegar', etiqueta: 'Por llegar', coincide: r => ['pendiente', 'pagado'].includes(r.status) && r.capacityStatus !== 'espera' },
   {
     key: 'por_cobrar',
     etiqueta: 'Por cobrar',
@@ -127,20 +184,15 @@ const fechaDeHoyLarga = () => {
   return texto.charAt(0).toUpperCase() + texto.slice(1);
 };
 
-// Tarjeta KPI con el mismo marcado que el dashboard administrativo.
-function KpiCard({ etiqueta, valor, icono, tono }) {
-  return (
-    <article className="rx-kpi-card rx-admin-stat">
-      <div>
-        <p className="rx-kpi-label">{etiqueta}</p>
-        <p className="rx-kpi-value">{valor}</p>
-      </div>
-      <div className={`rx-admin-stat-icon rx-admin-stat-icon--${tono}`}>
-        <MaterialIcon name={icono} className="text-2xl" filled />
-      </div>
-    </article>
-  );
-}
+// Normaliza texto para búsqueda: minúsculas, sin acentos ni diacríticos.
+// "Pedro Páramo" -> "pedro paramo", "PÉDRÓ PÁRÁMÓ" -> "pedro paramo"
+const normalizarTexto = (texto = '') =>
+  String(texto)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // elimina tildes y otros diacríticos combinados
+    .replace(/ñ/g, 'n')
+    .replace(/ü/g, 'u');
 
 // Botón "Cambiar método" igual al del modal de cobro del Punto de Venta.
 function BotonCambiarMetodo({ onClick }) {
@@ -152,11 +204,33 @@ function BotonCambiarMetodo({ onClick }) {
   );
 }
 
-export default function Dashboard() {
+export default function Dashboard({ vista = 'recepcion' }) {
   const { user, logout } = useAuth();
 
   // ========== ESTADOS ==========
   const [reservations, setReservations] = useState([]);
+  const [horarioVistaId, setHorarioVistaId] = useState(null);
+  const [reservaVistaId, setReservaVistaId] = useState(null);
+  const [detalleColapsado, setDetalleColapsado] = useState(false);
+  const [comprasDetalle, setComprasDetalle] = useState([]);
+  const [errorDetalle, setErrorDetalle] = useState('');
+  const [cargandoDetalle, setCargandoDetalle] = useState(false);
+  const reservaDetalle = reservations.find(r => r.id === reservaVistaId);
+  useEffect(() => {
+    let vigente = true;
+    setComprasDetalle([]);
+    setErrorDetalle('');
+    if (!reservaDetalle?.clienteId || !reservaDetalle?.membresiaCompraId) {
+      setCargandoDetalle(false);
+      return;
+    }
+    setCargandoDetalle(true);
+    membresiasRequest(`/clientes/${encodeURIComponent(reservaDetalle.clienteId)}/membresias`)
+      .then(datos => { if (vigente) setComprasDetalle(Array.isArray(datos) ? datos : []); })
+      .catch(error => { if (vigente) setErrorDetalle(error.message); })
+      .finally(() => { if (vigente) setCargandoDetalle(false); });
+    return () => { vigente = false; };
+  }, [reservaDetalle]);
   const [notification, setNotification] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -172,6 +246,9 @@ export default function Dashboard() {
   const [tipoReserva, setTipoReserva] = useState('cliente');
   const [selectedClient, setSelectedClient] = useState(null);
   const [verMembresias, setVerMembresias] = useState(false);
+  const [verClientes, setVerClientes] = useState(false);
+  // Membresía apartada desde la app (código PQ-XXXXX) que recepción está cobrando
+  const [apartadaACobrar, setApartadaACobrar] = useState(null);
   const [comprasSocio, setComprasSocio] = useState([]);
   const [saldoError, setSaldoError] = useState('');
   const [saldoCargando, setSaldoCargando] = useState(false);
@@ -226,7 +303,7 @@ export default function Dashboard() {
   // pide los KPIs al backend unificado (vite los reenvia al gateway).
   const cargarKpis = async () => {
     try {
-      const res = await fetch(`${API}/api/kpis`);
+      const res = await fetchAuth(`${API}/api/kpis`);
       if (res.ok) setKpis(await res.json());
     } catch (err) {
       console.warn(`No se pudieron cargar los KPIs:`, err);
@@ -234,9 +311,6 @@ export default function Dashboard() {
   };
 
   // ========== CARGA DE DATOS DESDE EL BACKEND ==========
-  // Backend unificado: la sección de cobro se monta bajo /cobro en el mismo
-  // puerto del frontend (Vite lo reenvía al gateway en el 3000).
-  const API = '/cobro';
 
   useEffect(() => {
     /**
@@ -244,7 +318,7 @@ export default function Dashboard() {
      * las reservaciones canceladas no se muestran en el tablero principal,
      * pero siguen guardadas para que administrativa pueda consultarlas.
      */
-    fetch(`${API}/api/reservas`)
+    fetchAuth(`${API}/api/reservas`)
       .then(res => {
         if (!res.ok) {
           throw new Error(`No se pudieron cargar las reservaciones. HTTP ${res.status}`);
@@ -267,16 +341,9 @@ export default function Dashboard() {
      * cargamos los socios registrados desde el backend de cobro
      * estos clientes se utilizan para validar su estado, membresia y vigencia.
      */
-    fetch(`${API}/api/clientes`)
-      .then(res => {
-        if (!res.ok) {
-          throw new Error(`No se pudieron consultar los clientes. HTTP ${res.status}`);
-        }
-
-        return res.json();
-      })
+    cargarClientes()
       .then(data => {
-        setClientes(Array.isArray(data) ? data : []);
+        setClientes(data);
       })
       .catch(error => {
         console.warn('No se pudieron cargar los clientes:', error);
@@ -287,15 +354,11 @@ export default function Dashboard() {
      * las clases se crean en el modulo de administrativa y se guardan en MongoDB
      * desde cobro consultamos esas mismas clases para obtener su nombre,
      * precio, capacidad, color y estatus.
-     *
-     * el error anterior estaba aqui: se usaba serclasses, pero el estado
-     * fue declarado como setClases,no existia las clases
-     * nunca se guardaban en el estado y cobro mostraba el preciio como $0
      */
-    fetch('/admin/api/clases')
+    fetch('/admin/api/clases', { headers: authAdmin() })
       .then(res => {
-        if(!res.ok) {
-          throw new Error(`No se pudieron consulat las clases. HTTP ${res.status}`);
+        if (!res.ok) {
+          throw new Error(`No se pudieron consultar las clases. HTTP ${res.status}`);
         }
 
         return res.json();
@@ -303,9 +366,6 @@ export default function Dashboard() {
       .then(data => {
         /**
          * solo conservamos las clases activas
-         * la funcion correcta es serClases porque asi se declaro el estado
-         *
-         * const [clases, setClases] = useState([]);
          */
         const clasesActivas = (Array.isArray(data) ? data : [])
           .filter(clase => clase.estatus !== 'inactivo');
@@ -314,10 +374,10 @@ export default function Dashboard() {
       })
       .catch(error => {
         /**
-         * si administrativa no responde o devuelve un error, impiamos la lista
+         * si administrativa no responde o devuelve un error, limpiamos la lista
          * tambien imprimimos el error real para facilitar el diagnostico
          */
-        console.warn('No se pudieron cargar las calses de Administrativa:', error);
+        console.warn('No se pudieron cargar las clases de Administrativa:', error);
         setClases([]);
       });
 
@@ -325,7 +385,7 @@ export default function Dashboard() {
      * Por ultimo cargamos los indicadores superiores del dashboard:
      * ingresos del dia, clientes esperados y total de reservaciones.
      */
-    fetch(`${API}/api/kpis`)
+    fetchAuth(`${API}/api/kpis`)
       .then(res => {
         if (!res.ok) {
           throw new Error(`No se pudieron cargar los indicadores. HTTP ${res.status}`);
@@ -348,7 +408,7 @@ export default function Dashboard() {
    */
   useEffect(() => {
     if (!fechaReserva) return;
-    fetch(`/admin/api/horarios?fecha=${encodeURIComponent(fechaReserva)}&estatus=activo`)
+    fetch(`/admin/api/horarios?fecha=${encodeURIComponent(fechaReserva)}&estatus=activo`, { headers: authAdmin() })
       .then(res => res.json())
       .then(data => setHorarios(Array.isArray(data) ? data : []))
       .catch(() => {
@@ -364,7 +424,7 @@ export default function Dashboard() {
   useEffect(() => {
     if (!reservaAReagendar || !fechaReagendar) return;
     setHorarioReagendarId('');
-    fetch(`/admin/api/horarios?fecha=${encodeURIComponent(fechaReagendar)}&estatus=activo`)
+    fetch(`/admin/api/horarios?fecha=${encodeURIComponent(fechaReagendar)}&estatus=activo`, { headers: authAdmin() })
       .then(res => res.json())
       .then(data => setHorariosReagendar(
         (Array.isArray(data) ? data : []).filter(h => h.nombreClase === reservaAReagendar.class)
@@ -378,7 +438,7 @@ export default function Dashboard() {
    * servidor marca cuando la clase ya pasó.
    */
   const recargarReservas = async () => {
-    const res = await fetch(`${API}/api/reservas`);
+    const res = await fetchAuth(`${API}/api/reservas`);
     if (!res.ok) throw new Error(`No se pudieron cargar las reservaciones. HTTP ${res.status}`);
     const data = await res.json();
     const activas = (Array.isArray(data) ? data : []).filter(r => r.status !== 'cancelado');
@@ -388,7 +448,7 @@ export default function Dashboard() {
 
   // Refresco automático: conserva filtros y formularios; nunca recarga la página.
   useEffect(() => {
-    if (isModalOpen || isPaymentModalOpen || verMembresias || reservaAReagendar || ticket || buscandoCodigo) return;
+    if (isModalOpen || isPaymentModalOpen || verMembresias || verClientes || apartadaACobrar || reservaAReagendar || ticket || buscandoCodigo) return;
     const controller = new AbortController();
     let consultando = false;
     let cambioPendiente = false;
@@ -398,7 +458,7 @@ export default function Dashboard() {
       consultando = true;
       const consultar = async (url, aplicar) => {
         try {
-          const respuesta = await fetch(url, { signal: controller.signal, cache: 'no-store' });
+          const respuesta = await fetch(url, { signal: controller.signal, cache: 'no-store', headers: authAdmin() });
           if (!respuesta.ok) throw new Error(`HTTP ${respuesta.status}`);
           const datos = await respuesta.json();
           if (!controller.signal.aborted) aplicar(datos);
@@ -411,7 +471,7 @@ export default function Dashboard() {
         await Promise.all([
           consultar(`${API}/api/reservas`, datos => setReservations((Array.isArray(datos) ? datos : []).filter(r => r.status !== 'cancelado'))),
           consultar(`${API}/api/kpis`, setKpis),
-          consultar(`${API}/api/clientes`, datos => setClientes(Array.isArray(datos) ? datos : [])),
+          cargarClientes().then(setClientes).catch(() => { }),
           consultar('/admin/api/clases', datos => setClases((Array.isArray(datos) ? datos : []).filter(c => c.estatus !== 'inactivo'))),
           consultar(`/admin/api/horarios?fecha=${encodeURIComponent(fechaReserva)}&estatus=activo`, datos => setHorarios(Array.isArray(datos) ? datos : [])),
         ]);
@@ -440,7 +500,7 @@ export default function Dashboard() {
       window.removeEventListener('online', actualizar);
       document.removeEventListener('visibilitychange', actualizar);
     };
-  }, [isModalOpen, isPaymentModalOpen, verMembresias, reservaAReagendar, ticket, buscandoCodigo, fechaReserva]);
+  }, [isModalOpen, isPaymentModalOpen, verMembresias, verClientes, apartadaACobrar, reservaAReagendar, ticket, buscandoCodigo, fechaReserva]);
 
   // ========== FUNCIONES DE VALIDACIÓN ==========
 
@@ -578,7 +638,7 @@ export default function Dashboard() {
       if (reservation.status === 'asistido') throw new Error('Este cliente ya tiene asistencia confirmada.');
       if (reservation.capacityStatus === 'espera') throw new Error('El cliente sigue en lista de espera.');
 
-      const response = await fetch(`${API}/api/reservas/${id}`, {
+      const response = await fetchAuth(`${API}/api/reservas/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'asistido' }),
@@ -602,7 +662,7 @@ export default function Dashboard() {
 
   /*
    * Abre el modal de cobro de una reservación. Lo usan el botón "Cobrar" de
-   * la tabla y la búsqueda por nombre o código de reserva (reservas de la app).
+   * la tabla y la búsqueda por nombre o apellido (reservas de la app).
    */
   const abrirCobro = (reservation) => {
     if (!reservation) {
@@ -643,7 +703,7 @@ export default function Dashboard() {
       // El cobro se guarda en el backend: marca la reservación como pagada y
       // registra el pago en PostgreSQL (esquema webcobro) con su forma de pago.
       // El monto lo toma el servidor del precio real de la reservación.
-      const response = await fetch(`${API}/api/cobros`, {
+      const response = await fetchAuth(`${API}/api/cobros`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -713,7 +773,7 @@ export default function Dashboard() {
       );
       if (!confirmed) return;
 
-      const response = await fetch(`${API}/api/reservas/${id}`, {
+      const response = await fetchAuth(`${API}/api/reservas/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'cancelado' }),
@@ -759,7 +819,7 @@ export default function Dashboard() {
     if (!reservaAReagendar || !horarioReagendarId) return;
     setReagendando(true);
     try {
-      const response = await fetch(`${API}/api/reservas/${reservaAReagendar.id}/reagendar`, {
+      const response = await fetchAuth(`${API}/api/reservas/${reservaAReagendar.id}/reagendar`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ horarioId: horarioReagendarId, fecha: fechaReagendar }),
@@ -783,13 +843,11 @@ export default function Dashboard() {
     }
   };
 
-  // ========== BÚSQUEDA POR CÓDIGO O NOMBRE (reservas de la app móvil) ==========
+  // ========== BÚSQUEDA POR NOMBRE O APELLIDO ==========
 
   /*
    * Con Enter (o el botón Buscar) en el buscador:
-   *  - Código de reserva: se busca directo en el backend (puede ser una reserva
-   *    recién hecha en la app) y, si se puede cobrar, se abre el cobro.
-   *  - Nombre: se recarga la lista para incluir las reservas nuevas de la app;
+   *  - Se recarga la lista para incluir las reservas nuevas de la app;
    *    si el cliente tiene una sola reservación por cobrar, se abre el cobro.
    */
   const handleBuscarReserva = async () => {
@@ -797,8 +855,19 @@ export default function Dashboard() {
     if (!termino) return;
     setBuscandoCodigo(true);
     try {
+      // PQ-XXXXX: membresía que el cliente apartó en la app; se cobra aquí y queda activa.
+      if (/^PQ-\d{5}$/i.test(termino)) {
+        const compra = await membresiasRequest(`/membresias/codigo/${encodeURIComponent(termino.toUpperCase())}`);
+        if (compra.estado === 'activa') {
+          showNotification(`La membresía ${compra.codigo} de ${compra.nombreCliente} ya está pagada.`, 'success');
+          return;
+        }
+        if (compra.estado === 'cancelada') throw new Error(`La membresía ${compra.codigo} fue cancelada.`);
+        setApartadaACobrar(compra);
+        return;
+      }
       if (pareceCodigoReserva(termino)) {
-        const response = await fetch(`${API}/api/reservas/codigo/${encodeURIComponent(termino)}`);
+        const response = await fetchAuth(`${API}/api/reservas/codigo/${encodeURIComponent(termino)}`);
         const body = await response.json().catch(() => null);
         if (response.ok) {
           const encontrada = body;
@@ -815,21 +884,20 @@ export default function Dashboard() {
           abrirCobro(encontrada);
           return;
         }
-        // Sin el prefijo RSV- también puede ser un nombre de 6 letras
-        // ("Carlos"): en ese caso se sigue con la búsqueda por nombre.
-        if (response.status !== 404 || /^RSV-/i.test(termino)) {
+        // Con formato PREFIJO-XXXXX es un código: si no existe, se avisa (no es un nombre).
+        if (response.status !== 404 || /^(NU|PQ|RSV)-/i.test(termino)) {
           throw new Error(body?.error || 'No se encontró la reservación.');
         }
       }
 
       const lista = await recargarReservas();
-      const nombre = termino.toLowerCase();
-      const delCliente = lista.filter(r => r.client.toLowerCase().includes(nombre));
+      const nombre = sinAcentos(termino).trim();
+      const delCliente = lista.filter(r => sinAcentos(r.client).includes(nombre));
       const porCobrar = delCliente.filter(
         r => r.paymentStatus !== 'pagado' && (r.status === 'pendiente' || r.status === 'asistido') && r.capacityStatus !== 'espera'
       );
       if (delCliente.length === 0) {
-        throw new Error(`No hay reservaciones con el nombre o código "${termino}".`);
+        throw new Error(`No hay reservaciones con el nombre o apellido "${termino}".`);
       }
       if (porCobrar.length === 1) {
         abrirCobro(porCobrar[0]);
@@ -916,7 +984,7 @@ export default function Dashboard() {
        * y la membresía del socio, para que el navegador no pueda inventarse
        * un monto.
        */
-      const response = await fetch(`${API}/api/reservas`, {
+      const response = await fetchAuth(`${API}/api/reservas`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -958,9 +1026,6 @@ export default function Dashboard() {
   };
 
   // ========== CÁLCULOS DE RESUMEN Y FILTRADO ==========
-
-  const totalPending = reservations.filter(r => r.status === 'pendiente').length;
-  const totalPaid = reservations.filter(r => r.paymentStatus === 'pagado').reduce((sum, r) => sum + r.price, 0);
 
   /*
    * Valores derivados del modal de cobro: se calculan con el monto real de la
@@ -1026,7 +1091,7 @@ export default function Dashboard() {
       ${ticket.contexto === 'membresia' ? `
       <p><strong>Membresía:</strong> ${escapeHtml(ticket.membresia)}</p>
       <p><strong>Vigencia:</strong> ${escapeHtml(ticket.fechaInicio)} al ${escapeHtml(ticket.fechaFin)}</p>` : `
-      <p><strong>Reserva:</strong> #${escapeHtml(ticket.reservaId)}</p>
+      <p><strong>Reserva:</strong> ${escapeHtml(ticket.codigo || ticket.reservaId)}</p>
       <p><strong>Clase:</strong> ${escapeHtml(ticket.clase)}</p>
       <p><strong>Horario:</strong> ${escapeHtml(ticket.fechaClase)} ${escapeHtml(ticket.horaClase)}</p>`}
       <p><strong>Atendió:</strong> ${escapeHtml(ticket.usuario || 'Recepción')}</p>
@@ -1044,44 +1109,48 @@ export default function Dashboard() {
 
   const filteredReservations = reservations.filter(res => {
     const term = searchTerm.toLowerCase();
+    // El nombre del cliente se busca sin acentos ni mayúsculas.
     return (
-      res.client.toLowerCase().includes(term) ||
+      sinAcentos(res.client).includes(sinAcentos(searchTerm).trim()) ||
       (res.codigo || '').toLowerCase().includes(term) ||
       res.class.toLowerCase().includes(term) ||
-      res.time.toLowerCase().includes(term) ||
-      String(res.id).includes(term)
+      res.time.toLowerCase().includes(term)
     );
   });
 
   // ========== VALORES DE PRESENTACIÓN ==========
 
   const filtroActivo = FILTROS_ESTADO.find(f => f.key === filtroEstado) ?? FILTROS_ESTADO[0];
-  const reservasVisibles = filteredReservations.filter(filtroActivo.coincide);
+  const horarioVista = horarios.find(h => h.idHorario === horarioVistaId);
+  const coincideHorarioVista = res => !horarioVista || (
+    res.class === horarioVista.nombreClase && res.fecha === horarioVista.fecha && res.time === horarioVista.horaInicio
+  );
+  const reservasDeVista = filteredReservations.filter(coincideHorarioVista);
+  const reservasVisibles = reservasDeVista.filter(filtroActivo.coincide);
+  const reservaVista = reservations.find(res => res.id === reservaVistaId);
+  const clienteVista = reservaVista && clientes.find(c => String(c.id) === String(reservaVista.clienteId));
   const conteoPorFiltro = Object.fromEntries(
-    FILTROS_ESTADO.map(f => [f.key, filteredReservations.filter(f.coincide).length])
+    FILTROS_ESTADO.map(f => [f.key, reservasDeVista.filter(f.coincide).length])
   );
   const hayFiltros = searchTerm.trim() !== '' || filtroEstado !== 'todas';
-  const inasistenciasHoy = reservations.filter(
-    r => r.status === 'no_asistio' && r.fecha === hoyISO()
-  ).length;
   const nombreUsuario = user ? `${user.nombre ?? ''} ${user.apellidos ?? ''}`.trim() : '';
   const inicialesUsuario = iniciales(nombreUsuario);
 
-  // Socios que coinciden con lo escrito en "Buscar socio" (por nombre o ID).
-  const textoSocio = newReservation.client || '';
-  const sociosFiltrados = clientes.filter(
-    c => c.nombre.toLowerCase().includes(textoSocio.toLowerCase()) || String(c.id).includes(textoSocio)
-  );
+  // Clientes que coinciden con lo escrito en "Buscar cliente": solo por nombre y/o apellido,
+  // sin importar acentos ni mayúsculas.
+  const textoSocio = sinAcentos(newReservation.client || '').trim();
+  const sociosFiltrados = clientes.filter(c => sinAcentos(c.nombre).includes(textoSocio));
 
   const limpiarFiltros = () => {
     setSearchTerm('');
     setFiltroEstado('todas');
+    setHorarioVistaId(null);
   };
 
   // ========== RETORNO DEL JSX ==========
 
   return (
-    <div className="rx-admin-shell">
+    <div className={`rx-admin-shell rx-reception${vista === 'membresias' ? ' rx-reception--catalogo' : ''}`}>
 
       {/* ========== MENÚ LATERAL (igual que administrativa y Punto de Venta) ========== */}
       <aside className={`rx-sidebar ${menuColapsado ? 'rx-sidebar--collapsed' : 'rx-sidebar--expanded'}`}>
@@ -1099,7 +1168,9 @@ export default function Dashboard() {
             </button>
           ) : (
             <>
-              <div className="rx-brand-content"><BrandLogo className="w-40" /><p className="rx-brand-subtitle">Recepción</p></div>
+              <div className="rx-brand-content">
+                <BrandLogo className="w-40" />
+              </div>
               <button
                 type="button"
                 onClick={() => setMenuColapsado(true)}
@@ -1115,6 +1186,21 @@ export default function Dashboard() {
         </div>
 
         <nav className="rx-sidebar-nav" aria-label="Navegación de recepción">
+          <NavLink to="/front-desk/membresias" title={menuColapsado ? 'Membresías' : undefined}
+            className={({ isActive }) => `rx-nav-item ${menuColapsado ? 'rx-nav-item--collapsed' : ''} ${isActive ? 'rx-nav-item--active' : ''}`}>
+            <MaterialIcon name="card_membership" className="flex-shrink-0 text-xl" />
+            {!menuColapsado && <span className="truncate">Membresías</span>}
+          </NavLink>
+          <NavLink to="/front-desk/clases-horarios" title={menuColapsado ? 'Clases y horarios' : undefined}
+            className={({ isActive }) => `rx-nav-item ${menuColapsado ? 'rx-nav-item--collapsed' : ''} ${isActive ? 'rx-nav-item--active' : ''}`}>
+            <MaterialIcon name="calendar_month" className="flex-shrink-0 text-xl" />
+            {!menuColapsado && <span className="truncate">Clases y horarios</span>}
+          </NavLink>
+          <NavLink to="/front-desk/inventario" title={menuColapsado ? 'Inventario' : undefined}
+            className={({ isActive }) => `rx-nav-item ${menuColapsado ? 'rx-nav-item--collapsed' : ''} ${isActive ? 'rx-nav-item--active' : ''}`}>
+            <MaterialIcon name="inventory_2" className="flex-shrink-0 text-xl" />
+            {!menuColapsado && <span className="truncate">Inventario</span>}
+          </NavLink>
           <NavLink
             to="/front-desk/dashboard"
             title={menuColapsado ? 'Recepción' : undefined}
@@ -1134,17 +1220,6 @@ export default function Dashboard() {
               </>
             )}
           </NavLink>
-          {/* El checador es un kiosco aparte: se abre en otra pestaña. */}
-          <Link
-            to="/asistencia"
-            target="_blank"
-            rel="noreferrer"
-            title={menuColapsado ? 'Reloj checador' : 'Abre el reloj checador en otra pestaña'}
-            className={`rx-nav-item ${menuColapsado ? 'rx-nav-item--collapsed' : ''}`}
-          >
-            <MaterialIcon name="badge" className="flex-shrink-0 text-xl" />
-            {!menuColapsado && <span className="truncate">Reloj checador</span>}
-          </Link>
         </nav>
 
         <div className="rx-sidebar-footer">
@@ -1186,292 +1261,393 @@ export default function Dashboard() {
           </div>
         </header>
 
-        <main className="rx-admin-content">
-          <section className="rx-admin-dashboard">
-            <header className="rx-page-header rx-admin-dashboard-header">
-              <div className="rx-page-heading rx-page-heading--stacked">
-                <span className="rx-section-eyebrow">Atención de clientes</span>
-                <h1 className="rx-page-title">Recepción</h1>
-                <p className="rx-page-subtitle">{fechaDeHoyLarga()}</p>
-              </div>
-              <div className="rx-page-actions">
-                <button type="button" onClick={() => setVerMembresias(true)} className="rx-btn rx-btn--outline">
-                  <MaterialIcon name="sell" className="text-lg" filled />
-                  Vender membresía
-                </button>
-                <button type="button" onClick={openModal} className="rx-btn rx-btn--accent">
-                  <MaterialIcon name="add" className="text-lg" />
-                  Nueva reservación
-                </button>
-              </div>
-            </header>
-
-            <div className="rx-page-content">
-              {verMembresias && <MembresiasRecepcion clientes={clientes} clases={clases} onClose={() => setVerMembresias(false)} onTicket={nuevoTicket => { setVerMembresias(false); setTicket(nuevoTicket); }}
-                onVenta={() => {
-                  cargarKpis();
-                  fetch(`${API}/api/clientes`).then(r => { if (!r.ok) throw Error('No se pudieron actualizar los clientes.'); return r.json(); })
-                    .then(datos => { setClientes(datos); setSelectedClient(null); })
-                    .catch(e => showNotification(e.message, 'error'));
-                }} />}
-
-              {/* ========== TARJETAS KPI ========== */}
-              <div className="rx-grid-kpi rx-admin-kpi-grid" aria-live="polite">
-                <KpiCard
-                  etiqueta="Clientes esperados"
-                  valor={kpis.clientesEsperados}
-                  icono="groups"
-                  tono="accent"
-                />
-                <KpiCard
-                  etiqueta="Ingresos del día"
-                  valor={`$${Number(kpis.ingresosHoy ?? 0).toLocaleString('es-MX')}`}
-                  icono="payments"
-                  tono="success"
-                />
-                <KpiCard
-                  etiqueta="Reservaciones de hoy"
-                  valor={kpis.totalReservas}
-                  icono="event_available"
-                  tono="info"
-                />
-                <KpiCard
-                  etiqueta="Inasistencias de hoy"
-                  valor={inasistenciasHoy}
-                  icono="person_off"
-                  tono="danger"
-                />
-              </div>
-
-              {/* ========== BÚSQUEDA (CÓDIGO O NOMBRE) Y FILTROS ========== */}
-              <div className="rx-filter-bar rx-filter-stack">
-                <div className="rx-filter-row">
-                  <div className="rx-search">
-                    <MaterialIcon name="search" className="rx-search-icon text-lg" />
-                    <input
-                      type="text"
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === 'Enter') handleBuscarReserva(); }}
-                      placeholder="Código de reserva (RSV-XXXXXX) o nombre del cliente"
-                      aria-label="Buscar reservación por código de reserva o nombre del cliente"
-                      className="rx-input rx-input--search"
-                    />
-                    {searchTerm && (
-                      <button
-                        type="button"
-                        onClick={() => setSearchTerm('')}
-                        aria-label="Limpiar búsqueda"
-                        className="rx-search-clear"
-                      >
-                        <MaterialIcon name="close" className="text-lg" />
-                      </button>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleBuscarReserva}
-                    disabled={!searchTerm.trim() || buscandoCodigo}
-                    title="Busca por código o nombre y abre el cobro"
-                    className="rx-btn rx-btn--dark"
-                  >
-                    <MaterialIcon name="qr_code_scanner" className="text-lg" />
-                    {buscandoCodigo ? 'Buscando…' : 'Buscar y cobrar'}
+        <main className={`rx-admin-content${vista === 'clases-horarios' ? ' rx-reception-content--schedule' : vista === 'membresias' ? ' rx-reception-content--schedule' : ''}`}>
+          {vista === 'membresias' ? <MembresiasPage /> : vista === 'clases-horarios' ? <ClasesHorariosPage recepcion /> : vista === 'inventario' ? <InventarioRecepcion /> : vista === 'cliente-detalle' ? <ClienteDetalle rutaClientes="/front-desk/clientes" /> : vista === 'clientes' ? <ClientesPage rutaClientes="/front-desk/clientes" /> : (
+            <section className="rx-admin-dashboard">
+              <header className="rx-page-header rx-admin-dashboard-header">
+                <div className="rx-page-heading rx-page-heading--stacked">
+                  <span className="rx-section-eyebrow">Atención de clientes</span>
+                  <h1 className="rx-page-title">Recepción</h1>
+                  <p className="rx-page-subtitle">{fechaDeHoyLarga()}</p>
+                </div>
+                <div className="rx-page-actions">
+                  <button type="button" onClick={() => setVerClientes(true)} className="rx-btn rx-btn--outline">
+                    <MaterialIcon name="group" className="text-lg" filled />
+                    Clientes
                   </button>
-                  <span className="rx-results-count">
-                    {reservasVisibles.length} de {reservations.length} reservaciones
-                  </span>
+                  <button type="button" onClick={() => setVerMembresias(true)} className="rx-btn rx-btn--outline">
+                    <MaterialIcon name="sell" className="text-lg" filled />
+                    Vender membresía
+                  </button>
+                  <button type="button" onClick={openModal} className="rx-btn rx-btn--accent">
+                    <MaterialIcon name="add" className="text-lg" />
+                    Nueva reservación
+                  </button>
                 </div>
+              </header>
 
-                <div className="rx-tabs" role="tablist" aria-label="Filtrar reservaciones por estado">
-                  {FILTROS_ESTADO.map(filtro => (
-                    <button
-                      key={filtro.key}
-                      type="button"
-                      role="tab"
-                      aria-selected={filtroEstado === filtro.key}
-                      onClick={() => setFiltroEstado(filtro.key)}
-                      className="rx-tab"
+              <div className="rx-page-content">
+                {verClientes && (
+                  <div className="rx-modal-overlay" role="presentation">
+                    <section
+                      className="rx-modal rx-modal--scroll modal-enter"
+                      role="dialog"
+                      aria-modal="true"
+                      aria-labelledby="clientes-titulo"
+                      style={{ width: 'min(1200px, 96vw)', maxWidth: '96vw' }}
                     >
-                      {filtro.etiqueta}
-                      <span className="rx-tab-count">{conteoPorFiltro[filtro.key]}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* ========== TABLA DE RESERVACIONES ========== */}
-              <div className="rx-table-card">
-                {reservasVisibles.length === 0 ? (
-                  <div className="rx-table-empty">
-                    <div className="rx-table-empty-icon">
-                      <MaterialIcon name={hayFiltros ? 'search_off' : 'event_busy'} className="text-3xl" />
-                    </div>
-                    <p className="rx-table-empty-title">
-                      {hayFiltros ? 'No hay reservaciones con este filtro.' : 'Aún no hay reservaciones.'}
-                    </p>
-                    {hayFiltros && (
-                      <button type="button" onClick={limpiarFiltros} className="rx-table-empty-action">
-                        Ver todas las reservaciones
-                      </button>
-                    )}
-                  </div>
-                ) : (
-                  <div className="rx-table-wrap">
-                    <table className="rx-table rx-reservations-table">
-                      <thead>
-                        <tr>
-                          <th>Cliente</th>
-                          <th>Código</th>
-                          <th>Clase y horario</th>
-                          <th className="rx-table-number">Monto</th>
-                          <th>Estado</th>
-                          <th>Cupo</th>
-                          <th className="rx-table-number">Acciones</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {reservasVisibles.map((res) => {
-                          const badge = ESTADO_BADGE[res.status] ?? ESTADO_BADGE.pendiente;
-                          const enEspera = res.capacityStatus === 'espera';
-                          const cobrable = res.paymentStatus !== 'pagado' && (res.status === 'pendiente' || res.status === 'asistido') && !enEspera;
-                          const puedeConfirmar = res.paymentStatus === 'pagado' && (res.status === 'pendiente' || res.status === 'pagado') && res.fecha === hoyISO() && !enEspera;
-                          // Solo las pendientes o pagadas se pueden reagendar o cancelar.
-                          const vigente = res.status === 'pendiente' || res.status === 'pagado';
-                          const colorClase = clases.find(c => c.nombre === res.class)?.color;
-                          return (
-                            <tr
-                              key={res.id}
-                              className={res.status === 'no_asistio' ? 'rx-table-row--inactive' : undefined}
-                            >
-                              <td>
-                                <div className="rx-table-product">
-                                  <span className="rx-avatar">{iniciales(res.client)}</span>
-                                  <div>
-                                    <span className="rx-table-product-name">{res.client}</span>
-                                    <span className="rx-cell-caption">
-                                      {res.type === 'visitante' ? 'Visitante' : 'Socio'}
-                                    </span>
-                                  </div>
-                                </div>
-                              </td>
-                              <td>
-                                <span className="rx-code">{res.codigo || '—'}</span>
-                                <span className="rx-cell-caption">
-                                  #{res.id}
-                                  {res.origen === 'app' && (
-                                    <span className="rx-badge rx-badge--info" title="Reservada desde la app móvil">
-                                      App
-                                    </span>
-                                  )}
-                                </span>
-                              </td>
-                              <td>
-                                <span className="rx-cell-strong">
-                                  <span
-                                    className="rx-class-dot"
-                                    style={colorClase ? { '--class-color': colorClase } : undefined}
-                                  />{' '}
-                                  {res.class}
-                                </span>
-                                <span className="rx-cell-caption">
-                                  {formatFechaCorta(res.fecha)} · {res.time}
-                                  {res.reagendada && (
-                                    <span
-                                      className="rx-badge rx-badge--info"
-                                      title={`Antes: ${res.fechaOriginal || ''} ${res.horaOriginal || ''}`}
-                                    >
-                                      Reagendada
-                                    </span>
-                                  )}
-                                </span>
-                              </td>
-                              <td className="rx-cell-strong rx-table-number">
-                                {formatMoney(res.price)}
-                                {res.membresiaCompraId && <span className="rx-cell-caption">Cubierta por membresía · compra #{res.membresiaCompraId}</span>}
-                              </td>
-                              <td>
-                                <span className={`rx-badge rx-badge--${badge.tono}`}>{badge.etiqueta}</span>
-                                <span className="rx-cell-caption">{res.paymentStatus === 'pagado' ? 'Pago registrado' : 'Pago pendiente'} · {res.attendanceStatus === 'asistido' ? 'Asistió' : res.attendanceStatus === 'no_asistio' ? 'No asistió' : 'Asistencia pendiente'}</span>
-                              </td>
-                              <td>
-                                <span className={`rx-badge ${enEspera ? 'rx-badge--special' : 'rx-badge--neutral'}`}>
-                                  {enEspera ? 'En espera' : 'Confirmada'}
-                                </span>
-                              </td>
-                              <td>
-                                <div className="rx-row-actions">
-                                  {res.status === 'no_asistio' && (
-                                    <span className="rx-row-note" title="Sin reembolso y sin reagendar">
-                                      Sin reembolso
-                                    </span>
-                                  )}
-                                  {puedeConfirmar && (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleConfirmAttendance(res.id)}
-                                      title="Confirmar asistencia"
-                                      aria-label={`Confirmar asistencia de ${res.client}`}
-                                      className="rx-compact-icon-button"
-                                    >
-                                      <MaterialIcon name="how_to_reg" className="text-lg" />
-                                    </button>
-                                  )}
-                                  {/* Reagendar: una sola vez y sin costo. Si ya no se puede,
-                                      al hacer clic se avisa el motivo. */}
-                                  {vigente && (
-                                    <button
-                                      type="button"
-                                      onClick={() => openReagendar(res)}
-                                      aria-disabled={res.puedeReagendar === false}
-                                      title={res.puedeReagendar === false
-                                        ? res.motivoNoReagendar || 'Ya no se puede reagendar'
-                                        : 'Reagendar (una sola vez, sin costo)'}
-                                      aria-label={`Reagendar la reservación de ${res.client}`}
-                                      className="rx-compact-icon-button"
-                                    >
-                                      <MaterialIcon name="event_repeat" className="text-lg" />
-                                    </button>
-                                  )}
-                                  {/* Cancelar: dentro de las 24 h de haber reservado, sin reembolso. */}
-                                  {vigente && (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleCancel(res.id)}
-                                      aria-disabled={res.puedeCancelar === false}
-                                      title={res.puedeCancelar === false
-                                        ? res.motivoNoCancelar || 'Ya no se puede cancelar'
-                                        : res.cancelableHasta
-                                          ? `Cancelar (sin reembolso) · hasta ${formatTicketDate(res.cancelableHasta)}`
-                                          : 'Cancelar (sin reembolso)'}
-                                      aria-label={`Cancelar la reservación de ${res.client}`}
-                                      className="rx-compact-icon-button rx-compact-icon-button--danger"
-                                    >
-                                      <MaterialIcon name="event_busy" className="text-lg" />
-                                    </button>
-                                  )}
-                                  {cobrable && (
-                                    <button
-                                      type="button"
-                                      onClick={() => handlePayment(res.id)}
-                                      className="rx-btn rx-btn--dark rx-btn--small"
-                                    >
-                                      <MaterialIcon name="point_of_sale" className="text-base" />
-                                      Cobrar
-                                    </button>
-                                  )}
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+                      <header className="rx-modal-header">
+                        <div>
+                          <h2 id="clientes-titulo" className="rx-modal-title">Clientes</h2>
+                          <p className="rx-modal-subtitle rx-modal-subtitle--plain">
+                            Los mismos clientes de administrativa y de la app móvil.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          aria-label="Cerrar"
+                          className="rx-modal-close"
+                          onClick={() => {
+                            setVerClientes(false);
+                            // Lo registrado o editado aquí debe verse de inmediato en reservas y membresías.
+                            cargarClientes().then(setClientes).catch(() => { });
+                          }}
+                        >
+                          <MaterialIcon name="close" className="text-xl" />
+                        </button>
+                      </header>
+                      <div className="rx-modal-body">
+                        <ClientesPage />
+                      </div>
+                    </section>
                   </div>
                 )}
+                {apartadaACobrar && <CobroApartada compra={apartadaACobrar} onClose={() => setApartadaACobrar(null)}
+                  onTicket={nuevoTicket => { setApartadaACobrar(null); setTicket(nuevoTicket); }}
+                  onCobrada={() => {
+                    cargarKpis();
+                    cargarClientes().then(setClientes).catch(e => showNotification(e.message, 'error'));
+                  }} />}
+                {verMembresias && <MembresiasRecepcion clientes={clientes} clases={clases} onClose={() => setVerMembresias(false)} onTicket={nuevoTicket => { setVerMembresias(false); setTicket(nuevoTicket); }}
+                  onVenta={() => {
+                    cargarKpis();
+                    cargarClientes()
+                      .then(datos => { setClientes(datos); setSelectedClient(null); })
+                      .catch(e => showNotification(e.message, 'error'));
+                  }} />}
+
+
+                <div className={`rx-reception-workspace${detalleColapsado ? ' rx-reception-workspace--detail-collapsed' : ''}`}>
+                  <section className="rx-reception-schedule" aria-labelledby="reception-schedule-title">
+                    <div className="rx-reception-section-heading">
+                      <h2 id="reception-schedule-title">Clases programadas</h2>
+                      <span className="rx-badge rx-badge--special">{fechaReserva === hoyISO() ? 'Hoy' : formatFechaCorta(fechaReserva)}</span>
+                    </div>
+                    <section className="rx-reception-kpis" aria-label="Resumen de recepción">
+                      <article className="rx-reception-kpi rx-reception-kpi--classes">
+                        <div className="rx-reception-kpi-heading">
+                          <span className="rx-reception-kpi-icon"><MaterialIcon name="event_available" className="text-2xl" /></span>
+                          <h2>Clases programadas</h2>
+                        </div>
+                        <p className="rx-reception-kpi-value">{horarios.length}</p>
+                        <p className="rx-reception-kpi-caption">{fechaReserva === hoyISO() ? 'Hoy' : formatFechaCorta(fechaReserva)}</p>
+                      </article>
+                      <article className="rx-reception-kpi rx-reception-kpi--income">
+                        <div className="rx-reception-kpi-heading">
+                          <span className="rx-reception-kpi-icon"><MaterialIcon name="payments" className="text-2xl" /></span>
+                          <h2>Ingresos del día</h2>
+                        </div>
+                        <p className="rx-reception-kpi-value">{formatMoney(kpis.ingresosHoy)}</p>
+                        <p className="rx-reception-kpi-caption">Hoy</p>
+                      </article>
+                    </section>
+                    <label className="rx-field">
+                      <span className="rx-label">Fecha de clases</span>
+                      <input type="date" className="rx-input" value={fechaReserva}
+                        onChange={event => { setFechaReserva(event.target.value); setHorarioVistaId(null); setReservaVistaId(null); }} />
+                    </label>
+                    <button type="button" className="rx-reception-all" aria-pressed={!horarioVista}
+                      onClick={() => { setHorarioVistaId(null); setReservaVistaId(null); }}>
+                      Todas las reservaciones <MaterialIcon name="arrow_forward" className="text-lg" />
+                    </button>
+                    <div className="rx-reception-schedule-list" tabIndex={0} role="region" aria-label="Lista de clases programadas">
+                      {[...horarios].sort((a, b) => a.horaInicio.localeCompare(b.horaInicio)).map(horario => {
+                        const libres = lugaresDisponibles(horario);
+                        const ocupados = reservasActivasDe(horario.nombreClase, horario.fecha, horario.horaInicio);
+                        const ahora = new Date();
+                        const inicio = new Date(`${horario.fecha}T${horario.horaInicio}`);
+                        const fin = horario.horaFin ? new Date(`${horario.fecha}T${horario.horaFin}`) : inicio;
+                        const pasada = fin <= ahora;
+                        const enCurso = inicio <= ahora && fin > ahora;
+                        const llegaron = reservations.filter(r => r.class === horario.nombreClase && r.fecha === horario.fecha && r.time === horario.horaInicio && r.status === 'asistido').length;
+                        return (
+                          <button type="button" key={horario.idHorario}
+                            aria-pressed={horarioVistaId === horario.idHorario}
+                            className={`rx-reception-class ${pasada ? 'rx-reception-class--past' : ''}`}
+                            onClick={() => { setHorarioVistaId(horario.idHorario); setReservaVistaId(null); }}>
+                            <span className="rx-reception-class-top"><strong>{horario.horaInicio}</strong>
+                              <span className={`rx-badge rx-badge--${pasada ? 'neutral' : enCurso ? 'success' : 'warning'}`}>
+                                {pasada ? 'Terminó' : enCurso ? 'En curso' : libres ? 'Próxima' : 'Sin cupo'}
+                              </span>
+                            </span>
+                            <span className="rx-reception-class-name">{horario.nombreClase}</span>
+                            <span className="rx-reception-class-coach">{horario.entrenador || horario.nombreEntrenador || 'Entrenador sin asignar'}</span>
+                            <span className="rx-reception-capacity"><span style={{ width: `${Math.min(100, llegaron / Math.max(1, Number(horario.capacidadTotal)) * 100)}%` }} /><span className="rx-reception-capacity-reserved" style={{ width: `${Math.min(100, Math.max(0, ocupados - llegaron) / Math.max(1, Number(horario.capacidadTotal)) * 100)}%` }} /></span>
+                            <span className="rx-reception-class-meta">{llegaron} llegaron · {ocupados} de {horario.capacidadTotal} reservados</span>
+                          </button>
+                        );
+                      })}
+                      {!horarios.length && <p className="rx-reception-hint">No hay clases programadas para esta fecha.</p>}
+                    </div>
+                  </section>
+
+                  <section className="rx-reception-reservations" aria-labelledby="reception-reservations-title">
+                    <div className="rx-reception-list-heading">
+                      <div><h2 id="reception-reservations-title">{horarioVista ? `${horarioVista.nombreClase} · ${horarioVista.horaInicio} h` : 'Reservaciones'}</h2>
+                        <p>{horarioVista ? `${horarioVista.nombreEntrenador || 'Entrenador sin asignar'} · ${reservasActivasDe(horarioVista.nombreClase, horarioVista.fecha, horarioVista.horaInicio)} de ${horarioVista.capacidadTotal} lugares reservados` : 'Selecciona una clase o consulta todas las reservaciones.'}</p>
+                      </div>
+                      <button type="button" onClick={openModal} className="rx-btn rx-btn--accent rx-btn--small"><MaterialIcon name="add" className="text-lg" />Nuevo registro</button>
+                    </div>
+                    {/* ========== BÚSQUEDA POR NOMBRE Y FILTROS ========== */}
+                    <div className="rx-filter-bar rx-filter-stack">
+                      <div className="rx-filter-row">
+                        <div className="rx-search">
+                          <MaterialIcon name="search" className="rx-search-icon text-lg" />
+                          <input
+                            type="text"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') handleBuscarReserva(); }}
+                            placeholder="Código de reserva (NU-XXXXX / PQ-XXXXX) o nombre del cliente"
+                            aria-label="Buscar reservación por código de reserva o nombre del cliente"
+                            className="rx-input rx-input--search"
+                          />
+                          {searchTerm && (
+                            <button
+                              type="button"
+                              onClick={() => setSearchTerm('')}
+                              aria-label="Limpiar búsqueda"
+                              className="rx-search-clear"
+                            >
+                              <MaterialIcon name="close" className="text-lg" />
+                            </button>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleBuscarReserva}
+                          disabled={!searchTerm.trim() || buscandoCodigo}
+                          title="Busca por nombre o apellido y abre el cobro"
+                          className="rx-btn rx-btn--dark"
+                        >
+                          <MaterialIcon name="qr_code_scanner" className="text-lg" />
+                          {buscandoCodigo ? 'Buscando…' : 'Buscar y cobrar'}
+                        </button>
+                        <span className="rx-results-count">
+                          {reservasVisibles.length} de {reservations.length} reservaciones
+                        </span>
+                      </div>
+
+                      <div className="rx-tabs" role="tablist" aria-label="Filtrar reservaciones por estado">
+                        {FILTROS_ESTADO.map(filtro => (
+                          <button
+                            key={filtro.key}
+                            type="button"
+                            role="tab"
+                            aria-selected={filtroEstado === filtro.key}
+                            onClick={() => setFiltroEstado(filtro.key)}
+                            className="rx-tab"
+                          >
+                            {filtro.etiqueta}
+                            <span className="rx-tab-count">{conteoPorFiltro[filtro.key]}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* ========== TABLA DE RESERVACIONES ========== */}
+                    <div className="rx-table-card">
+                      {reservasVisibles.length === 0 ? (
+                        <div className="rx-table-empty">
+                          <div className="rx-table-empty-icon">
+                            <MaterialIcon name={hayFiltros ? 'search_off' : 'event_busy'} className="text-3xl" />
+                          </div>
+                          <p className="rx-table-empty-title">
+                            {hayFiltros ? 'No hay reservaciones con este filtro.' : 'Aún no hay reservaciones.'}
+                          </p>
+                          {hayFiltros && (
+                            <button type="button" onClick={limpiarFiltros} className="rx-table-empty-action">
+                              Ver todas las reservaciones
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="rx-table-wrap">
+                          <table className="rx-table rx-reservations-table">
+                            <thead>
+                              <tr>
+                                <th>Cliente</th>
+                                <th>Código</th>
+                                <th>Clase y horario</th>
+                                <th className="rx-table-number">Monto</th>
+                                <th>Estado</th>
+                                <th>Cupo</th>
+                                <th className="rx-table-number">Acciones</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {reservasVisibles.map((res) => {
+                                const badge = ESTADO_BADGE[res.status] ?? ESTADO_BADGE.pendiente;
+                                const enEspera = res.capacityStatus === 'espera';
+                                const cobrable = res.paymentStatus !== 'pagado' && (res.status === 'pendiente' || res.status === 'asistido') && !enEspera;
+                                const puedeConfirmar = res.paymentStatus === 'pagado' && (res.status === 'pendiente' || res.status === 'pagado') && res.fecha === hoyISO() && !enEspera;
+                                // Solo las pendientes o pagadas se pueden reagendar o cancelar.
+                                const vigente = res.status === 'pendiente' || res.status === 'pagado';
+                                const colorClase = clases.find(c => c.nombre === res.class)?.color;
+                                return (
+                                  <tr
+                                    key={res.id}
+                                    className={res.status === 'no_asistio' ? 'rx-table-row--inactive' : undefined}
+                                  >
+                                    <td>
+                                      <div className="rx-table-product">
+                                        <span className="rx-avatar">{iniciales(res.client)}</span>
+                                        <div>
+                                          <span className="rx-table-product-name">{res.client}</span>
+                                          <span className="rx-cell-caption">
+                                            {res.type === 'visitante' ? 'Visitante' : 'Socio'}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </td>
+                                    <td>
+                                      <span className="rx-code">{res.codigo || '—'}</span>
+                                      <span className="rx-cell-caption">
+                                        {res.codigo || res.id}
+                                        {res.origen === 'app' && (
+                                          <span className="rx-badge rx-badge--info" title="Reservada desde la app móvil">
+                                            App
+                                          </span>
+                                        )}
+                                      </span>
+                                    </td>
+                                    <td>
+                                      <span className="rx-cell-strong">
+                                        <span
+                                          className="rx-class-dot"
+                                          style={colorClase ? { '--class-color': colorClase } : undefined}
+                                        />{' '}
+                                        {res.class}
+                                      </span>
+                                      <span className="rx-cell-caption">
+                                        {formatFechaCorta(res.fecha)} · {res.time}
+                                        {res.reagendada && (
+                                          <span
+                                            className="rx-badge rx-badge--info"
+                                            title={`Antes: ${res.fechaOriginal || ''} ${res.horaOriginal || ''}`}
+                                          >
+                                            Reagendada
+                                          </span>
+                                        )}
+                                      </span>
+                                    </td>
+                                    <td className="rx-cell-strong rx-table-number">
+                                      {formatMoney(res.price)}
+                                      {res.membresiaCompraId && <span className="rx-cell-caption">Cubierta por membresía · compra #{res.membresiaCompraId}</span>}
+                                    </td>
+                                    <td>
+                                      <span className={`rx-badge rx-badge--${badge.tono}`}>{badge.etiqueta}</span>
+                                      <span className="rx-cell-caption">{res.paymentStatus === 'pagado' ? 'Pago registrado' : 'Pago pendiente'} · {res.attendanceStatus === 'asistido' ? 'Asistió' : res.attendanceStatus === 'no_asistio' ? 'No asistió' : 'Asistencia pendiente'}</span>
+                                    </td>
+                                    <td>
+                                      <span className={`rx-badge ${enEspera ? 'rx-badge--special' : 'rx-badge--neutral'}`}>
+                                        {enEspera ? 'En espera' : 'Confirmada'}
+                                      </span>
+                                    </td>
+                                    <td>
+                                      <div className="rx-row-actions">
+                                        {res.status === 'no_asistio' && (
+                                          <span className="rx-row-note" title="Sin reembolso y sin reagendar">
+                                            Sin reembolso
+                                          </span>
+                                        )}
+                                        {puedeConfirmar && (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleConfirmAttendance(res.id)}
+                                            title="Confirmar asistencia"
+                                            aria-label={`Confirmar asistencia de ${res.client}`}
+                                            className="rx-compact-icon-button"
+                                          >
+                                            <MaterialIcon name="how_to_reg" className="text-lg" />
+                                          </button>
+                                        )}
+                                        {/* Reagendar: una sola vez y sin costo. Si ya no se puede,
+                                      al hacer clic se avisa el motivo. */}
+                                        {vigente && (
+                                          <button
+                                            type="button"
+                                            onClick={() => openReagendar(res)}
+                                            aria-disabled={res.puedeReagendar === false}
+                                            title={res.puedeReagendar === false
+                                              ? res.motivoNoReagendar || 'Ya no se puede reagendar'
+                                              : 'Reagendar (una sola vez, sin costo)'}
+                                            aria-label={`Reagendar la reservación de ${res.client}`}
+                                            className="rx-compact-icon-button"
+                                          >
+                                            <MaterialIcon name="event_repeat" className="text-lg" />
+                                          </button>
+                                        )}
+                                        {/* Cancelar: dentro de las 24 h de haber reservado, sin reembolso. */}
+                                        {vigente && (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleCancel(res.id)}
+                                            aria-disabled={res.puedeCancelar === false}
+                                            title={res.puedeCancelar === false
+                                              ? res.motivoNoCancelar || 'Ya no se puede cancelar'
+                                              : res.cancelableHasta
+                                                ? `Cancelar (sin reembolso) · hasta ${formatTicketDate(res.cancelableHasta)}`
+                                                : 'Cancelar (sin reembolso)'}
+                                            aria-label={`Cancelar la reservación de ${res.client}`}
+                                            className="rx-compact-icon-button rx-compact-icon-button--danger"
+                                          >
+                                            <MaterialIcon name="event_busy" className="text-lg" />
+                                          </button>
+                                        )}
+                                        {cobrable && (
+                                          <button
+                                            type="button"
+                                            onClick={() => handlePayment(res.id)}
+                                            className="rx-btn rx-btn--dark rx-btn--small"
+                                          >
+                                            <MaterialIcon name="point_of_sale" className="text-base" />
+                                            Cobrar
+                                          </button>
+                                        )}
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  </section>
+                  <RecepcionDetalle reserva={reservaVista} cliente={clienteVista}
+                    colapsado={detalleColapsado} onAlternar={() => setDetalleColapsado(valor => !valor)}
+                    compra={comprasDetalle.find(c => String(c.id) === String(reservaVista?.membresiaCompraId))}
+                    cargando={cargandoDetalle} error={errorDetalle}
+                    claseId={clases.find(c => c.nombre === reservaVista?.class)?.idClase}
+                    horario={horarios.find(h => h.nombreClase === reservaVista?.class && h.fecha === reservaVista?.fecha && h.horaInicio === reservaVista?.time)}
+                    onCobrar={handlePayment} onAsistencia={handleConfirmAttendance}
+                    onReagendar={openReagendar} onCancelar={handleCancel} hoy={hoyISO()} />
+                </div>
               </div>
-            </div>
-          </section>
+            </section>
+          )}
         </main>
       </div>
 
@@ -1561,11 +1737,13 @@ export default function Dashboard() {
                       id="buscar-socio"
                       type="text"
                       autoComplete="off"
-                      placeholder="Escribe ID o nombre..."
+                      placeholder="Escribe nombre o apellido..."
                       value={newReservation.client}
                       onChange={(e) => {
                         const val = e.target.value;
-                        const match = clientes.find(c => String(c.id) === val);
+                        // Si lo escrito es exactamente el nombre de un único cliente, se selecciona.
+                        const coincidencias = clientes.filter(c => sinAcentos(c.nombre) === sinAcentos(val).trim());
+                        const match = coincidencias.length === 1 ? coincidencias[0] : null;
                         if (match) {
                           setSelectedClient(match);
                           // El precio depende de la clase ya elegida y de si el
@@ -1584,7 +1762,7 @@ export default function Dashboard() {
                     />
 
                     {/* Al enfocar se muestran todos los socios; al escribir se
-                        filtran por nombre o ID. */}
+                        filtran por nombre y/o apellido. */}
                     {showClientList && !selectedClient && (
                       <ul className="rx-suggestions" role="listbox" aria-label="Socios registrados">
                         {sociosFiltrados.map(c => (
@@ -1603,7 +1781,7 @@ export default function Dashboard() {
                             className="rx-suggestion"
                           >
                             <span>
-                              {c.nombre} <span className="rx-cell-subtle">#{c.id}</span>
+                              {c.nombre} <span className="rx-cell-subtle">{c.codigo || c.id}</span>
                             </span>
                             <span className={`rx-badge ${c.tieneCompras ? 'rx-badge--accent' : 'rx-badge--neutral'}`}>
                               {c.membresiasCompradas?.map(compra => compra.nombre).join(' · ') || 'Sin membresías compradas'}
@@ -1732,9 +1910,8 @@ export default function Dashboard() {
                             {h.horaInicio} · {formatMoney(claseDelHorario?.precio ?? 0)}
                           </span>
                           <span
-                            className={`rx-slot-status ${
-                              bloqueada ? 'rx-slot-status--blocked' : aceptaEspera ? 'rx-slot-status--warning' : ''
-                            }`}
+                            className={`rx-slot-status ${bloqueada ? 'rx-slot-status--blocked' : aceptaEspera ? 'rx-slot-status--warning' : ''
+                              }`}
                           >
                             {estadoTexto}
                           </span>
@@ -1952,7 +2129,7 @@ export default function Dashboard() {
                     <p className="rx-context-meta">
                       {selectedReservationForPayment.codigo
                         ? `Código ${selectedReservationForPayment.codigo}`
-                        : `Reserva #${selectedReservationForPayment.id}`}
+                        : `Reserva ${selectedReservationForPayment.codigo || selectedReservationForPayment.id}`}
                     </p>
                   </div>
                 </div>
@@ -2118,7 +2295,7 @@ export default function Dashboard() {
                     <p><span className="rx-receipt-label">Membresía:</span> {ticket.membresia}</p>
                     <p><span className="rx-receipt-label">Vigencia:</span> {ticket.fechaInicio} al {ticket.fechaFin}</p>
                   </> : <>
-                    <p><span className="rx-receipt-label">Reserva:</span> #{ticket.reservaId}</p>
+                    <p><span className="rx-receipt-label">Reserva:</span> {ticket.codigo || ticket.reservaId}</p>
                     <p><span className="rx-receipt-label">Clase:</span> {ticket.clase}</p>
                     <p><span className="rx-receipt-label">Horario:</span> {ticket.fechaClase} {ticket.horaClase}</p>
                   </>}

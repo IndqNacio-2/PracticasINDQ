@@ -26,6 +26,9 @@ import { saleRouter } from "./sales/sale.routes.js";
 // Importa las rutas del modulo de cortes de caja.
 import { cashClosingRouter } from "./cash-closings/cash-closing.routes.js";
 
+// Permisos por rol (administrador, recepcion, vendedor).
+import { requireRoles } from "./auth/require-role.js";
+
 
 // Crea una instancia de la aplicación Express.
 const app = express();
@@ -52,19 +55,27 @@ app.use(express.json());
 // GET /api/products, GET /api/products/:id, POST /api/products,
 // PUT /api/products/:id, PATCH /api/products/:id/status
 // y POST /api/products/:id/stock.
-app.use("/api/products", productRouter);
+// Inventario compartido: administrador, vendedor y recepción lo consultan; solo administrador y vendedor lo modifican.
+app.use(
+  "/api/products",
+  requireRoles({ read: ["administrador", "vendedor", "recepcion"], write: ["administrador", "vendedor"] }),
+  productRouter,
+);
 
 // Rutas del historial de mermas:
 // GET /api/waste y POST /api/waste.
-app.use("/api/waste", wasteRouter);
+// Merma: administrador y vendedor.
+app.use("/api/waste", requireRoles({ read: ["administrador", "vendedor"] }), wasteRouter);
 
 // Rutas del historial de ventas:
 // GET /api/sales y POST /api/sales.
-app.use("/api/sales", saleRouter);
+// Venta: la registra el vendedor; el administrador solo la consulta.
+app.use("/api/sales", requireRoles({ read: ["administrador", "vendedor"], write: ["vendedor"] }), saleRouter);
 
 // Rutas de los cortes de caja:
 // GET /api/cash-closings y POST /api/cash-closings.
-app.use("/api/cash-closings", cashClosingRouter);
+// Corte de caja: administrador y vendedor.
+app.use("/api/cash-closings", requireRoles({ read: ["administrador", "vendedor"] }), cashClosingRouter);
 
 // Ruta informativa para quien visite la dirección principal del backend.
 app.get("/", (_request, response) => {

@@ -1,5 +1,6 @@
 import { useState } from "react"
 import BrandLogo from "../components/BrandLogo"
+import MaterialIcon from "../components/MaterialIcon"
 import {
   clearSession,
   getModulePath,
@@ -17,6 +18,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
+  const [mostrarPassword, setMostrarPassword] = useState(false)
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -104,10 +106,12 @@ export default function LoginPage() {
               />
             </label>
 
-            <label className="rx-field">
-              <span className="rx-label">Contraseña</span>
+            <div className="rx-field">
+              <label htmlFor="login-password" className="rx-label">Contraseña</label>
+              <div className="rx-login-password">
               <input
-                type="password"
+                id="login-password"
+                type={mostrarPassword ? "text" : "password"}
                 required
                 autoComplete="current-password"
                 value={password}
@@ -115,7 +119,18 @@ export default function LoginPage() {
                 placeholder="••••••••"
                 className="rx-input"
               />
-            </label>
+                <button
+                  type="button"
+                  className="rx-login-password-toggle"
+                  aria-label={mostrarPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+                  aria-controls="login-password"
+                  title={mostrarPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+                  onClick={() => setMostrarPassword(visible => !visible)}
+                >
+                  <MaterialIcon name={mostrarPassword ? "visibility_off" : "visibility"} />
+                </button>
+              </div>
+            </div>
 
             {error && (
               <div className="rx-login-error" role="alert">

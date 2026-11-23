@@ -36,20 +36,24 @@ interface ReservaCobro {
   fecha?: string
 }
 
-interface SocioCobro {
-  id: number
+// Cliente tal como lo devuelve la API administrativa (MongoDB).
+// Los campos son opcionales porque se aceptan las variantes de nombre más comunes.
+interface ClienteAdmin {
+  _id?: string
 
-  nombre: string
+  id?: string
 
-  membresia: string
+  nombre?: string
 
-  telefono: string
+  correo?: string | null
 
-  correo: string | null
+  estatus?: string
 
-  activo: boolean
+  activo?: boolean
 
-  vigencia_hasta: string | null
+  vigenciaHasta?: string | null
+
+  vigencia_hasta?: string | null
 }
 
 interface KpisCobro {
@@ -74,11 +78,19 @@ function etiquetaDia(fecha: string): string {
   return `${dia}/${mes}`
 }
 
-function socioVigente(socio: SocioCobro, hoy: string): boolean {
-  return (
-    socio.activo !== false &&
-    (!socio.vigencia_hasta || socio.vigencia_hasta >= hoy)
-  )
+// Un cliente cuenta como activo si su estatus es "activo" (o activo !== false)
+// y su vigencia, cuando existe, no ha vencido.
+function clienteVigente(cliente: ClienteAdmin, hoy: string): boolean {
+  const activo =
+    cliente.estatus !== undefined
+      ? cliente.estatus === "activo"
+      : cliente.activo !== false
+
+  const vigencia = (cliente.vigenciaHasta ?? cliente.vigencia_hasta ?? "")
+    .toString()
+    .slice(0, 10)
+
+  return activo && (!vigencia || vigencia >= hoy)
 }
 
 export function DashboardPage() {
@@ -86,7 +98,7 @@ export function DashboardPage() {
 
   const [reservas, setReservas] = useState<ReservaCobro[]>([])
 
-  const [clientes, setClientes] = useState<SocioCobro[]>([])
+  const [clientes, setClientes] = useState<ClienteAdmin[]>([])
 
   const [horariosHoy, setHorariosHoy] = useState<HorarioClase[]>([])
 
@@ -114,11 +126,13 @@ export function DashboardPage() {
 
       apiCobro.get<ReservaCobro[]>("/reservas"),
 
-      apiCobro.get<SocioCobro[]>("/clientes"),
+      // Los clientes viven en MongoDB: se consultan en la API administrativa.
+      api.get<ClienteAdmin[]>("/clientes"),
 
       api.get<HorarioClase[]>(`/horarios?fecha=${hoy}&estatus=activo`),
 
-      api.get<Venta[]>(`/ventas?desde=${inicioMes}&hasta=${hoy}`),
+      // Ventas del punto de venta + cobros de recepción (ambos viven en Postgres)
+      api.get<Venta[]>(`/dashboard/ingresos?desde=${inicioMes}&hasta=${hoy}`),
     ])
 
     const [
@@ -177,9 +191,13 @@ export function DashboardPage() {
   }, [cargar])
 
   const clientesActivos = clientes.filter((cliente) =>
-    socioVigente(cliente, hoy),
+    clienteVigente(cliente, hoy),
   ).length
 
+  // Ingresos de hoy: punto de venta + cobros de recepción (antes solo se contaban los cobros)
+  const ingresosHoy = ventasMes
+    .filter((venta) => venta.fecha.slice(0, 10) === hoy)
+    .reduce((suma, venta) => suma + Number(venta.total ?? 0), 0)
   const ingresosMes = ventasMes.reduce(
     (total, venta) => total + Number(venta.total || 0),
 
@@ -305,7 +323,7 @@ export function DashboardPage() {
             value={
               cargando
                 ? "—"
-                : `$${Number(kpis?.ingresosHoy ?? 0).toLocaleString("es-MX")}`
+                : `$${ingresosHoy.toLocaleString("es-MX")}`
             }
             icon="payments"
             tone="success"

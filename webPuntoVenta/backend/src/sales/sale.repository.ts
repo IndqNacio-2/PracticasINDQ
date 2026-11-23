@@ -22,6 +22,9 @@ import type { SaleInput, SaleRecord } from "./sale.types.js";
  */
 const SALE_SELECT = `
   SELECT
+    s.id,
+    s.seller_id AS "sellerId",
+    s.cash_closing_id AS "cashClosingId",
     s.folio,
     to_char(s.sold_at AT TIME ZONE 'America/Mexico_City', 'DD/MM/YYYY') AS date,
     to_char(s.sold_at AT TIME ZONE 'America/Mexico_City', 'HH24:MI')    AS time,
@@ -76,12 +79,14 @@ export type SaleInsertResult =
  *
  * Si cualquier paso falla, deshago todo con ROLLBACK.
  */
-export async function insertSale(input: SaleInput): Promise<SaleInsertResult> {
+export async function insertSale(input: SaleInput, sellerId: string): Promise<SaleInsertResult> {
   // Tomo una conexion del pool para poder abrir la transaccion.
   const client = await postgresPool.connect();
 
   try {
     await client.query("BEGIN");
+    // Evita folios duplicados entre vendedores concurrentes.
+    await client.query('LOCK TABLE webpontoventa.sales IN EXCLUSIVE MODE');
 
     // Aqui junto los renglones del ticket ya con el nombre y el precio
     // que tiene el producto en este momento.
@@ -166,8 +171,8 @@ export async function insertSale(input: SaleInput): Promise<SaleInsertResult> {
     const saleResult = await client.query(
       `INSERT INTO webpontoventa.sales
          (folio, subtotal, discount, total, payment_method,
-          cash_received, change_amount, transfer_ref, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'completed')
+          cash_received, change_amount, transfer_ref, status, seller_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'completed', $9)
        RETURNING id`,
       [
         folio,
@@ -178,6 +183,7 @@ export async function insertSale(input: SaleInput): Promise<SaleInsertResult> {
         input.cashReceived ?? null,
         change ?? null,
         input.transferRef ?? null,
+        sellerId,
       ],
     );
 
@@ -232,9 +238,10 @@ export async function insertSale(input: SaleInput): Promise<SaleInsertResult> {
 }
 
 // Listo las ventas ordenadas por fecha, igual que las muestra el corte de caja.
-export async function listSales(): Promise<SaleRecord[]> {
+export async function listSales(sellerId: string): Promise<SaleRecord[]> {
   const result = await postgresPool.query(
-    `${SALE_SELECT} WHERE s.status = 'completed' ORDER BY s.sold_at, s.id`,
+    `${SALE_SELECT} WHERE s.status = 'completed' AND s.seller_id = $1 ORDER BY s.sold_at, s.id`,
+    [sellerId],
   );
 
   return result.rows as SaleRecord[];

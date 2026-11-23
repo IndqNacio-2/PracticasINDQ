@@ -16,8 +16,13 @@ interface ReservacionMongo {
   clase: string;
   entrenador: string;
   horaClase: string;
-  // Fecha de la clase, "AAAA-MM-DD".
-  fechaReservacion: string;
+  // Día de la clase, "AAAA-MM-DD" (fechaReservacion es el día en que se hizo la reservación).
+  fechaClase: string;
+  fechaReservacion?: string;
+  // Cupo, pago y tipo (cliente registrado o visitante): los llena la reservación sin importar de qué módulo vino.
+  estadoCupo?: 'confirmada' | 'espera';
+  estadoPago?: 'pendiente' | 'pagado';
+  tipo?: 'cliente' | 'visitante';
   estatus: 'pendiente' | 'confirmada' | 'cancelada' | 'no_asistio';
   asistenciaConfirmada: boolean;
   reagendada?: boolean;
@@ -189,11 +194,8 @@ export function ReservacionesPage() {
     try {
       const creada = await api.post<ReservacionMongo>('/reservaciones', {
         idCliente,
+        // La clase, la hora y la fecha las toma el servidor del horario elegido.
         idHorario: h.id,
-        clase: h.clase,
-        entrenador: h.entrenador,
-        horaClase: h.horaClase,
-        fechaReservacion: h.fecha,
       });
       setReservaciones(lista => [creada, ...lista]);
       setAviso(`Reservación creada. Código: ${creada.codigo ?? 'sin código'}`);
@@ -215,10 +217,6 @@ export function ReservacionesPage() {
     try {
       const actualizada = await api.patch<ReservacionMongo>(`/reservaciones/${reagendando.idReservacion}/reagendar`, {
         idHorario: h.id,
-        clase: h.clase,
-        entrenador: h.entrenador,
-        horaClase: h.horaClase,
-        fechaReservacion: h.fecha,
       });
       reemplazar(actualizada);
       setAviso(`Reservación ${actualizada.codigo ?? ''} reagendada. Ya no podrá reagendarse de nuevo.`);
@@ -254,6 +252,14 @@ export function ReservacionesPage() {
     if (ok) void ejecutar(r, '/cancelar', {}, 'Reservación cancelada.');
   };
 
+  // Antes de registrar la asistencia se pide confirmación: el cambio es inmediato y la reservación pasa a "Asistió".
+  const confirmarAsistencia = (r: ReservacionMongo) => {
+    const ok = window.confirm(
+      `¿Confirmar la asistencia de ${r.nombreCliente} a ${r.clase} (${r.horaClase})?\n\nLa reservación ${r.codigo ?? ''} quedará como "Asistió".`,
+    );
+    if (ok) void ejecutar(r, '/asistencia', {}, 'Asistencia registrada.');
+  };
+
   const noAsistio = (r: ReservacionMongo) => {
     const ok = window.confirm(
       `¿Marcar que ${r.nombreCliente} no asistió?\n\nNo hay reembolso y ya no podrá reagendar.`,
@@ -265,11 +271,11 @@ export function ReservacionesPage() {
   const pendientes = reservaciones.filter(r => r.estatus === 'pendiente').length;
 
   const horariosReagendar = reagendando
-    ? horarios.filter(h => !(h.id === reagendando.idHorario && h.fecha === reagendando.fechaReservacion))
+    ? horarios.filter(h => h.clase === reagendando.clase && h.id !== reagendando.idHorario)
     : [];
 
   return (
-    <div className="space-y-5 max-w-7xl">
+    <div className="w-full min-w-0 space-y-5">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>Reservaciones</h1>
@@ -333,7 +339,7 @@ export function ReservacionesPage() {
                 return (
                   <div>
                     <p className="font-medium text-gray-800">{r.clase}</p>
-                    <p className="text-xs text-gray-400">{r.entrenador} · {formatearFecha(r.fechaReservacion)} · {r.horaClase}</p>
+                    <p className="text-xs text-gray-400">{r.entrenador} · {formatearFecha(r.fechaClase)} · {r.horaClase}</p>
                   </div>
                 );
               }
@@ -366,7 +372,7 @@ export function ReservacionesPage() {
                 <button type="button" disabled={ocupado || !vigente || !!r.reagendada} onClick={() => void abrirReagendar(r)} className="rx-icon-btn" title={r.reagendada ? 'Ya se reagendó una vez' : 'Reagendar (una sola vez, sin costo)'}>
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                 </button>
-                <button type="button" disabled={ocupado || !vigente} onClick={() => void ejecutar(r, '/asistencia', {}, 'Asistencia registrada.')} className="rx-icon-btn" title="Registrar asistencia">
+                <button type="button" disabled={ocupado || !vigente} onClick={() => confirmarAsistencia(r)} className="rx-icon-btn" title="Registrar asistencia">
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                 </button>
                 <button type="button" disabled={ocupado || !vigente} onClick={() => noAsistio(r)} className="rx-icon-btn" title="Marcar inasistencia">
@@ -404,7 +410,7 @@ export function ReservacionesPage() {
           <div className="grid grid-cols-1 gap-4">
             <div className="rounded-xl bg-gray-50 p-3 text-sm text-gray-700">
               <p className="font-medium">{reagendando.nombreCliente} · {reagendando.codigo}</p>
-              <p className="text-xs text-gray-500">Actual: {formatearFecha(reagendando.fechaReservacion)} {reagendando.horaClase} · {reagendando.clase} · {reagendando.entrenador}</p>
+              <p className="text-xs text-gray-500">Actual: {formatearFecha(reagendando.fechaClase)} {reagendando.horaClase} · {reagendando.clase} · {reagendando.entrenador}</p>
             </div>
             <SelectField label="Nuevo horario" value={nuevoHorario} onChange={e => setNuevoHorario(e.target.value)}
               options={[{ value: '', label: 'Selecciona el nuevo horario' }, ...horariosReagendar.map(h => ({ value: h.id, label: etiquetaHorario(h) }))]} />

@@ -7,6 +7,10 @@ import { limitar } from '../middleware/limitar';
 import { perfilPublico } from '../lib/vista';
 import { validarCorreo, validarPassword } from '../lib/validar';
 import { MENSAJE_SIN_ACTIVAR, registrarCliente } from '../clientes-core/cliente.core';
+import { randomInt } from 'node:crypto';
+import { enviarCorreo } from '../lib/correo';
+import { resumenMembresiaDe } from '../lib/membresia';
+import { fechaLocal } from '../lib/fecha';
 
 const router = Router();
 
@@ -52,7 +56,7 @@ router.post('/login', limite, async (req, res) => {
     if (String(cliente.estatus) !== 'activo') return res.status(403).json({ error: 'Tu cuenta está inactiva' });
 
     await Cliente.updateOne({ _id: cliente._id }, { ultimoAcceso: new Date() });
-    res.json({ token: firmar(String(cliente._id), cliente.tokenVersion ?? 0), cliente: perfilPublico(cliente) });
+    res.json({ token: firmar(String(cliente._id), cliente.tokenVersion ?? 0), cliente: perfilPublico(cliente, await resumenMembresiaDe(String(cliente._id), fechaLocal())) });
 });
 
 // POST /api/auth/activar-cuenta  { correo, codigoAcceso, password, confirmarPassword }
@@ -72,7 +76,70 @@ router.post('/activar-cuenta', limite, async (req, res) => {
 
     cliente.password = bcrypt.hashSync(password.valor, 10);
     await cliente.save();
-    res.json({ token: firmar(String(cliente._id), cliente.tokenVersion ?? 0), cliente: perfilPublico(cliente) });
+    res.json({ token: firmar(String(cliente._id), cliente.tokenVersion ?? 0), cliente: perfilPublico(cliente, await resumenMembresiaDe(String(cliente._id), fechaLocal())) });
+});
+
+// ---------- Recuperación de cuenta (por correo, SMTP) ----------
+const MINUTOS_CODIGO = 15;
+const MAX_INTENTOS = 5;
+const MENSAJE_ENVIO = `Si el correo está registrado, te enviamos un código para restablecer tu contraseña. Vence en ${MINUTOS_CODIGO} minutos.`;
+
+// POST /api/auth/recuperar  { correo }
+// Envía un código de 6 dígitos al correo. Siempre responde lo mismo, exista o no la cuenta (no revela quién está registrado).
+router.post('/recuperar', limite, async (req, res) => {
+    const correo = validarCorreo(req.body?.correo);
+    if (!correo.ok) return res.status(400).json({ error: correo.error });
+
+    const cliente = await Cliente.findOne({ correo: correo.valor }).select('+password +recuperacion');
+    if (cliente && cliente.password && String(cliente.estatus) === 'activo') {
+        // Un código por minuto como máximo
+        const previo = cliente.recuperacion?.expira?.getTime() ?? 0;
+        if (previo - Date.now() > (MINUTOS_CODIGO - 1) * 60_000) return res.json({ mensaje: MENSAJE_ENVIO });
+
+        const codigo = String(randomInt(0, 1_000_000)).padStart(6, '0');
+        cliente.recuperacion = { codigoHash: bcrypt.hashSync(codigo, 10), expira: new Date(Date.now() + MINUTOS_CODIGO * 60_000), intentos: 0 };
+        await cliente.save();
+        try {
+            await enviarCorreo({
+                to: String(cliente.correo),
+                subject: 'Tu código para restablecer la contraseña',
+                text: `Hola ${cliente.nombre}, tu código es ${codigo}. Vence en ${MINUTOS_CODIGO} minutos. Si no lo pediste, ignora este mensaje.`,
+                html: `<p>Hola ${cliente.nombre},</p><p>Tu código para restablecer la contraseña es:</p>`
+                    + `<p style="font-size:28px;letter-spacing:6px"><b>${codigo}</b></p>`
+                    + `<p>Vence en ${MINUTOS_CODIGO} minutos. Si no lo pediste, ignora este mensaje.</p>`,
+            });
+        } catch (err) {
+            console.error('Recuperación de cuenta: no se pudo enviar el correo:', (err as Error).message);
+        }
+    }
+    res.json({ mensaje: MENSAJE_ENVIO });
+});
+
+// POST /api/auth/restablecer  { correo, codigo, password, confirmarPassword }
+router.post('/restablecer', limite, async (req, res) => {
+    const correo = validarCorreo(req.body?.correo);
+    const password = validarPassword(req.body?.password, req.body?.confirmarPassword);
+    const codigo = String(req.body?.codigo ?? '').trim();
+    if (!correo.ok || !/^\d{6}$/.test(codigo)) return res.status(400).json({ error: 'Correo y código de 6 dígitos son obligatorios' });
+    if (!password.ok) return res.status(400).json({ error: password.error });
+
+    const cliente = await Cliente.findOne({ correo: correo.valor }).select('+password +tokenVersion +recuperacion');
+    const r = cliente?.recuperacion;
+    if (!cliente || !r?.codigoHash || !r.expira || r.expira.getTime() < Date.now()) {
+        return res.status(400).json({ error: 'El código es incorrecto o ya venció. Solicita uno nuevo' });
+    }
+    if ((r.intentos ?? 0) >= MAX_INTENTOS) return res.status(429).json({ error: 'Demasiados intentos. Solicita un código nuevo' });
+    if (!bcrypt.compareSync(codigo, r.codigoHash)) {
+        cliente.recuperacion = { codigoHash: r.codigoHash, expira: r.expira, intentos: (r.intentos ?? 0) + 1 };
+        await cliente.save();
+        return res.status(400).json({ error: 'El código es incorrecto o ya venció. Solicita uno nuevo' });
+    }
+
+    cliente.password = bcrypt.hashSync(password.valor, 10);
+    cliente.tokenVersion = (cliente.tokenVersion ?? 0) + 1; // cierra las sesiones abiertas con la contraseña anterior
+    cliente.recuperacion = null;
+    await cliente.save();
+    res.json({ mensaje: 'Contraseña actualizada. Ya puedes iniciar sesión' });
 });
 
 export default router;

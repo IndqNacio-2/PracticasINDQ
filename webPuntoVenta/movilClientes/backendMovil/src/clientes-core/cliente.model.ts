@@ -1,5 +1,5 @@
 // ============================================================================
-// NÚCLEO COMPARTIDO DE CLIENTES  ·  archivo 2 de 3 (fechas.ts, cliente.model.ts, cliente.core.ts)
+// NÚCLEO COMPARTIDO DE CLIENTES  ·  archivo 2 de 6 (fechas, cliente.model, cliente.core, codigos, busqueda, menor)
 //
 // Esta carpeta (src/clientes-core) es IDÉNTICA en:
 //   - backend-administrativa/src/clientes-core
@@ -52,6 +52,26 @@ const perfilActividadSchema = new Schema(
     { _id: false }
 );
 
+// Tutor de un cliente menor de edad (< 18). Obligatorio para crear el registro de un menor.
+const tutorSchema = new Schema(
+    {
+        nombreCompleto: { type: String, required: true, trim: true },
+        claveElector: { type: String, required: true, trim: true, uppercase: true },
+    },
+    { _id: false }
+);
+
+// Los 4 documentos adicionales del menor. Se piden una sola vez (no en cada renovación de membresía).
+const documentosMenorSchema = new Schema(
+    {
+        actaNacimiento: { type: Boolean, default: false }, // Acta de nacimiento del menor
+        ineTutor: { type: Boolean, default: false }, // INE del padre, madre o tutor
+        curpMenor: { type: Boolean, default: false }, // CURP del menor
+        credencialEscolar: { type: Boolean, default: false }, // Credencial escolar del menor
+    },
+    { _id: false }
+);
+
 const clienteSchema = new Schema(
     {
         nombre: { type: String, required: true, trim: true },
@@ -78,6 +98,12 @@ const clienteSchema = new Schema(
 
         // Acceso a la app móvil. password es un hash bcrypt y nunca se devuelve en las consultas.
         password: { type: String, select: false },
+        // Recuperación de cuenta: código de 6 dígitos (solo se guarda su hash) que vence en 15 minutos.
+        recuperacion: {
+            type: new Schema({ codigoHash: String, expira: Date, intentos: { type: Number, default: 0 } }, { _id: false }),
+            default: null,
+            select: false,
+        },
         // Se incrementa al cambiar la contraseña desde la web o dar de baja: invalida los tokens ya emitidos.
         tokenVersion: { type: Number, default: 0, select: false },
         ultimoAcceso: Date,
@@ -90,6 +116,20 @@ const clienteSchema = new Schema(
         membresia: { type: membresiaSchema, default: null },
         perfilSalud: { type: perfilSaludSchema, default: null },
         perfilActividad: { type: perfilActividadSchema, default: null },
+
+        // Menor de edad: tutor y documentos. El registro puede existir con documentos faltantes;
+        // `menorValidado` lo marca el staff en la web cuando el menor ya entregó y se revisaron sus documentos.
+        tutor: { type: tutorSchema, default: null },
+        documentosMenor: { type: documentosMenorSchema, default: null },
+        menorValidado: { type: Boolean, default: false },
+
+        // Cómo se creó el registro: 'web' (recepción) o 'movil' (autorregistro).
+        origenRegistro: { type: String, enum: ['web', 'movil'], default: 'web' },
+        // Un registro hecho en la app móvil se termina en la plataforma web, al llegar al local.
+        registroPendiente: { type: Boolean, default: false },
+        // Términos y condiciones: la app móvil no crea la cuenta si no los acepta.
+        aceptoTerminos: { type: Boolean, default: false },
+        fechaAceptacionTerminos: { type: Date, default: null },
     },
     {
         toJSON: {
@@ -99,6 +139,7 @@ const clienteSchema = new Schema(
                 delete ret._id;
                 delete ret.__v;
                 delete ret.password;
+                delete ret.recuperacion;
                 delete ret.tokenVersion;
                 return ret;
             },

@@ -1,5 +1,5 @@
 // ============================================================================
-// NÚCLEO COMPARTIDO DE CLIENTES  ·  archivo 1 de 3 (fechas.ts, cliente.model.ts, cliente.core.ts)
+// NÚCLEO COMPARTIDO DE CLIENTES  ·  archivo 1 de 6 (fechas, cliente.model, cliente.core, codigos, busqueda, menor)
 // Carpeta idéntica en backend-administrativa y movilClientes/backendMovil (ver cliente.model.ts).
 // ============================================================================
 // Utilidades de fechas "YYYY-MM-DD" para edad y cumpleaños.

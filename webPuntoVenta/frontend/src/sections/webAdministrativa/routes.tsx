@@ -10,6 +10,7 @@ import { ReservacionesPage } from './features/reservaciones/ReservacionesPage';
 import { ProductosPage } from './features/productos/ProductosPage';
 import { ReportesPage } from './features/reportes/ReportesPage';
 import MembresiasPage from './features/membresia/membresia';
+import MermasPage from './features/puntoVenta/MermasPage';
 
 export const router = createBrowserRouter([
   {
@@ -31,6 +32,7 @@ export const router = createBrowserRouter([
       { path: 'horarios', element: <Navigate to="/clases-horarios?vista=agenda" replace /> },
       { path: 'reservaciones', Component: ReservacionesPage },
       { path: 'productos', Component: ProductosPage },
+      { path: 'mermas', Component: MermasPage },
       { path: 'reportes', Component: ReportesPage },
     ],
   },

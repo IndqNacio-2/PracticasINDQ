@@ -1,6 +1,7 @@
 import { Pool } from 'pg';
 import { isValidObjectId } from 'mongoose';
 import { Horario } from '../Horarios/horarios';
+import { Reservacion } from '../Reservaciones/reservacion';
 
 // =====================================================================
 // Reportes de la administrativa (sección 3.1.6).
@@ -8,7 +9,7 @@ import { Horario } from '../Horarios/horarios';
 // Todas las cifras salen de PostgreSQL, que es la fuente operativa:
 //   - Ventas e inventario  -> esquema webpontoventa (sales, sale_items, products, waste_records)
 //   - Visitas y personal   -> webcobro.asistencias / webcobro.empleados (reloj checador)
-//   - Asistencia a clases  -> webcobro.reservas (+ el entrenador, que vive en MongoDB, en
+//   - Asistencia a clases  -> reservaciones en MongoDB (+ el entrenador, que vive en MongoDB, en
 //                             webadministrativa_horarios, enlazado por reservas.horario_id)
 //
 // Los días y las horas se calculan en la zona horaria REPORTES_TZ (por defecto
@@ -208,13 +209,13 @@ export async function reporteVentas(f: Filtros) {
 }
 
 // ---------------------------------------------------------------------
-// 2. VISITAS — entradas de socios (CLI-n) en el reloj checador, por día y/u horario
+// 2. VISITAS — entradas de clientes (código de acceso CLI001; antes CLI-n) en el reloj checador, por día y/u horario
 // ---------------------------------------------------------------------
 
 export async function reporteVisitas(f: Filtros) {
     const params = paramsTiempo(f);
     const base = `FROM webcobro.asistencias a
-                   WHERE a.codigo LIKE 'CLI-%' AND a.tipo = 'entrada' AND ${tiempo('a.creado_en')}`;
+                   WHERE a.codigo LIKE 'CLI%' AND a.tipo = 'entrada' AND ${tiempo('a.creado_en')}`;
 
     const [resumenFilas, dias, horas] = await Promise.all([
         consulta<{ visitas: number; unicos: number }>(
@@ -268,7 +269,7 @@ interface FilaReservas {
     canceladas: number;
 }
 
-// El entrenador no está en webcobro.reservas: se toma del horario (Mongo) al que apunta horario_id.
+// El entrenador se toma del horario (Mongo) al que apunta la reservación.
 async function entrenadoresPorHorario(ids: string[]): Promise<{ mapa: Map<string, string>; disponible: boolean }> {
     const validos = [...new Set(ids.filter((id) => isValidObjectId(id)))];
     if (validos.length === 0) return { mapa: new Map(), disponible: true };
@@ -299,21 +300,33 @@ const conTasa = <T extends Acumulado>(fila: T) => ({
 });
 
 export async function reporteAsistenciaClases(f: Filtros) {
-    // La hora de la reserva es texto "HH:MM". Con el horario completo (0-23) no se filtra por hora.
-    const filas = await consulta<FilaReservas>(
-        `SELECT r.clase, r.horario_id AS "horarioId",
-                COUNT(*) FILTER (WHERE r.estado <> 'cancelado')::int AS reservadas,
-                COUNT(*) FILTER (WHERE r.estado = 'asistido')::int AS asistieron,
-                COUNT(*) FILTER (WHERE r.estado = 'no_asistio')::int AS "noAsistieron",
-                COUNT(*) FILTER (WHERE r.estado = 'cancelado')::int AS canceladas
-           FROM webcobro.reservas r
-          WHERE r.estado_cupo = 'confirmada'
-            AND r.fecha ~ '^\\d{4}-\\d{2}-\\d{2}$' AND r.fecha BETWEEN $1 AND $2
-            AND ($3::int = 0 AND $4::int = 23
-                 OR (CASE WHEN r.hora ~ '^\\d{1,2}:\\d{2}' THEN split_part(r.hora, ':', 1)::int END) BETWEEN $3::int AND $4::int)
-          GROUP BY r.clase, r.horario_id`,
-        [f.desde, f.hasta, f.horaDesde, f.horaHasta],
-    );
+    // Las reservaciones viven en MongoDB (fuente única). La hora de la clase es el intervalo "06:00 - 06:50":
+    // se filtra por la hora de inicio. Con el horario completo (0-23) no se filtra por hora.
+    const filtrarHora = !(f.horaDesde === 0 && f.horaHasta === 23);
+    const filas: FilaReservas[] = await (Reservacion as unknown as import('mongoose').Model<any>).aggregate([
+        { $match: { estadoCupo: { $ne: 'espera' }, fechaClase: { $gte: f.desde, $lte: f.hasta } } },
+        ...(filtrarHora
+            ? [
+                { $addFields: { horaInicio: { $convert: { input: { $arrayElemAt: [{ $split: [{ $arrayElemAt: [{ $split: ['$horaClase', ' - '] }, 0] }, ':'] }, 0] }, to: 'int', onError: null, onNull: null } } } },
+                { $match: { horaInicio: { $gte: f.horaDesde, $lte: f.horaHasta } } },
+            ]
+            : []),
+        {
+            $group: {
+                _id: { clase: '$clase', horarioId: '$idHorario' },
+                reservadas: { $sum: { $cond: [{ $ne: ['$estatus', 'cancelada'] }, 1, 0] } },
+                asistieron: { $sum: { $cond: [{ $and: [{ $eq: ['$asistenciaConfirmada', true] }, { $ne: ['$estatus', 'cancelada'] }] }, 1, 0] } },
+                noAsistieron: { $sum: { $cond: [{ $eq: ['$estatus', 'no_asistio'] }, 1, 0] } },
+                canceladas: { $sum: { $cond: [{ $eq: ['$estatus', 'cancelada'] }, 1, 0] } },
+            },
+        },
+        {
+            $project: {
+                _id: 0, clase: '$_id.clase', horarioId: '$_id.horarioId',
+                reservadas: 1, asistieron: 1, noAsistieron: 1, canceladas: 1,
+            },
+        },
+    ]);
 
     const { mapa, disponible } = await entrenadoresPorHorario(filas.map((x) => x.horarioId));
 

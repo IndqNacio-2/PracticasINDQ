@@ -25,6 +25,14 @@ ALTER TABLE webcobro.clientes ADD COLUMN IF NOT EXISTS vigencia_hasta DATE;
 -- Correo del socio (opcional): lo captura el módulo administrativo y debe ser
 -- único cuando se proporciona. Los socios viejos de cobro no lo tenían.
 ALTER TABLE webcobro.clientes ADD COLUMN IF NOT EXISTS correo TEXT;
+-- Migración aditiva: no cambia clientes, compras, vigencias ni reservaciones.
+ALTER TABLE webcobro.clientes ADD COLUMN IF NOT EXISTS enfermedades TEXT[] NOT NULL DEFAULT '{}';
+ALTER TABLE webcobro.clientes ADD COLUMN IF NOT EXISTS lesiones TEXT[] NOT NULL DEFAULT '{}';
+ALTER TABLE webcobro.clientes ADD COLUMN IF NOT EXISTS fecha_nacimiento DATE;
+ALTER TABLE webcobro.clientes ADD COLUMN IF NOT EXISTS nombre_tutor TEXT NOT NULL DEFAULT '';
+ALTER TABLE webcobro.clientes ADD COLUMN IF NOT EXISTS clave_elector_tutor TEXT NOT NULL DEFAULT '';
+ALTER TABLE webcobro.clientes ADD COLUMN IF NOT EXISTS estado_documentacion TEXT NOT NULL DEFAULT 'pendiente'
+  CHECK (estado_documentacion IN ('pendiente', 'validada'));
 DO $$
 BEGIN
     IF NOT EXISTS (
@@ -305,3 +313,43 @@ ALTER TABLE webcobro.reservas ADD COLUMN IF NOT EXISTS membresia_compra_id BIGIN
 ALTER TABLE webcobro.reservas ADD COLUMN IF NOT EXISTS clase_id TEXT;
 CREATE INDEX IF NOT EXISTS reservas_membresia_idx ON webcobro.reservas(membresia_compra_id);
 CREATE INDEX IF NOT EXISTS membresias_cliente_idx ON webcobro.membresias_compras(cliente_id, fecha_fin);
+
+-- ============================================================================
+-- Clientes: fuente única en MongoDB (API administrativa).
+-- Cobro ya no tiene clientes propios: reservas, pagos y compras de membresía apuntan al
+-- cliente por su id de Mongo (cliente_ref, texto). No hay llave foránea porque son bases distintas.
+-- La tabla webcobro.clientes queda sin uso (se conserva solo por si hay que consultar datos viejos).
+-- ============================================================================
+ALTER TABLE webcobro.reservas ADD COLUMN IF NOT EXISTS cliente_ref TEXT;
+ALTER TABLE webcobro.pagos ADD COLUMN IF NOT EXISTS cliente_ref TEXT;
+ALTER TABLE webcobro.membresias_compras ADD COLUMN IF NOT EXISTS cliente_ref TEXT;
+-- Se quitan las llaves foráneas hacia webcobro.clientes y la obligatoriedad de cliente_id.
+DO $$
+DECLARE r RECORD;
+BEGIN
+    FOR r IN SELECT conrelid::regclass AS tabla, conname FROM pg_constraint
+             WHERE contype = 'f' AND confrelid = 'webcobro.clientes'::regclass LOOP
+        EXECUTE format('ALTER TABLE %s DROP CONSTRAINT %I', r.tabla, r.conname);
+    END LOOP;
+END $$;
+ALTER TABLE webcobro.membresias_compras ALTER COLUMN cliente_id DROP NOT NULL;
+CREATE INDEX IF NOT EXISTS reservas_cliente_ref_idx ON webcobro.reservas(cliente_ref, fecha, estado);
+CREATE INDEX IF NOT EXISTS membresias_cliente_ref_idx ON webcobro.membresias_compras(cliente_ref, fecha_fin);
+
+-- ============================================================================
+-- Reservaciones: fuente única en MongoDB (API administrativa).
+-- Los pagos apuntan a la reservación por su id de Mongo (reserva_ref, texto). Una reservación solo
+-- admite un pago. La tabla webcobro.reservas queda sin uso (se conserva por si hay que consultar datos viejos).
+-- ============================================================================
+ALTER TABLE webcobro.pagos ADD COLUMN IF NOT EXISTS reserva_ref TEXT;
+DO $$
+DECLARE r RECORD;
+BEGIN
+    FOR r IN SELECT conrelid::regclass AS tabla, conname FROM pg_constraint
+             WHERE contype = 'f' AND confrelid = 'webcobro.reservas'::regclass LOOP
+        EXECUTE format('ALTER TABLE %s DROP CONSTRAINT %I', r.tabla, r.conname);
+    END LOOP;
+END $$;
+CREATE UNIQUE INDEX IF NOT EXISTS pagos_reserva_ref_idx
+    ON webcobro.pagos (reserva_ref)
+    WHERE reserva_ref IS NOT NULL;

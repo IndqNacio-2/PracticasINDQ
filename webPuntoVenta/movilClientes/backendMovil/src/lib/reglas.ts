@@ -11,16 +11,7 @@ export const POLITICAS = [
 
 export const HORAS_MINIMAS_PARA_CANCELAR = 24;
 
-export interface MembresiaDoc {
-    tipo?: string;
-    fechaInicio?: string;
-    fechaFin?: string;
-    estatus?: string;
-    claseIncluida?: string | null;
-    clasesTotal?: number | null;
-    clasesUsadas?: number | null;
-}
-
+/** Resumen de la membresía comprada que ve el cliente en el inicio (se arma en lib/membresia.ts). */
 export interface ResumenMembresia {
     vigente: boolean;
     tipo: string | null;
@@ -35,47 +26,6 @@ export interface ResumenMembresia {
         /** Porcentaje de clases que quedan (lo que dibuja el aro del inicio) */
         porcentajeRestante: number;
     };
-}
-
-function datosPaquete(m: MembresiaDoc | null | undefined) {
-    const total = Number(m?.clasesTotal ?? 0);
-    const clase = String(m?.claseIncluida ?? '').trim();
-    if (!m || !clase || !(total > 0)) return null;
-    const usadas = Math.min(total, Math.max(0, Number(m.clasesUsadas ?? 0)));
-    return { clase, total, usadas, restantes: total - usadas };
-}
-
-export function membresiaVigente(m: MembresiaDoc | null | undefined, hoy: string): boolean {
-    return !!m && m.estatus === 'activo' && !!m.fechaFin && m.fechaFin >= hoy;
-}
-
-export function resumenMembresia(m: MembresiaDoc | null | undefined, hoy: string): ResumenMembresia | null {
-    if (!m) return null;
-    const p = datosPaquete(m);
-    return {
-        vigente: membresiaVigente(m, hoy),
-        tipo: m.tipo ?? null,
-        fechaFin: m.fechaFin ?? null,
-        paquete: p && {
-            nombre: `${p.clase} · ${p.total} clases`,
-            claseIncluida: p.clase,
-            total: p.total,
-            usadas: p.usadas,
-            restantes: p.restantes,
-            porcentajeRestante: Math.round((p.restantes / p.total) * 100),
-        },
-    };
-}
-
-/** ¿El paquete vigente del cliente cubre esta clase y todavía le quedan accesos? */
-export function paqueteCubre(m: MembresiaDoc | null | undefined, nombreClase: string, hoy: string): boolean {
-    const p = datosPaquete(m);
-    return (
-        !!p &&
-        membresiaVigente(m, hoy) &&
-        p.restantes > 0 &&
-        p.clase.toLowerCase() === nombreClase.trim().toLowerCase()
-    );
 }
 
 /** Cuánto paga una clase fuera del paquete */

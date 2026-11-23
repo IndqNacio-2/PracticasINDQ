@@ -83,14 +83,14 @@ export const mockHorarios: HorarioClase[] = [
 ];
 
 export const mockReservaciones: Reservacion[] = [
-  { idReservacion: 'r1', idCliente: 'c1', nombreCliente: 'Fernando López', idHorario: 'h1', clase: 'Spinning', entrenador: 'Sofía Torres', horaClase: '07:00 - 08:00', fechaReservacion: '2024-09-16', estatus: 'confirmada', asistenciaConfirmada: true },
-  { idReservacion: 'r2', idCliente: 'c2', nombreCliente: 'Gabriela Morales', idHorario: 'h2', clase: 'Yoga Flow', entrenador: 'Diego Ramírez', horaClase: '09:00 - 10:00', fechaReservacion: '2024-09-16', estatus: 'confirmada', asistenciaConfirmada: false },
-  { idReservacion: 'r3', idCliente: 'c3', nombreCliente: 'Roberto Sánchez', idHorario: 'h3', clase: 'CrossFit', entrenador: 'Sofía Torres', horaClase: '18:00 - 19:00', fechaReservacion: '2024-09-16', estatus: 'pendiente', asistenciaConfirmada: false },
-  { idReservacion: 'r4', idCliente: 'c4', nombreCliente: 'Daniela Reyes', idHorario: 'h1', clase: 'Spinning', entrenador: 'Sofía Torres', horaClase: '07:00 - 08:00', fechaReservacion: '2024-09-16', estatus: 'confirmada', asistenciaConfirmada: true },
-  { idReservacion: 'r5', idCliente: 'c6', nombreCliente: 'Lucía Vargas', idHorario: 'h2', clase: 'Yoga Flow', entrenador: 'Diego Ramírez', horaClase: '09:00 - 10:00', fechaReservacion: '2024-09-16', estatus: 'cancelada', asistenciaConfirmada: false },
-  { idReservacion: 'r6', idCliente: 'c1', nombreCliente: 'Fernando López', idHorario: 'h5', clase: 'Box Fitness', entrenador: 'Sofía Torres', horaClase: '19:00 - 20:00', fechaReservacion: '2024-09-17', estatus: 'confirmada', asistenciaConfirmada: false },
-  { idReservacion: 'r7', idCliente: 'c2', nombreCliente: 'Gabriela Morales', idHorario: 'h4', clase: 'Pilates Mat', entrenador: 'Diego Ramírez', horaClase: '10:00 - 11:00', fechaReservacion: '2024-09-17', estatus: 'pendiente', asistenciaConfirmada: false },
-  { idReservacion: 'r8', idCliente: 'c4', nombreCliente: 'Daniela Reyes', idHorario: 'h8', clase: 'CrossFit', entrenador: 'Sofía Torres', horaClase: '06:30 - 07:30', fechaReservacion: '2024-09-19', estatus: 'confirmada', asistenciaConfirmada: false },
+  { idReservacion: 'r1', idCliente: 'c1', nombreCliente: 'Fernando López', idHorario: 'h1', clase: 'Spinning', entrenador: 'Sofía Torres', horaClase: '07:00 - 08:00', fechaClase: '2024-09-16', estatus: 'confirmada', asistenciaConfirmada: true },
+  { idReservacion: 'r2', idCliente: 'c2', nombreCliente: 'Gabriela Morales', idHorario: 'h2', clase: 'Yoga Flow', entrenador: 'Diego Ramírez', horaClase: '09:00 - 10:00', fechaClase: '2024-09-16', estatus: 'confirmada', asistenciaConfirmada: false },
+  { idReservacion: 'r3', idCliente: 'c3', nombreCliente: 'Roberto Sánchez', idHorario: 'h3', clase: 'CrossFit', entrenador: 'Sofía Torres', horaClase: '18:00 - 19:00', fechaClase: '2024-09-16', estatus: 'pendiente', asistenciaConfirmada: false },
+  { idReservacion: 'r4', idCliente: 'c4', nombreCliente: 'Daniela Reyes', idHorario: 'h1', clase: 'Spinning', entrenador: 'Sofía Torres', horaClase: '07:00 - 08:00', fechaClase: '2024-09-16', estatus: 'confirmada', asistenciaConfirmada: true },
+  { idReservacion: 'r5', idCliente: 'c6', nombreCliente: 'Lucía Vargas', idHorario: 'h2', clase: 'Yoga Flow', entrenador: 'Diego Ramírez', horaClase: '09:00 - 10:00', fechaClase: '2024-09-16', estatus: 'cancelada', asistenciaConfirmada: false },
+  { idReservacion: 'r6', idCliente: 'c1', nombreCliente: 'Fernando López', idHorario: 'h5', clase: 'Box Fitness', entrenador: 'Sofía Torres', horaClase: '19:00 - 20:00', fechaClase: '2024-09-17', estatus: 'confirmada', asistenciaConfirmada: false },
+  { idReservacion: 'r7', idCliente: 'c2', nombreCliente: 'Gabriela Morales', idHorario: 'h4', clase: 'Pilates Mat', entrenador: 'Diego Ramírez', horaClase: '10:00 - 11:00', fechaClase: '2024-09-17', estatus: 'pendiente', asistenciaConfirmada: false },
+  { idReservacion: 'r8', idCliente: 'c4', nombreCliente: 'Daniela Reyes', idHorario: 'h8', clase: 'CrossFit', entrenador: 'Sofía Torres', horaClase: '06:30 - 07:30', fechaClase: '2024-09-19', estatus: 'confirmada', asistenciaConfirmada: false },
 ];
 
 export const mockProductos: Producto[] = [

@@ -8,10 +8,16 @@ function clasificarAsistencia(ahora, turno) {
 
 function montarAsistencia(app, pool, opciones = {}) {
   const turnosHabilitados = opciones.turnosHabilitados === true;
+  // Middlewares que se anteponen a cada ruta (el reloj checador es solo para el administrador).
+  const proteger = opciones.proteger ?? [];
+  const clientesAdmin = opciones.clientesAdmin;
   const normalizar = (valor) => {
     const codigo = String(valor ?? '').trim().toUpperCase();
-    if (/^EMP-\d{3}$/.test(codigo) || /^CLI-\d+$/.test(codigo)) return codigo;
-    return /^\d+$/.test(codigo) ? `CLI-${codigo}` : null;
+    // Empleado: EMP-101. Cliente: su código de acceso de administrativa (CLI001).
+    if (/^EMP-\d{3}$/.test(codigo) || /^CLI\d{3,}$/.test(codigo)) return codigo;
+    // Formato anterior (CLI-3) o solo el número: se convierte al código de acceso (CLI003).
+    const numero = codigo.match(/^(?:CLI-)?(\d+)$/);
+    return numero ? `CLI${numero[1].padStart(3, '0')}` : null;
   };
   const estadoSQL = turnosHabilitados ? 'estado' : 'NULL::text AS estado';
   // Una falta automática NO es una entrada física ni debe activar la salida.
@@ -24,10 +30,14 @@ function montarAsistencia(app, pool, opciones = {}) {
       AND dia_semana = EXTRACT(DOW FROM CURRENT_DATE)::int
       ORDER BY hora_inicio, id LIMIT 1`, [codigo])).rows[0] || null;
   };
-  const persona = async (db, codigo) => (await db.query(codigo.startsWith('EMP-')
-    ? 'SELECT codigo, nombre, rol FROM webcobro.empleados WHERE codigo = $1'
-    : 'SELECT id, nombre, membresia FROM webcobro.clientes WHERE id = $1',
-  [codigo.startsWith('EMP-') ? codigo : codigo.slice(4)])).rows[0];
+  // Empleados: tabla de cobro. Clientes: fuente única en administrativa (se busca por su código de acceso).
+  const persona = async (db, codigo, autorizacion) => {
+    if (codigo.startsWith('EMP-')) {
+      return (await db.query('SELECT codigo, nombre, rol FROM webcobro.empleados WHERE codigo = $1', [codigo])).rows[0];
+    }
+    const socio = await clientesAdmin.buscarPorCodigo(codigo, autorizacion);
+    return socio && socio.activo ? { nombre: socio.nombre, membresia: null } : undefined;
+  };
   const ultima = async (db, codigo, hoy = false) => (await db.query(`SELECT tipo, creado_en
     FROM webcobro.asistencias WHERE codigo = $1 ${marcasReales}
     ${hoy ? 'AND creado_en::date = CURRENT_DATE' : ''}
@@ -37,7 +47,7 @@ function montarAsistencia(app, pool, opciones = {}) {
     fecha: new Date(r.creado_en).toISOString(), ts: new Date(r.creado_en).getTime() });
   const ruta = (handler) => async (req, res) => {
     const codigo = normalizar(req.params?.identificador ?? req.params?.codigo ?? req.body?.codigo);
-    if (!codigo) return res.status(400).json({ error: 'Formato inválido. Ejemplo: EMP-101 o CLI-3' });
+    if (!codigo) return res.status(400).json({ error: 'Formato inválido. Ejemplo: EMP-101 o CLI001' });
     try { return await handler(req, res, codigo); }
     catch (error) {
       console.error('Error de asistencia:', error.message);
@@ -45,32 +55,33 @@ function montarAsistencia(app, pool, opciones = {}) {
     }
   };
 
-  app.get('/api/asistencia/historial/:identificador', ruta(async (_req, res, codigo) => {
+  app.get('/api/asistencia/historial/:identificador', ...proteger, ruta(async (_req, res, codigo) => {
     const resultado = await pool.query(`SELECT id, codigo, nombre, tipo, creado_en, ${estadoSQL},
       ${turnosHabilitados ? 'automatica' : 'false AS automatica'}
       FROM webcobro.asistencias WHERE codigo = $1 ORDER BY creado_en DESC, id DESC LIMIT 10`, [codigo]);
     res.json(resultado.rows.map(serializar));
   }));
-  app.get('/api/asistencia/empleado/:codigo', ruta(async (_req, res, codigo) => {
-    const p = await persona(pool, codigo);
+  app.get('/api/asistencia/empleado/:codigo', ...proteger, ruta(async (req, res, codigo) => {
+    const p = await persona(pool, codigo, req.headers.authorization);
     if (!p) return res.status(404).json({ error: `Código ${codigo} no registrado` });
     const hoy = await ultima(pool, codigo, true);
     const ultimo = await ultima(pool, codigo);
     const turno = await turnoHoy(pool, codigo);
-    res.json({ tipo: codigo.startsWith('EMP-') ? 'empleado' : 'cliente', codigo,
+    res.json({ tipo: codigo.startsWith('CLI-') ? 'cliente' : 'empleado', codigo,
+      codigoIngresado: req.codigoIngresado,
       nombre: p.nombre, rol: p.rol ?? null, membresia: p.membresia ?? null,
       marcoHoy: Boolean(hoy), ultimaMarcaHoy: hoy?.tipo ?? null,
       siguienteTipo: hoy?.tipo === 'entrada' ? 'salida' : 'entrada',
       ultimoRegistro: ultimo?.tipo ?? null, timestamp: ultimo ? new Date(ultimo.creado_en).toISOString() : null,
       horaInicio: turno ? new Date(turno.horaInicio).toISOString() : null });
   }));
-  app.post('/api/asistencia/marcar', ruta(async (_req, res, codigo) => {
+  app.post('/api/asistencia/marcar', ...proteger, ruta(async (req, res, codigo) => {
     const db = await pool.connect();
     try {
       await db.query('BEGIN');
       // Serializa marcas y faltas del mismo código, incluso entre instancias.
       await db.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`asistencia:${codigo}`]);
-      const p = await persona(db, codigo);
+      const p = await persona(db, codigo, req.headers.authorization);
       if (!p) { await db.query('ROLLBACK'); return res.status(404).json({ error: `Código ${codigo} no registrado` }); }
       const reloj = (await db.query('SELECT CURRENT_TIMESTAMP AS ahora')).rows[0].ahora;
       const ultimo = await ultima(db, codigo);

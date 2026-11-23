@@ -7,6 +7,7 @@
  */
 
 export interface CashClosingRecord {
+  id: number;
   folio: string;
   date: string;
   time: string;
@@ -89,9 +90,8 @@ export function validateCashClosingInput(body: unknown): {
     });
   }
 
-  // Usuario que realiza el corte: todavia no hay inicio de sesion.
-  const registeredBy =
-    String(data.registeredBy ?? "").trim() || "Edgar Rodriguez";
+  // La ruta sustituye este campo con la identidad del token verificado.
+  const registeredBy = '';
 
   if (issues.length > 0) {
     return { issues, input: null };

@@ -1,6 +1,6 @@
 import type { Estatus } from '../../types';
-
-
+// Una presentación de la membresía: cuántas entradas incluye, cuánto dura y cuánto cuesta.
+// La duración puede expresarse en días o meses según la opción configurada.
 export interface OpcionMembresia {
     id: string;
     /** Número de accesos; null = ilimitado */

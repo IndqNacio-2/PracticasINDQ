@@ -88,9 +88,8 @@ export function validateSaleInput(body: unknown): {
   const transferRef =
     data.transferRef === undefined ? undefined : String(data.transferRef).trim();
 
-  // Usuario que cobra: todavia no hay inicio de sesion.
-  const registeredBy =
-    String(data.registeredBy ?? "").trim() || "Edgar Rodriguez";
+  // La identidad se asigna exclusivamente con el token en la ruta.
+  const registeredBy = '';
 
   if (issues.length > 0) {
     return { issues, input: null };

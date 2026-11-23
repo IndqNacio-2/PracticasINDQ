@@ -57,7 +57,7 @@ export function ClasesPage() {
     const capacidad = Number(form.capacidad);
     const precio = Number(form.precio);
     if (!form.nombre.trim()) { setFormError('El nombre de la clase es obligatorio.'); return; }
-    if (!Number.isFinite(capacidad) || capacidad < 1) { setFormError('La capacidad debe ser al menos 1.'); return; }
+    if (!Number.isInteger(capacidad) || capacidad < 1) { setFormError('La capacidad debe ser un número entero mayor que cero.'); return; }
     if (!Number.isFinite(precio) || precio < 0) { setFormError('El precio no puede ser negativo.'); return; }
 
     setSaving(true);
@@ -177,7 +177,7 @@ export function ClasesPage() {
           <InputField label="Nombre de la clase" required value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))} />
           <TextareaField label="Descripción" value={form.descripcion} onChange={v => setForm(f => ({ ...f, descripcion: v }))} rows={2} />
           <div className="grid grid-cols-2 gap-4">
-            <InputField label="Capacidad" required type="number" min="1" value={form.capacidad} onChange={e => setForm(f => ({ ...f, capacidad: e.target.value }))} />
+            <InputField label="Capacidad" required type="number" min="1" step="1" value={form.capacidad} onChange={e => setForm(f => ({ ...f, capacidad: e.target.value }))} />
             <InputField label="Precio" required type="number" min="0" step="0.01" value={form.precio} onChange={e => setForm(f => ({ ...f, precio: e.target.value }))} />
           </div>
           <p className="text-sm text-gray-500">El entrenador se selecciona en la programacion semanal o en cada sesion.</p>

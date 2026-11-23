@@ -2,13 +2,15 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { Cliente } from '../models/cliente';
 import { perfilPublico } from '../lib/vista';
+import { resumenMembresiaDe } from '../lib/membresia';
+import { fechaLocal } from '../lib/fecha';
 import { validarCelular, validarFoto, validarPassword } from '../lib/validar';
 
 const router = Router();
 
 // GET /api/me — datos del encabezado (nombre, iniciales, foto) y la membresía con el aro de clases
-router.get('/', (_req, res) => {
-    res.json(perfilPublico(res.locals.cliente));
+router.get('/', async (_req, res) => {
+    res.json(perfilPublico(res.locals.cliente, await resumenMembresiaDe(String(res.locals.cliente._id), fechaLocal())));
 });
 
 // PATCH /api/me  { telefono?, foto?, direccion? }
@@ -33,7 +35,7 @@ router.patch('/', async (req, res) => {
     }
 
     await cliente.save();
-    res.json(perfilPublico(cliente));
+    res.json(perfilPublico(cliente, await resumenMembresiaDe(String(cliente._id), fechaLocal())));
 });
 
 // PATCH /api/me/password  { passwordActual, password, confirmarPassword }

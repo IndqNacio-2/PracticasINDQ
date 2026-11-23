@@ -6,14 +6,16 @@ import { COLUMNAS_PRODUCTO, aProducto, aEstatusDB, asegurarInventario } from '..
 
 const router = Router();
 router.use(requireAuth);
-// Administrador y vendedor comparten el mismo inventario.
+// Los tres roles consultan el mismo inventario; Recepción no lo modifica.
 const acceso = requireRole('administrador', 'vendedor');
+// Inventario compartido: recepción también lo consulta (solo lectura).
+const consulta = requireRole('administrador', 'vendedor', 'recepcion');
 
 const T = 'webpontoventa.products';
 const idValido = (v: unknown) => (Number.isInteger(Number(v)) && Number(v) > 0 ? Number(v) : null);
 const num = (v: unknown, d = 0) => (v === undefined || v === null || v === '' ? d : Number(v));
 
-router.get('/', acceso, asyncHandler(async (_req, res) => {
+router.get('/', consulta, asyncHandler(async (_req, res) => {
     const r = await pool.query(`SELECT ${COLUMNAS_PRODUCTO} FROM ${T} ORDER BY name`);
     res.json(r.rows.map(aProducto));
 }));

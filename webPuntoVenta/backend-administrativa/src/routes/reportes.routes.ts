@@ -29,7 +29,7 @@ function manejar(nombre: string, generar: Generador) {
     return async (req: Request, res: Response): Promise<void> => {
         const resultado = leerFiltros(req.query as Record<string, unknown>);
         if (!resultado.ok) {
-            res.status(400).json({ mensaje: resultado.error });
+            res.status(400).json({ mensaje: resultado.error, error: resultado.error });
             return;
         }
 
@@ -37,7 +37,8 @@ function manejar(nombre: string, generar: Generador) {
             res.json(await generar(resultado.filtros));
         } catch (err) {
             console.error(`[reportes] Error al generar el reporte de ${nombre}:`, err);
-            res.status(500).json({ mensaje: `No se pudo generar el reporte de ${nombre}` });
+            const mensaje = `No se pudo generar el reporte de ${nombre}`;
+            res.status(500).json({ mensaje, error: mensaje });
         }
     };
 }

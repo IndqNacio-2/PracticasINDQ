@@ -15,8 +15,10 @@ import {
   validateStatusChange,
 } from "./product.validation.js";
 import type { ValidationIssue } from "./product.types.js";
+import { requirePosUser } from '../auth.js';
 
 export const productRouter = Router();
+productRouter.use(requirePosUser);
 
 /**
  * Respondo los errores de validacion con el mismo formato siempre,

@@ -13,7 +13,15 @@ import usuarioRoutes from './routes/usuarios.routes';
 import ventaRoutes from './routes/ventas.routes';
 import membresiaRoutes from './routes/membresia.routes';
 import reportesRoutes from './routes/reportes.routes';
+import comprasMembresiaRoutes from './routes/compras-membresia.routes';
+import dashboardRoutes from './routes/dashboard.routes';
+import { enfermedadesRoutes, lesionesRoutes } from './routes/salud.routes';
+import { sembrarCatalogoSalud } from './salud-core/catalogo.model';
+import { crearRutasClientesMovil } from './routes/clientes-movil.routes';
+import { pool } from './lib/post';
+import { permitir, PERMISOS } from './middleware/permisos';
 import { connectDB } from './lib/mongo';
+import { marcarInasistenciasVencidas } from './services/reservaciones.service';
 import { iniciarMantenimientoHorizonte } from './services/mantener-horizonte-sesiones';
 import { iniciarCumpleanos } from './services/cumpleanos.service';
 
@@ -31,17 +39,24 @@ app.use(express.json());
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 app.use('/api/auth', authRoutes);
-app.use('/api/clientes', clienteRoutes);
-app.use('/api/reservaciones', reservacionRoutes);
-app.use('/api/horarios', horarioRoutes);
-app.use('/api/clases', claseRoutes);
-app.use('/api/plantillas-horarios', plantillaHorarioRoutes);
+app.use('/api/movil', crearRutasClientesMovil(pool));
+// Permisos por rol: ver src/middleware/permisos.ts (productos, movimientos, membresías y usuarios
+// ya validan su rol dentro de su propio router).
+app.use('/api/clientes', permitir(PERMISOS.clientes), clienteRoutes);
+app.use('/api/reservaciones', permitir(PERMISOS.reservaciones), reservacionRoutes);
+app.use('/api/horarios', permitir(PERMISOS.clasesYHorarios), horarioRoutes);
+app.use('/api/clases', permitir(PERMISOS.clasesYHorarios), claseRoutes);
+app.use('/api/plantillas-horarios', permitir(PERMISOS.clasesYHorarios), plantillaHorarioRoutes);
 app.use('/api/productos', productoRoutes);
 app.use('/api/movimientos', movimientoRoutes);
 app.use('/api/usuarios', usuarioRoutes);
-app.use('/api/ventas', ventaRoutes);
+app.use('/api/ventas', permitir(PERMISOS.ventas), ventaRoutes);
 app.use('/api/membresias', membresiaRoutes);
-app.use('/api/reportes', reportesRoutes);
+app.use('/api/reportes', permitir(PERMISOS.reportes), reportesRoutes);
+app.use('/api/enfermedades', permitir(PERMISOS.catalogoSalud), enfermedadesRoutes);
+app.use('/api/lesiones', permitir(PERMISOS.catalogoSalud), lesionesRoutes);
+app.use('/api/dashboard', permitir(PERMISOS.reportes), dashboardRoutes);
+app.use('/api/membresias-compras', permitir(PERMISOS.membresiasCompras), comprasMembresiaRoutes);
 
 // Exporta la app para que el gateway unificado pueda montarla bajo su prefijo
 // (/admin) en un solo puerto. Con GATEWAY_MODE no abre su propio puerto y un
@@ -51,7 +66,12 @@ export default app;
 connectDB()
   .then(() => {
     iniciarMantenimientoHorizonte();
+    sembrarCatalogoSalud().catch((error) => console.error('Catálogo de salud:', error.message));
     iniciarCumpleanos();
+    // Cada minuto: las clases que ya pasaron sin asistencia quedan como inasistencia (antes lo hacía cobro).
+    setInterval(() => {
+      marcarInasistenciasVencidas().catch((error) => console.error('Revisión de inasistencias:', error.message));
+    }, 60_000).unref();
     if (process.env.GATEWAY_MODE) {
       console.log('API administrativa conectada a MongoDB (gateway unificado)');
       return;

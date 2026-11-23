@@ -1,5 +1,5 @@
 // ============================================================================
-// NÚCLEO COMPARTIDO DE CLIENTES  ·  archivo 3 de 3 (fechas.ts, cliente.model.ts, cliente.core.ts)
+// NÚCLEO COMPARTIDO DE CLIENTES  ·  archivo 3 de 6 (fechas, cliente.model, cliente.core, codigos, busqueda, menor)
 // Carpeta idéntica en backend-administrativa y movilClientes/backendMovil (ver cliente.model.ts).
 //
 // Aquí vive UNA sola implementación de: validación de datos del cliente, reglas de contraseña,
@@ -9,6 +9,10 @@
 import bcrypt from 'bcryptjs';
 import { Cliente } from './cliente.model';
 import { esFechaNacimientoValida } from './fechas';
+import { esMenorDeEdad, normalizarDocumentos, validarTutor } from './menor';
+import { validarCodigoUsuario } from './codigos';
+
+export const MENSAJE_CODIGO_EN_USO = 'Ese código de usuario ya está en uso por otro cliente.';
 
 export type Origen = 'web' | 'movil';
 
@@ -205,6 +209,27 @@ export async function registrarCliente(body: unknown, origen: Origen): Promise<R
     });
     if (error) return falla(400, error);
 
+    // Términos y condiciones: en la app móvil la cuenta no se crea si no los acepta.
+    if (movil && b.aceptoTerminos !== true) {
+        return falla(400, 'Debes aceptar los términos y condiciones para registrarte', 'TERMINOS_NO_ACEPTADOS');
+    }
+
+    // Menor de edad (< 18): tutor y clave de elector obligatorios; los 4 documentos pueden faltar.
+    if (esMenorDeEdad(datos.fechaNacimiento as string)) {
+        const t = validarTutor(b);
+        if ('error' in t) return falla(400, t.error, 'TUTOR_REQUERIDO');
+        datos.tutor = t.tutor;
+        if (movil) {
+            // Desde la app solo se captura el tutor: los documentos y su validación los hace el staff en el local.
+            datos.documentosMenor = normalizarDocumentos(undefined, false).documentos;
+            datos.menorValidado = false;
+        } else {
+            const d = normalizarDocumentos(b.documentosMenor, b.menorValidado);
+            datos.documentosMenor = d.documentos;
+            datos.menorValidado = d.validado;
+        }
+    }
+
     const traePassword = b.password !== undefined && b.password !== '';
     if (movil || traePassword) {
         const errPass = errorPassword(b.password);
@@ -223,20 +248,36 @@ export async function registrarCliente(body: unknown, origen: Origen): Promise<R
     if (traePassword) datos.password = await bcrypt.hash(b.password, 10);
     if (datos.avatar === '') delete datos.avatar;
 
+    // Código Usuario personalizado (solo desde la web): si se deja vacío se asigna el siguiente automático.
+    let codigoFijo: string | null = null;
+    const pedido = b.codigo ?? b.codigoAcceso;
+    if (!movil && typeof pedido === 'string' && pedido.trim()) {
+        const v = validarCodigoUsuario(pedido);
+        if (!v.ok) return falla(400, v.error);
+        if (await Cliente.exists({ codigoAcceso: v.codigo })) return falla(409, MENSAJE_CODIGO_EN_USO);
+        codigoFijo = v.codigo;
+    }
+
     for (let intento = 0; intento < 8; intento++) {
         try {
             const cliente = await Cliente.create({
                 ...datos,
-                codigoAcceso: await siguienteCodigo(),
+                codigoAcceso: codigoFijo ?? await siguienteCodigo(),
                 estatus: 'activo',
                 rol: 'cliente',
                 membresia: null,
+                origenRegistro: origen,
+                // Lo que se registra desde la app se termina en la web (validar documentos al llegar al local).
+                registroPendiente: movil,
+                aceptoTerminos: movil,
+                fechaAceptacionTerminos: movil ? new Date() : null,
             });
             return { ok: true, cliente };
         } catch (err) {
             const campo = campoDuplicado(err);
             if (campo === 'correo') return falla(409, mensajeDuplicado); // dos altas simultáneas con el mismo correo
             if (campo !== 'codigoAcceso') throw err;
+            if (codigoFijo) return falla(409, MENSAJE_CODIGO_EN_USO); // otro alta tomó ese código al mismo tiempo
             await alinearContador(); // el código ya existía: se alinea el contador y se reintenta
         }
     }

@@ -1,3 +1,6 @@
+import type { Model } from 'mongoose';
+import { Reservacion } from '../models/Reservaciones/reservacion';
+
 interface ReservaCobro {
     horarioId?: string;
     capacityStatus?: string;
@@ -7,14 +10,29 @@ interface ReservaCobro {
     status?: string;
 }
 
-const API_RESERVAS = process.env.COBRO_RESERVAS_URL ?? 'http://localhost:3000/cobro/api/reservas';
+// Las reservaciones viven en MongoDB (fuente única para cobro, administrativa y app móvil):
+// aquí se leen directo de la colección, ya no por HTTP desde cobro.
+const Reservaciones = Reservacion as unknown as Model<any>;
+
+// Misma forma que usaban estas funciones (class/time/fecha/status/capacityStatus).
+function aReserva(r: any): ReservaCobro {
+    return {
+        horarioId: r.idHorario,
+        capacityStatus: r.estadoCupo ?? 'confirmada',
+        class: r.clase,
+        time: String(r.horaClase ?? '').match(/\d{1,2}:\d{2}/)?.[0] ?? '',
+        fecha: r.fechaClase ?? r.fechaReservacion,
+        status: r.estatus,
+    };
+}
 
 export async function obtenerDetalleReservas(): Promise<ReservaCobro[]> {
-    const respuesta = await fetch(API_RESERVAS, { signal: AbortSignal.timeout(10_000) });
-    if (!respuesta.ok) throw new Error('No se pudo comprobar el historial de reservas; no se hizo ningun cambio.');
-    const reservas = await respuesta.json();
-    if (!Array.isArray(reservas)) throw new Error('Respuesta de reservas no valida.');
-    return reservas;
+    try {
+        const filas = await Reservaciones.find({}).select('idHorario estadoCupo clase horaClase fechaClase fechaReservacion estatus').lean();
+        return filas.map(aReserva);
+    } catch {
+        throw new Error('No se pudo comprobar el historial de reservas; no se hizo ningun cambio.');
+    }
 }
 
 export function reservasDeHorario(reservas: ReservaCobro[], horario: {
@@ -33,13 +51,8 @@ export function ocupacionReal(reservas: ReservaCobro[]) {
 export async function obtenerReservasProtegidas(
     opciones: { incluirCanceladas?: boolean; mensajeError?: string } = {}
 ): Promise<Set<string>> {
-    const controlador = new AbortController();
-    const timeout = setTimeout(() => controlador.abort(), 10_000);
     try {
-        const respuesta = await fetch(API_RESERVAS, { signal: controlador.signal });
-        if (!respuesta.ok) throw new Error(`HTTP ${respuesta.status}`);
-        const reservas = await respuesta.json() as ReservaCobro[];
-        if (!Array.isArray(reservas)) throw new Error('la respuesta no es una lista');
+        const reservas = await obtenerDetalleReservas();
         return new Set(
             reservas
                 .filter(reserva => (
@@ -55,7 +68,5 @@ export async function obtenerReservasProtegidas(
     } catch (error) {
         const mensaje = opciones.mensajeError ?? 'No se pudieron comprobar las reservaciones; no se hizo ningun cambio.';
         throw new Error(`${mensaje} ${error}`);
-    } finally {
-        clearTimeout(timeout);
     }
 }

@@ -1,20 +1,11 @@
-import { randomInt } from 'node:crypto';
+import { generarCodigo, PREFIJO_MEMBRESIA, PREFIJO_RESERVACION } from '../clientes-core/codigos';
 
-// Sin caracteres que se confunden (I, O, 0, 1)
-const ABC = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+// Todos los códigos siguen PREFIJO-XXXXX (prefijo + guion + 5 dígitos); la lógica vive en clientes-core/codigos.ts.
 
-function aleatorio(largo: number): string {
-    return Array.from({ length: largo }, () => ABC[randomInt(ABC.length)]).join('');
-}
+/** Código de reservación que va dentro del QR, por ejemplo NU-48213 */
+export const codigoReservacion = () => generarCodigo(PREFIJO_RESERVACION);
 
-const PREFIJO = process.env.CODIGO_PREFIJO ?? 'NU';
+/** Código de una membresía/paquete apartado desde la app, por ejemplo PQ-07391 */
+export const codigoMembresia = () => generarCodigo(PREFIJO_MEMBRESIA);
 
-/** Código de reservación que va dentro del QR, por ejemplo NU-H2W7D */
-export const codigoReservacion = () => `${PREFIJO}-${aleatorio(5)}`;
-
-/** ¿El error de Mongo es por un valor duplicado? Devuelve el campo repetido */
-export function campoDuplicado(err: unknown): string | null {
-    const e = err as { code?: number; keyPattern?: Record<string, unknown> };
-    if (e?.code !== 11000) return null;
-    return Object.keys(e.keyPattern ?? {})[0] ?? 'desconocido';
-}
+export { campoDuplicado } from '../clientes-core/codigos';

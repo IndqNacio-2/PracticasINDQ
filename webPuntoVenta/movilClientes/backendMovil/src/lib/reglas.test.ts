@@ -3,9 +3,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fechaLocal, instante, sumarDias, diaSemana } from './fecha';
 import {
-    estadoReserva, iniciales, nivelCupo, paqueteCubre, puedeCancelar, puedeReagendar,
-    resumenMembresia, separarHoras, precioClase,
+    estadoReserva, iniciales, nivelCupo, puedeCancelar, puedeReagendar,
+    separarHoras, precioClase,
 } from './reglas';
+import { coberturaEnMemoria, finVigencia, saldoEnMemoria } from '../membresias-core/compras';
 
 const mazatlan = process.env.APP_TZ === undefined || process.env.APP_TZ === 'America/Mazatlan';
 
@@ -54,21 +55,33 @@ test('reagendar una sola vez', { skip: !mazatlan }, () => {
     assert.equal(puedeReagendar(reserva, new Date('2026-10-30T13:30:00Z')), false); // ya empezó
 });
 
-test('membresía y paquete (7 de 12 = 58 %)', () => {
-    const m = { tipo: 'mensual', estatus: 'activo', fechaFin: '2026-11-04', claseIncluida: 'Pilates', clasesTotal: 12, clasesUsadas: 5 };
-    const r = resumenMembresia(m, '2026-10-28')!;
-    assert.equal(r.vigente, true);
-    assert.equal(r.paquete?.nombre, 'Pilates · 12 clases');
-    assert.equal(r.paquete?.restantes, 7);
-    assert.equal(r.paquete?.porcentajeRestante, 58);
+test('membresía comprada: saldo y cobertura (7 de 12)', () => {
+    const compra = {
+        _id: 'c1', fechaInicio: '2026-10-01', fechaFin: '2026-11-04',
+        condiciones: { clasesIds: ['pilates'], opcion: { distribucion: 'compartida', entradas: 12 } },
+    };
+    const asistidas = Array.from({ length: 5 }, () => ({ claseId: 'pilates', estatus: 'confirmada', asistenciaConfirmada: true }));
+    const cartera = { compras: [compra], usos: new Map([['c1', asistidas]]) };
 
-    assert.equal(paqueteCubre(m, 'pilates', '2026-10-28'), true);
-    assert.equal(paqueteCubre(m, 'Yoga', '2026-10-28'), false);
-    assert.equal(paqueteCubre(m, 'Pilates', '2026-11-05'), false); // vencido
-    assert.equal(paqueteCubre({ ...m, clasesUsadas: 12 }, 'Pilates', '2026-10-28'), false); // sin accesos
-    assert.equal(paqueteCubre({ ...m, estatus: 'inactivo' }, 'Pilates', '2026-10-28'), false);
-    assert.equal(paqueteCubre(null, 'Pilates', '2026-10-28'), false);
-    assert.equal(resumenMembresia({ tipo: 'mensual', estatus: 'activo', fechaFin: '2026-11-04' }, '2026-10-28')?.paquete, null);
+    assert.equal(saldoEnMemoria(compra, asistidas, 'pilates').disponibles, 7);
+    assert.equal(coberturaEnMemoria(cartera, 'pilates', '2026-10-28'), compra);
+    assert.equal(coberturaEnMemoria(cartera, 'yoga', '2026-10-28'), null); // otra clase
+    assert.equal(coberturaEnMemoria(cartera, 'pilates', '2026-11-05'), null); // vencida
+
+    const agotada = { compras: [compra], usos: new Map([['c1', Array.from({ length: 12 }, () => ({ claseId: 'pilates', estatus: 'pendiente' }))]]) };
+    assert.equal(coberturaEnMemoria(agotada, 'pilates', '2026-10-28'), null); // sin accesos
+
+    // Cancelar con lugar confirmado no devuelve el acceso; salir de la lista de espera sí
+    const canceladas = [
+        { claseId: 'pilates', estatus: 'cancelada', estadoCupo: 'confirmada' },
+        { claseId: 'pilates', estatus: 'cancelada', estadoCupo: 'espera' },
+    ];
+    assert.equal(saldoEnMemoria(compra, canceladas, 'pilates').disponibles, 11);
+});
+
+test('vigencia de una compra', () => {
+    assert.equal(finVigencia('2026-10-01', { unidadDuracion: 'meses', duracion: 1 }), '2026-10-31');
+    assert.equal(finVigencia('2026-10-01', { vigenciaDias: 1 }), '2026-10-01');
 });
 
 test('utilidades', () => {

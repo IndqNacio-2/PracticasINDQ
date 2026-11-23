@@ -4,6 +4,7 @@ import { ProtectedRoute } from "./components/layout/ProtectedRoute";
 
 import Dashboard from "./pages/dashboard";
 import Attendance from "./pages/asistencia";
+import ChecadorGuard from '../../auth/ChecadorGuard';
 
 function App() {
   return (
@@ -12,7 +13,27 @@ function App() {
           de la misma aplicación, sin enlazarse con las demás secciones. */}
       <Router basename="/cobro">
         <Routes>
-          <Route path="/asistencia" element={<Attendance />} />
+          <Route path="/front-desk/membresias" element={<ProtectedRoute allowedRoles={['recepcion']}><Dashboard vista="membresias" /></ProtectedRoute>} />
+          <Route path="/front-desk/clases-horarios" element={<ProtectedRoute allowedRoles={['recepcion']}><Dashboard vista="clases-horarios" /></ProtectedRoute>} />
+          <Route path="/front-desk/inventario" element={<ProtectedRoute allowedRoles={['recepcion']}><Dashboard vista="inventario" /></ProtectedRoute>} />
+          <Route path="/asistencia" element={<ChecadorGuard><Attendance /></ChecadorGuard>} />
+          <Route
+            path="/front-desk/clientes"
+            element={
+              <ProtectedRoute allowedRoles={['recepcion']}>
+                <Dashboard vista="clientes" />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/front-desk/clientes/:id"
+            element={
+              <ProtectedRoute allowedRoles={['recepcion']}>
+                <Dashboard vista="cliente-detalle" />
+              </ProtectedRoute>
+            }
+          />
 
           {/* Ruta protegida*/}
           <Route

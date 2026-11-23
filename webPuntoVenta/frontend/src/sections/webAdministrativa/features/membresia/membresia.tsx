@@ -5,7 +5,7 @@ import { Icon } from '../../components/Icon';
 import { InputField, TextareaField } from '../../components/FormField';
 import { Modal } from '../../components/Modal';
 import { StatCard } from '../../components/StatCard';
-import { useAuth } from '../../context/AuthContext';
+import { getStoredUser } from '../../../../auth/session';
 import type { Clase, Estatus } from '../../types';
 import { api } from '../../lib/api';
 import { membresiasService } from './membresia.service';
@@ -337,8 +337,9 @@ function TarjetaMembresia({ p, puedeEditar, onEditar, onEstatus }: {
 
 // ───────────── Página ─────────────
 export default function MembresiasPage() {
-    const { user } = useAuth();
+    const user = getStoredUser();
     const puedeEditar = user?.rol === 'administrador';
+    const puedeCrear = puedeEditar || user?.rol === 'recepcion';
 
     const [membresias, setMembresias] = useState<Membresia[]>([]);
     const [clases, setClases] = useState<Clase[]>([]);
@@ -379,10 +380,12 @@ export default function MembresiasPage() {
         };
     }, [membresias]);
 
-    const abrirNuevo = () => { setForm(FORM_VACIO()); setFormError(''); setModal({ open: true }); };
-    const abrirEditar = (p: Membresia) => { setForm(aForm(p)); setFormError(''); setModal({ open: true, editing: p }); };
+    const abrirNuevo = () => { if (!puedeCrear) return; setForm(FORM_VACIO()); setFormError(''); setModal({ open: true }); };
+    const abrirEditar = (p: Membresia) => { if (!puedeEditar) return; setForm(aForm(p)); setFormError(''); setModal({ open: true, editing: p }); };
 
     const guardar = async () => {
+        if (modal.editing ? !puedeEditar : !puedeCrear) return;
+        if (saving) return;
         const r = aMembresia(form);
         if (!r.ok) { setFormError(r.error); return; }
         setSaving(true);
@@ -404,6 +407,7 @@ export default function MembresiasPage() {
     };
 
     const cambiarEstatus = async (p: Membresia) => {
+        if (!puedeEditar) return;
         const nuevo: Estatus = p.estatus === 'activo' ? 'inactivo' : 'activo';
         setConfirmar(null);
         try {
@@ -418,22 +422,23 @@ export default function MembresiasPage() {
         setForm(f => ({ ...f, opciones: f.opciones.map(o => (o.id === id ? { ...o, ...cambios } : o)) }));
 
     return (
-        <div className="space-y-5 max-w-7xl">
-            <div className="flex items-center justify-between gap-3 flex-wrap">
+        <section className="w-full min-w-0 space-y-5">
+            <header className="flex items-center justify-between gap-3 flex-wrap">
                 <div>
                     <h1 className="text-2xl font-bold text-[color:#111827]">Membresías</h1>
                     <p className="text-[color:#4B5563] text-sm mt-0.5">
                         Define qué incluye cada membresía: accesos, vigencia, costo, complementos y kit de bienvenida.
                     </p>
                 </div>
-                {puedeEditar && (
+                {puedeCrear && (
                     <button onClick={abrirNuevo} className="rx-btn rx-btn--accent">
                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
                         Nueva membresía
                     </button>
                 )}
-            </div>
+            </header>
 
+            <div className="space-y-5">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <StatCard label="Membresías activas" value={resumen.activos} icon={<Icon name="card_membership" size={22} />} />
                 <StatCard label="Precio desde" value={resumen.desde} icon={<Icon name="sell" size={22} />} accent="#3B6FD4" />
@@ -457,6 +462,7 @@ export default function MembresiasPage() {
                     ))}
                 </div>
             </DataState>
+            </div>
 
             {/* Alta y edición */}
             <Modal open={modal.open} onClose={() => setModal({ open: false })} title={modal.editing ? `Editar membresía: ${modal.editing.nombre}` : 'Nueva membresía'} size="xl">
@@ -613,6 +619,6 @@ export default function MembresiasPage() {
                     </button>
                 </div>
             </Modal>
-        </div>
+        </section>
     );
 }

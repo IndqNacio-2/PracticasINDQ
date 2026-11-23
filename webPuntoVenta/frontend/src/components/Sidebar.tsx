@@ -24,6 +24,7 @@ const MENU_ITEMS: MenuItem[] = [
   { id: "sale", label: "Venta", icon: "point_of_sale" },
 
   { id: "inventory", label: "Inventario", icon: "inventory_2" },
+  { id: "clients", label: "Clientes", icon: "groups" },
 
   { id: "waste", label: "Mermas", icon: "delete_sweep" },
 
@@ -92,7 +93,7 @@ export default function Sidebar({
       </header>
 
       <nav className="rx-sidebar-nav" aria-label="Módulos del Punto de Venta">
-        {MENU_ITEMS.map((item) => {
+        {MENU_ITEMS.filter(item => item.id !== "reports" || user?.rol === "administrador").map((item) => {
           const isActive = activeModule === item.id
 
           return (

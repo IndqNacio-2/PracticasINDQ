@@ -25,8 +25,8 @@ export function InputField({ label, required, error, className, ...props }: Inpu
       <label className="rx-label">
         {label}{required && <span className="rx-required-mark">*</span>}
       </label>
-      <input className={`${baseInput} ${error ? 'rx-input--error' : ''}`} {...props} />
-      {error && <p className="rx-error-text">{error}</p>}
+      <input className={`${baseInput} ${error ? 'rx-input--error' : ''}`} required={required} aria-invalid={error ? true : undefined} {...props} />
+      {error && <p className="rx-error-text" aria-live="polite">{error}</p>}
     </div>
   );
 }

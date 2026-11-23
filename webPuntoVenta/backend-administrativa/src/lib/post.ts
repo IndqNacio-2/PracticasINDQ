@@ -1,20 +1,15 @@
-// src/lib/post.ts
-import { fileURLToPath } from 'node:url';
-import path from 'node:path';
-import dotenv from 'dotenv';
 import { Pool } from 'pg';
 
-// Carga backend-administrativa/.env (dos niveles arriba de src/lib)
-const aqui = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: path.resolve(aqui, '../../.env') });
-
-if (!process.env.DATABASE_URL) {
-    throw new Error('Falta DATABASE_URL en backend-administrativa/.env');
-}
-
-export const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-});
+// Usa la configuración del POS, sin cargar otro .env ni conectar al importar.
+export const pool = new Pool(process.env.DATABASE_URL
+    ? { connectionString: process.env.DATABASE_URL }
+    : {
+        host: process.env.POSTGRES_HOST ?? process.env.PG_HOST,
+        port: Number(process.env.POSTGRES_PORT ?? process.env.PG_PORT ?? 5432),
+        database: process.env.POSTGRES_DB ?? process.env.PG_DB,
+        user: process.env.POSTGRES_USER ?? process.env.PG_USER,
+        password: process.env.POSTGRES_PASSWORD ?? process.env.PG_PASSWORD,
+    });
 
 pool.on('error', (err) => {
     console.error('Error inesperado en el pool de Postgres:', err);

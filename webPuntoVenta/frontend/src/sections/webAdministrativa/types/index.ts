@@ -55,6 +55,11 @@ export interface Membresia {
 }
 
 export interface Cliente extends Usuario {
+  nombreTutor?: string;
+  claveElectorTutor?: string;
+  estadoDocumentacion?: 'pendiente' | 'validada';
+  enfermedades?: string[];
+  lesiones?: string[];
   fechaNacimiento: string;
   direccion: string;
   fechaRegistro: string;
@@ -208,7 +213,8 @@ export interface Reservacion {
   clase: string;
   entrenador: string;
   horaClase: string;
-  fechaReservacion: string;
+  // Día de la clase, "AAAA-MM-DD".
+  fechaClase: string;
   estatus: ReservaEstatus;
   asistenciaConfirmada: boolean;
 }
