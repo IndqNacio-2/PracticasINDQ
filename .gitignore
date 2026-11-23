@@ -1,31 +1,28 @@
 node_modules/
-**/node_modules/
 dist/
 build/
-**/dist/
-**/build/
-.env
-**/.env
+.cache/
+.env*
 !.env.example
 !**/.env.example
+.vite/
+vite.config.*.timestamp-*
+*.tsbuildinfo
+*-debug.log*
+logs/
 *.log
-*.md
-npm-debug.log*
-.DS_Store
-Thumbs.db
-.vscode/
-.idea/
-database/postgres/data/
-database/mongo/data/
+.claude-replay.*
+.tmp-*
+/.figma/design-context/
 
-# Flutter
-**/mobile/.dart_tool/
-**/mobile/.flutter-plugins
-**/mobile/.flutter-plugins-dependencies
-**/mobile/build/
-**/mobile/.packages
+# Platform-managed agentplat state, not project source. In the
+# client-initiated single-repo workspace layout (make's `Path: "."` spec) the
+# repo root IS the workspace root, so these land inside this repo rather than
+# beside it.
+/.plugins/
+/.opencode-skills/
 
-# Documento de contexto interno del proyecto: nunca se sube al repo.
-webPuntoVenta/CONTEXTO-DEL-PROYECTO.md
-
-*.zip
+# Guía local de diseño basada en recepcion-demo.html.
+# Se usa como referencia para rediseñar el Punto de Venta y no debe publicarse.
+/GUIA-DISENO-RECEPCION-DEMO.md
+/CONTEXTO-DEL-PROYECTO.md
