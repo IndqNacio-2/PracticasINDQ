@@ -13,7 +13,7 @@ import type {
 } from "./sale.types.js";
 
 // Las formas de pago que acepto.
-const PAY_METHODS: PayMethod[] = ["efectivo", "tarjeta", "transferencia"];
+const PAY_METHODS: PayMethod[] = ["efectivo", "tarjeta", "transferencia", "mixto"];
 
 export function validateSaleInput(body: unknown): {
   issues: ValidationIssue[];
@@ -91,6 +91,25 @@ export function validateSaleInput(body: unknown): {
   // La identidad se asigna exclusivamente con el token en la ruta.
   const registeredBy = '';
 
+  let payments: SaleInput['payments'];
+  if (paymentMethod === 'mixto') {
+    const parts = Array.isArray(data.payments) ? data.payments : [];
+    const methods = new Set<string>();
+    payments = [];
+    if (parts.length < 2 || parts.length > 3) issues.push({ field: 'payments', message: 'El pago mixto requiere dos o tres métodos.' });
+    for (const part of parts) {
+      const p = (part ?? {}) as Record<string, unknown>;
+      if (!['efectivo', 'tarjeta', 'transferencia'].includes(String(p.method)) || methods.has(String(p.method)) ||
+          typeof p.amount !== 'number' || !Number.isFinite(p.amount) || p.amount <= 0 ||
+          !Number.isSafeInteger(Math.round(p.amount * 100)) || Math.abs(p.amount * 100 - Math.round(p.amount * 100)) > 0.000001) {
+        issues.push({ field: 'payments', message: 'Usa métodos distintos e importes positivos con máximo dos decimales.' });
+      } else payments.push({ method: p.method as 'efectivo' | 'tarjeta' | 'transferencia', amount: p.amount });
+      methods.add(String(p.method));
+    }
+  } else if (data.payments !== undefined) {
+    issues.push({ field: 'payments', message: 'El desglose solo se envía con el método mixto.' });
+  }
+
   if (issues.length > 0) {
     return { issues, input: null };
   }
@@ -101,6 +120,7 @@ export function validateSaleInput(body: unknown): {
       items,
       discount,
       paymentMethod: paymentMethod as PayMethod,
+      payments,
       cashReceived,
       transferRef,
       registeredBy,

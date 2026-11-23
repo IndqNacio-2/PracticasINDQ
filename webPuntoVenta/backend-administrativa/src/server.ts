@@ -19,7 +19,6 @@ import { connectDB } from './lib/mongo';
 import { pool } from './lib/post';
 import { crearRutasClientesMovil } from './routes/clientes-movil.routes';
 import { iniciarMantenimientoHorizonte } from './services/mantener-horizonte-sesiones';
-import { iniciarCumpleanos } from './services/cumpleanos.service';
 
 if (!process.env.JWT_SECRET) {
   throw new Error('Falta JWT_SECRET en el archivo .env');
@@ -38,10 +37,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/movil', crearRutasClientesMovil(pool));
 // Catálogos compartidos no conceden permisos administrativos de escritura.
 app.use(['/api/clases', '/api/horarios', '/api/plantillas-horarios'], accesoProgramacion);
-app.use('/api/reservaciones', (req, res, next) => {
-  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
-  requireAuth(req, res, () => requireRole('administrador')(req, res, next));
-});
+app.use('/api/reservaciones', requireAuth, requireRole('administrador', 'recepcion'));
 app.use('/api/ventas', requireAuth, requireRole('administrador'));
 app.use('/api/clientes', requireAuth, requireRole('administrador', 'recepcion', 'vendedor'));
 app.use('/api/clientes', clienteRoutes);
@@ -64,7 +60,6 @@ export default app;
 connectDB()
   .then(() => {
     iniciarMantenimientoHorizonte();
-    iniciarCumpleanos();
     if (process.env.GATEWAY_MODE) {
       console.log('API administrativa conectada a MongoDB (gateway unificado)');
       return;

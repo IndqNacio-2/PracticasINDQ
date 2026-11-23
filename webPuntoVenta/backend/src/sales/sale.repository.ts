@@ -32,6 +32,7 @@ const SALE_SELECT = `
     s.discount::float      AS discount,
     s.total::float         AS total,
     s.payment_method       AS "paymentMethod",
+    to_jsonb(s)->'payments' AS payments,
     s.cash_received::float AS "cashReceived",
     s.change_amount::float AS "change",
     s.transfer_ref         AS "transferRef",
@@ -63,7 +64,10 @@ const SALE_SELECT = `
  */
 export type SaleInsertResult =
   | { outcome: "created"; sale: SaleRecord }
+  | { outcome: "invalid-payment"; message: string }
+  | { outcome: "payment-schema-required"; message: string }
   | { outcome: "product-not-found"; productId: number }
+  | { outcome: "inactive-product"; productName: string }
   | { outcome: "insufficient-stock"; productName: string; available: number };
 
 /**
@@ -88,6 +92,19 @@ export async function insertSale(input: SaleInput, sellerId: string): Promise<Sa
     // Evita folios duplicados entre vendedores concurrentes.
     await client.query('LOCK TABLE webpontoventa.sales IN EXCLUSIVE MODE');
 
+    // Consultar el esquema sin provocar un error SQL que aborte la transacción.
+    // No cachear: una migración posterior debe detectarse sin reiniciar.
+    const schemaResult = await client.query(`SELECT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'webpontoventa' AND table_name = 'sales'
+      AND column_name = 'payments'
+    ) AS "hasPayments"`);
+    const hasPayments = schemaResult.rows[0]?.hasPayments === true;
+    if (input.paymentMethod === 'mixto' && !hasPayments) {
+      await client.query('ROLLBACK');
+      return { outcome: 'payment-schema-required', message: 'El pago mixto requiere actualizar la base de datos con backend/db/pagos-mixtos.sql. Puedes utilizar un solo método de pago mientras tanto.' };
+    }
+
     // Aqui junto los renglones del ticket ya con el nombre y el precio
     // que tiene el producto en este momento.
     const items: Array<{
@@ -98,14 +115,20 @@ export async function insertSale(input: SaleInput, sellerId: string): Promise<Sa
       subtotal: number;
     }> = [];
 
+    const quantities = new Map<number, number>();
     for (const item of input.items) {
+      quantities.set(item.productId, (quantities.get(item.productId) ?? 0) + item.quantity);
+    }
+    // Orden estable de bloqueo y un solo renglón por producto.
+    for (const [productId, quantity] of [...quantities].sort(([a], [b]) => a - b)) {
+      const item = { productId, quantity };
       /*
        * Bloqueo el producto mientras dure la transaccion para que, si dos
        * cajas venden al mismo tiempo, la segunda espere y no se venda dos
        * veces la misma existencia.
        */
       const productResult = await client.query(
-        `SELECT id, name, price::float AS price, stock
+        `SELECT id, name, price::float AS price, stock, status
            FROM webpontoventa.products
           WHERE id = $1
           FOR UPDATE`,
@@ -113,7 +136,7 @@ export async function insertSale(input: SaleInput, sellerId: string): Promise<Sa
       );
 
       const product = productResult.rows[0] as
-        | { id: number; name: string; price: number; stock: number }
+        | { id: number; name: string; price: number; stock: number; status: string }
         | undefined;
 
       // El producto pudo borrarse del catalogo entre que se armo el
@@ -121,6 +144,11 @@ export async function insertSale(input: SaleInput, sellerId: string): Promise<Sa
       if (!product) {
         await client.query("ROLLBACK");
         return { outcome: "product-not-found", productId: item.productId };
+      }
+
+      if (product.status !== 'active') {
+        await client.query('ROLLBACK');
+        return { outcome: 'inactive-product', productName: product.name };
       }
 
       // No permito vender mas unidades de las que hay.
@@ -150,11 +178,20 @@ export async function insertSale(input: SaleInput, sellerId: string): Promise<Sa
     const discount = Math.min(input.discount, subtotal);
     const total = subtotal - discount;
 
-    // El cambio solo existe cuando se paga en efectivo de mas.
-    const change =
-      input.cashReceived !== undefined
-        ? Math.max(input.cashReceived - total, 0)
-        : undefined;
+    // Comparar centavos contra el total real, nunca contra un total del navegador.
+    const payments = input.paymentMethod === 'mixto' ? input.payments ?? []
+      : [{ method: input.paymentMethod, amount: total }];
+    if (payments.reduce((sum, part) => sum + Math.round(part.amount * 100), 0) !== Math.round(total * 100)) {
+      await client.query('ROLLBACK');
+      return { outcome: 'invalid-payment', message: 'La suma de los pagos debe coincidir con el total de la venta.' };
+    }
+    const cashAmount = payments.find(part => part.method === 'efectivo')?.amount ?? 0;
+    if (cashAmount > 0 && (input.cashReceived === undefined || !Number.isFinite(input.cashReceived) ||
+        Math.round(input.cashReceived * 100) < Math.round(cashAmount * 100))) {
+      await client.query('ROLLBACK');
+      return { outcome: 'invalid-payment', message: 'El efectivo recibido no cubre la parte a pagar en efectivo.' };
+    }
+    const change = cashAmount > 0 ? Math.round((input.cashReceived! - cashAmount) * 100) / 100 : undefined;
 
     /*
      * Calculo el siguiente folio a partir del ultimo id registrado.
@@ -171,8 +208,8 @@ export async function insertSale(input: SaleInput, sellerId: string): Promise<Sa
     const saleResult = await client.query(
       `INSERT INTO webpontoventa.sales
          (folio, subtotal, discount, total, payment_method,
-          cash_received, change_amount, transfer_ref, status, seller_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'completed', $9)
+          cash_received, change_amount, transfer_ref, status, seller_id${hasPayments ? ', payments' : ''})
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'completed', $9${hasPayments ? ', $10::jsonb' : ''})
        RETURNING id`,
       [
         folio,
@@ -180,10 +217,11 @@ export async function insertSale(input: SaleInput, sellerId: string): Promise<Sa
         discount,
         total,
         input.paymentMethod,
-        input.cashReceived ?? null,
+        cashAmount > 0 ? input.cashReceived : null,
         change ?? null,
         input.transferRef ?? null,
         sellerId,
+        ...(hasPayments ? [JSON.stringify(payments)] : []),
       ],
     );
 

@@ -8,6 +8,7 @@ import type {
   WasteReason,
 } from "../types";
 import MaterialIcon from "./MaterialIcon";
+import { paymentAmount } from "../services/paymentAmounts";
 
 /**
  * Defino la informacion que el modulo de reportes
@@ -133,6 +134,7 @@ const PAYMENT_METHOD_LABELS: Record<
     SaleRecord["paymentMethod"],
     string
 > = {
+    mixto: "Mixto",
     efectivo: "Efectivo",
     tarjeta: "Tarjeta",
     transferencia: "Transferencia",
@@ -146,6 +148,7 @@ const PAYMENT_METHOD_ICONS: Record<
     SaleRecord["paymentMethod"],
     string
 > = {
+    mixto: "call_split",
     efectivo: "payments",
     tarjeta: "credit_card",
     transferencia: "account_balance",
@@ -159,6 +162,7 @@ const PAYMENT_METHOD_BAR_CLASSES: Record<
     SaleRecord["paymentMethod"],
     string
 > = {
+    mixto: "bg-[#374151]",
     efectivo: "bg-[#111827]",
     tarjeta: "bg-[#6B7280]",
     transferencia: "bg-[#9CA3AF]",
@@ -168,7 +172,7 @@ const PAYMENT_METHOD_BAR_CLASSES: Record<
  * Mantengo el orden de los métodos de pago para recorrerlos
  * siempre igual en el desglose.
  */
-const PAYMENT_METHODS: Array<SaleRecord["paymentMethod"]> = [
+const PAYMENT_METHODS: Array<import("../types").PaymentMethod> = [
     "efectivo",
     "tarjeta",
     "transferencia",
@@ -631,14 +635,14 @@ export default function ReportsPage({
         // Sumo el importe y las ventas de cada forma de pago.
         const paymentBreakdown = PAYMENT_METHODS.map((method) => {
             const methodSales = filteredSales.filter(
-                (sale) => sale.paymentMethod === method,
+                (sale) => paymentAmount(sale, method) > 0,
             );
 
             return {
                 method,
                 count: methodSales.length,
                 total: roundCurrency(
-                    methodSales.reduce((sum, sale) => sum + sale.total, 0),
+                    methodSales.reduce((sum, sale) => sum + paymentAmount(sale, method), 0),
                 ),
             };
         });

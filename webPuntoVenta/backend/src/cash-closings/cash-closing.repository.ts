@@ -56,12 +56,14 @@ export async function insertCashClosing(
    * Uso LPAD para que el folio salga como C-000001.
    */
   await client.query('LOCK TABLE webpontoventa.cash_closings IN EXCLUSIVE MODE');
-  const ventas = await client.query(`SELECT id, total::float AS total, payment_method
-    FROM webpontoventa.sales WHERE seller_id = $1 AND id = ANY($2::int[])
+  const ventas = await client.query(`SELECT id, total::float AS total, payment_method, to_jsonb(s)->'payments' AS payments
+    FROM webpontoventa.sales s WHERE seller_id = $1 AND id = ANY($2::int[])
     AND cash_closing_id IS NULL AND status = 'completed' FOR UPDATE`, [sellerId, saleIds]);
   if (ventas.rows.length !== saleIds.length) throw new Error('Las ventas ya tienen corte o no pertenecen al usuario.');
-  const suma = (method?: string): number => ventas.rows.reduce((total: number, venta: { total: number; payment_method: string }) =>
-    total + (!method || venta.payment_method === method ? Number(venta.total) : 0), 0);
+  const suma = (method?: string): number => ventas.rows.reduce((total: number, venta: { total: number; payment_method: string; payments?: Array<{ method: string; amount: number }> }) =>
+    total + (!method ? Number(venta.total) : venta.payments?.length
+      ? venta.payments.filter(part => part.method === method).reduce((sum, part) => sum + Number(part.amount), 0)
+      : venta.payment_method === method ? Number(venta.total) : 0), 0);
   const cashSales = suma('efectivo');
   const expectedCash = Math.round((cashSales + input.initialFund) * 100) / 100;
   const folioResult = await client.query(

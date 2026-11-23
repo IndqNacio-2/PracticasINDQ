@@ -71,10 +71,8 @@ export function validateWasteInput(body: unknown): {
     });
   }
 
-  // Usuario que registra: todavia no hay inicio de sesion, asi que si no
-  // viene lo dejo vacio y la base pone el valor por omision.
-  const registeredBy =
-    String(data.registeredBy ?? "").trim() || "Edgar Rodriguez";
+  // La ruta asigna la identidad autenticada; nunca confiar en el navegador.
+  const registeredBy = '';
 
   if (issues.length > 0) {
     return { issues, input: null };

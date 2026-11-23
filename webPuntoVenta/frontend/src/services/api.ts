@@ -246,6 +246,7 @@ export interface SalePayload {
     items: Array<{ productId: number; quantity: number }>;
     discount: number;
     paymentMethod: SaleRecord["paymentMethod"];
+    payments?: SaleRecord['payments'];
     cashReceived?: number;
     transferRef?: string;
 }

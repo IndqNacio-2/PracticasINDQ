@@ -6,7 +6,7 @@ const fmt = (n: number) =>
     style: 'currency',
     currency: 'MXN',
   });
-const METHOD_LABELS = { efectivo: 'Efectivo', tarjeta: 'Tarjeta', transferencia: 'Transferencia' };
+const METHOD_LABELS = { efectivo: 'Efectivo', tarjeta: 'Tarjeta', transferencia: 'Transferencia', mixto: 'Mixto' };
 
 interface TicketModalProps {
   sale: SaleRecord;
@@ -81,8 +81,9 @@ export default function TicketModal({ sale, onClose, onNewSale }: TicketModalPro
           ${sale.discount > 0 ? `<div class="row"><span>Descuento</span><span>-${escapeHtml(fmt(sale.discount))}</span></div>` : ''}
           <div class="row total"><span>TOTAL</span><span>${escapeHtml(fmt(sale.total))}</span></div>
           <p><strong>Método:</strong> ${escapeHtml(METHOD_LABELS[sale.paymentMethod])}</p>
-          ${sale.paymentMethod === 'efectivo' && sale.cashReceived != null ? `<p><strong>Recibido:</strong> ${escapeHtml(fmt(sale.cashReceived))}</p>` : ''}
-          ${sale.paymentMethod === 'efectivo' && sale.change != null ? `<p><strong>Cambio:</strong> ${escapeHtml(fmt(sale.change))}</p>` : ''}
+          ${sale.paymentMethod === 'mixto' ? (sale.payments ?? []).map(part => `<div class="row"><span>${escapeHtml(METHOD_LABELS[part.method])}</span><span>${escapeHtml(fmt(part.amount))}</span></div>`).join('') : ''}
+          ${(sale.paymentMethod === 'efectivo' || sale.paymentMethod === 'mixto') && sale.cashReceived != null ? `<p><strong>Recibido:</strong> ${escapeHtml(fmt(sale.cashReceived))}</p>` : ''}
+          ${(sale.paymentMethod === 'efectivo' || sale.paymentMethod === 'mixto') && sale.change != null ? `<p><strong>Cambio:</strong> ${escapeHtml(fmt(sale.change))}</p>` : ''}
           ${sale.transferRef ? `<p><strong>Referencia:</strong> ${escapeHtml(sale.transferRef)}</p>` : ''}
           <div class="line"></div>
           <p class="center">Gracias por su compra.</p>
@@ -145,8 +146,9 @@ export default function TicketModal({ sale, onClose, onNewSale }: TicketModalPro
               </div>
               <div>
                 <p><span className="rx-receipt-label">Método:</span> {METHOD_LABELS[sale.paymentMethod]}</p>
-                {sale.paymentMethod === 'efectivo' && sale.cashReceived != null && <p><span className="rx-receipt-label">Recibido:</span> {fmt(sale.cashReceived)}</p>}
-                {sale.paymentMethod === 'efectivo' && sale.change != null && <p><span className="rx-receipt-label">Cambio:</span> {fmt(sale.change)}</p>}
+                {sale.paymentMethod === 'mixto' && sale.payments?.map(part => <p key={part.method}><span className="rx-receipt-label">{METHOD_LABELS[part.method]}:</span> {fmt(part.amount)}</p>)}
+                {(sale.paymentMethod === 'efectivo' || sale.paymentMethod === 'mixto') && sale.cashReceived != null && <p><span className="rx-receipt-label">Recibido:</span> {fmt(sale.cashReceived)}</p>}
+                {(sale.paymentMethod === 'efectivo' || sale.paymentMethod === 'mixto') && sale.change != null && <p><span className="rx-receipt-label">Cambio:</span> {fmt(sale.change)}</p>}
                 {sale.transferRef && (
                   <p><span className="rx-receipt-label">Referencia:</span> {sale.transferRef}</p>
                 )}

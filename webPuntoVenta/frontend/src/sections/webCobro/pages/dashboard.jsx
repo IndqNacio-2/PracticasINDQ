@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import MaterialIcon from '../../../components/MaterialIcon';
+import PaymentModal from '../../../components/PaymentModal';
 import BrandLogo from '../../../components/BrandLogo';
-import { LOGIN_PATH } from '../../../auth/session';
+import { LOGIN_PATH, TOKEN_KEY } from '../../../auth/session';
 import MembresiasRecepcion, { membresiasRequest, SaldosMembresias } from './MembresiasRecepcion';
 import { EVENTO_CAMBIO_APLICACION, CLAVE_CAMBIO_APLICACION } from '../../../services/cambiosAplicacion';
 import RecepcionDetalle from './RecepcionDetalle';
@@ -15,6 +16,12 @@ import { coincideNombre } from '../../../services/busquedaClientes';
 import { ClientesPage } from '../../webAdministrativa/features/clientes/ClientesPage';
 import { ClienteDetalle } from '../../webAdministrativa/features/clientes/ClienteDetalle';
 import '../../../styles/recepcion-workspace.css';
+
+// Todas las operaciones de recepción envían la misma sesión que el panel.
+const fetchRecepcion = (url, options = {}) => fetch(url, {
+  ...options,
+  headers: { ...options.headers, Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) || ''}` },
+});
 
 /*
  * Diseño: sistema visual compartido rx- (src/styles/pos-ui.css), el mismo que
@@ -32,16 +39,11 @@ import '../../../styles/recepcion-workspace.css';
  * Las mismas formas de pago que maneja el Punto de Venta: efectivo, tarjeta
  * y transferencia. Los iconos son Material Symbols, iguales a los del POS.
  */
-const PAY_METHODS = [
-  { key: 'efectivo', label: 'Efectivo', icon: 'payments' },
-  { key: 'tarjeta', label: 'Tarjeta', icon: 'credit_card' },
-  { key: 'transferencia', label: 'Transferencia', icon: 'account_balance' },
-];
-
 const METHOD_LABELS = {
   efectivo: 'Efectivo',
   tarjeta: 'Tarjeta',
   transferencia: 'Transferencia',
+  mixto: 'Mixto',
 };
 
 const formatMoney = (value) =>
@@ -132,16 +134,6 @@ const fechaDeHoyLarga = () => {
   return texto.charAt(0).toUpperCase() + texto.slice(1);
 };
 
-// Normaliza texto para búsqueda: minúsculas, sin acentos ni diacríticos.
-// "Pedro Páramo" -> "pedro paramo", "PÉDRÓ PÁRÁMÓ" -> "pedro paramo"
-const normalizarTexto = (texto = '') =>
-  String(texto)
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '') // elimina tildes y otros diacríticos combinados
-    .replace(/ñ/g, 'n')
-    .replace(/ü/g, 'u');
-
 // Botón "Cambiar método" igual al del modal de cobro del Punto de Venta.
 function BotonCambiarMetodo({ onClick }) {
   return (
@@ -217,9 +209,6 @@ export default function Dashboard({ vista = 'recepcion' }) {
    * Forma de pago del cobro (las mismas opciones que el Punto de Venta):
    * efectivo, tarjeta o transferencia, con sus datos extra según el método.
    */
-  const [metodoPago, setMetodoPago] = useState(null);
-  const [efectivoInput, setEfectivoInput] = useState('');
-  const [referenciaInput, setReferenciaInput] = useState('');
   /**
    * Tarjetas superiores del dashboard: las KPIs los calcula el backend
    * ingresos reales del dia desde PostgreSQL, clientes esperados y
@@ -249,7 +238,7 @@ export default function Dashboard({ vista = 'recepcion' }) {
   // pide los KPIs al backend unificado (vite los reenvia al gateway).
   const cargarKpis = async () => {
     try {
-      const res = await fetch(`${API}/api/kpis`);
+      const res = await fetchRecepcion(`${API}/api/kpis`);
       if (res.ok) setKpis(await res.json());
     } catch (err) {
       console.warn(`No se pudieron cargar los KPIs:`, err);
@@ -267,7 +256,7 @@ export default function Dashboard({ vista = 'recepcion' }) {
      * las reservaciones canceladas no se muestran en el tablero principal,
      * pero siguen guardadas para que administrativa pueda consultarlas.
      */
-    fetch(`${API}/api/reservas`)
+    fetchRecepcion(`${API}/api/reservas`)
       .then(res => {
         if (!res.ok) {
           throw new Error(`No se pudieron cargar las reservaciones. HTTP ${res.status}`);
@@ -290,7 +279,7 @@ export default function Dashboard({ vista = 'recepcion' }) {
      * cargamos los socios registrados desde el backend de cobro
      * estos clientes se utilizan para validar su estado, membresia y vigencia.
      */
-    fetch(`${API}/api/clientes`, { headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` } })
+    fetchRecepcion(`${API}/api/clientes`, { headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` } })
       .then(res => {
         if (!res.ok) {
           throw new Error(`No se pudieron consultar los clientes. HTTP ${res.status}`);
@@ -348,7 +337,7 @@ export default function Dashboard({ vista = 'recepcion' }) {
      * Por ultimo cargamos los indicadores superiores del dashboard:
      * ingresos del dia, clientes esperados y total de reservaciones.
      */
-    fetch(`${API}/api/kpis`)
+    fetchRecepcion(`${API}/api/kpis`)
       .then(res => {
         if (!res.ok) {
           throw new Error(`No se pudieron cargar los indicadores. HTTP ${res.status}`);
@@ -401,7 +390,7 @@ export default function Dashboard({ vista = 'recepcion' }) {
    * servidor marca cuando la clase ya pasó.
    */
   const recargarReservas = async () => {
-    const res = await fetch(`${API}/api/reservas`);
+    const res = await fetchRecepcion(`${API}/api/reservas`);
     if (!res.ok) throw new Error(`No se pudieron cargar las reservaciones. HTTP ${res.status}`);
     const data = await res.json();
     const activas = (Array.isArray(data) ? data : []).filter(r => r.status !== 'cancelado');
@@ -601,7 +590,7 @@ export default function Dashboard({ vista = 'recepcion' }) {
       if (reservation.status === 'asistido') throw new Error('Este cliente ya tiene asistencia confirmada.');
       if (reservation.capacityStatus === 'espera') throw new Error('El cliente sigue en lista de espera.');
 
-      const response = await fetch(`${API}/api/reservas/${id}`, {
+      const response = await fetchRecepcion(`${API}/api/reservas/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'asistido' }),
@@ -650,32 +639,31 @@ export default function Dashboard({ vista = 'recepcion' }) {
     }
     setSelectedReservationForPayment(reservation);
     // Se limpia la forma de pago para que cada cobro empiece de cero.
-    setMetodoPago(null);
-    setEfectivoInput('');
-    setReferenciaInput('');
     setIsPaymentModalOpen(true);
   };
 
   const handlePayment = (id) => abrirCobro(reservations.find(r => r.id === id));
 
-  const handleConfirmPayment = async () => {
-    if (!selectedReservationForPayment) return;
+  const handleConfirmPayment = async (payment) => {
+    if (!selectedReservationForPayment || paymentLoading) return;
+    const metodo = payment.method;
 
     setPaymentLoading(true);
     try {
       // El cobro se guarda en el backend: marca la reservación como pagada y
       // registra el pago en PostgreSQL (esquema webcobro) con su forma de pago.
       // El monto lo toma el servidor del precio real de la reservación.
-      const response = await fetch(`${API}/api/cobros`, {
+      const response = await fetchRecepcion(`${API}/api/cobros`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           reservaId: selectedReservationForPayment.id,
-          metodoPago,
+          metodoPago: metodo,
+          payments: payment.payments,
           // El efectivo recibido solo aplica cuando se cobra en efectivo.
-          efectivoRecibido: metodoPago === 'efectivo' ? efectivoRecibido : undefined,
+          efectivoRecibido: payment.cashReceived,
           // La referencia solo aplica cuando se cobra por transferencia.
-          referencia: metodoPago === 'transferencia' ? referenciaInput.trim() : undefined,
+          referencia: payment.transferRef,
           usuario: user?.nombre || user?.name || user?.username || null,
         }),
       });
@@ -697,9 +685,9 @@ export default function Dashboard({ vista = 'recepcion' }) {
        * para que el recepcionista sepa cuánto devolver.
        */
       const cambioTexto =
-        metodoPago === 'efectivo' && data.pago.cambio > 0 ? ` Cambio: $${data.pago.cambio}.` : '';
+        data.pago.cambio > 0 ? ` Cambio: $${data.pago.cambio}.` : '';
       showNotification(
-        `Cobro en ${METHOD_LABELS[metodoPago]} de $${data.pago.monto} registrado.${cambioTexto}`,
+        `Cobro en ${METHOD_LABELS[metodo]} de $${data.pago.monto} registrado.${cambioTexto}`,
         'success'
       );
 
@@ -711,6 +699,7 @@ export default function Dashboard({ vista = 'recepcion' }) {
       closePaymentModal();
     } catch (error) {
       showNotification(error.message, 'error');
+      throw error;
     } finally {
       setPaymentLoading(false);
     }
@@ -736,7 +725,7 @@ export default function Dashboard({ vista = 'recepcion' }) {
       );
       if (!confirmed) return;
 
-      const response = await fetch(`${API}/api/reservas/${id}`, {
+      const response = await fetchRecepcion(`${API}/api/reservas/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'cancelado' }),
@@ -782,7 +771,7 @@ export default function Dashboard({ vista = 'recepcion' }) {
     if (!reservaAReagendar || !horarioReagendarId) return;
     setReagendando(true);
     try {
-      const response = await fetch(`${API}/api/reservas/${reservaAReagendar.id}/reagendar`, {
+      const response = await fetchRecepcion(`${API}/api/reservas/${reservaAReagendar.id}/reagendar`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ horarioId: horarioReagendarId, fecha: fechaReagendar }),
@@ -911,7 +900,7 @@ export default function Dashboard({ vista = 'recepcion' }) {
        * y la membresía del socio, para que el navegador no pueda inventarse
        * un monto.
        */
-      const response = await fetch(`${API}/api/reservas`, {
+      const response = await fetchRecepcion(`${API}/api/reservas`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -962,22 +951,10 @@ export default function Dashboard({ vista = 'recepcion' }) {
    * reservación seleccionada y lo que el recepcionista captura en efectivo,
    * para habilitar el botón y mostrar el cambio (misma lógica que el POS).
    */
-  const payTotal = selectedReservationForPayment ? selectedReservationForPayment.price : 0;
-  const efectivoRecibido = parseFloat(efectivoInput) || 0;
-  const cambio = efectivoRecibido - payTotal;
-  const efectivoInsuficiente = efectivoInput !== '' && efectivoRecibido < payTotal;
-  const canConfirmPayment =
-    metodoPago === 'tarjeta' ||
-    metodoPago === 'transferencia' ||
-    (metodoPago === 'efectivo' && efectivoRecibido >= payTotal);
-
   // Cierra el modal de cobro y limpia la forma de pago seleccionada.
   const closePaymentModal = () => {
     setIsPaymentModalOpen(false);
     setSelectedReservationForPayment(null);
-    setMetodoPago(null);
-    setEfectivoInput('');
-    setReferenciaInput('');
   };
 
   const printTicket = () => {
@@ -1028,6 +1005,7 @@ export default function Dashboard({ vista = 'recepcion' }) {
       <div class="line"></div>${items}<div class="line"></div>
       <div class="row total"><span>TOTAL</span><span>${escapeHtml(formatMoney(ticket.total))}</span></div>
       <p><strong>Método:</strong> ${escapeHtml(METHOD_LABELS[ticket.metodoPago] || ticket.metodoPago)}</p>
+      ${(ticket.pagos ?? []).map(p => `<p>${escapeHtml(METHOD_LABELS[p.metodo] || p.metodo)}: ${escapeHtml(formatMoney(p.monto))}</p>`).join('')}
       ${ticket.efectivoRecibido !== null ? `<p><strong>Recibido:</strong> ${escapeHtml(formatMoney(ticket.efectivoRecibido))}</p>` : ''}
       ${ticket.cambio !== null ? `<p><strong>Cambio:</strong> ${escapeHtml(formatMoney(ticket.cambio))}</p>` : ''}
       ${ticket.referencia ? `<p><strong>Referencia:</strong> ${escapeHtml(ticket.referencia)}</p>` : ''}
@@ -1038,14 +1016,7 @@ export default function Dashboard({ vista = 'recepcion' }) {
   };
 
   const filteredReservations = reservations.filter(res => {
-    const term = normalizarTexto(searchTerm);
-    return (
-      normalizarTexto(res.client).includes(term) ||
-      (res.codigo || '').toLowerCase().includes(term) ||
-      res.class.toLowerCase().includes(term) ||
-      res.time.toLowerCase().includes(term) ||
-      String(res.id).includes(term)
-    );
+    return coincideNombre(res.client, searchTerm);
   });
 
   // ========== VALORES DE PRESENTACIÓN ==========
@@ -1068,7 +1039,6 @@ export default function Dashboard({ vista = 'recepcion' }) {
 
   // Socios que coinciden por nombre o apellido, nunca por ID ni código.
   const textoSocio = newReservation.client || '';
-  const termSocio = normalizarTexto(textoSocio);
   const sociosFiltrados = clientes.filter(
     c => coincideNombre(c.nombre, textoSocio)
   );
@@ -1234,7 +1204,7 @@ export default function Dashboard({ vista = 'recepcion' }) {
               {verMembresias && <MembresiasRecepcion clientes={clientes} clases={clases} onClose={() => setVerMembresias(false)} onTicket={nuevoTicket => { setVerMembresias(false); setTicket(nuevoTicket); }}
                 onVenta={() => {
                   cargarKpis();
-                    fetch(`${API}/api/clientes`, { headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` } }).then(r => { if (!r.ok) throw Error('No se pudieron actualizar los clientes.'); return r.json(); })
+                    fetchRecepcion(`${API}/api/clientes`, { headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` } }).then(r => { if (!r.ok) throw Error('No se pudieron actualizar los clientes.'); return r.json(); })
                     .then(datos => { setClientes(datos); setSelectedClient(null); })
                     .catch(e => showNotification(e.message, 'error'));
                 }} />}
@@ -1836,178 +1806,16 @@ export default function Dashboard({ vista = 'recepcion' }) {
 
       {/* ========== MODAL DE COBRO (mismo diseño que el Punto de Venta) ========== */}
       {isPaymentModalOpen && selectedReservationForPayment && (
-        <div className="rx-modal-overlay" role="presentation">
-          <section
-            className="rx-modal rx-modal--scroll modal-enter"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="cobro-titulo"
-          >
-            <header className="rx-modal-header">
-              <div>
-                <h2 id="cobro-titulo" className="rx-modal-title">Cobro</h2>
-                <p className="rx-modal-subtitle rx-modal-subtitle--plain">
-                  {metodoPago ? `Pago con ${METHOD_LABELS[metodoPago].toLowerCase()}` : 'Elige el método de pago'}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={closePaymentModal}
-                disabled={paymentLoading}
-                aria-label="Cerrar ventana de cobro"
-                className="rx-modal-close"
-              >
-                <MaterialIcon name="close" className="text-xl" />
-              </button>
-            </header>
-
-            <div className="rx-payment-total-banner">
-              <p className="rx-payment-total-label">Total a cobrar</p>
-              <p className="rx-payment-total-value">{formatMoney(payTotal)}</p>
-            </div>
-
-            <div className="rx-modal-body rx-form-stack">
-              {/* Resumen de la reservación */}
-              <div className="rx-context-card">
-                <div className="rx-table-product">
-                  <span className="rx-avatar rx-avatar--large">
-                    {iniciales(selectedReservationForPayment.client)}
-                  </span>
-                  <div>
-                    <p className="rx-context-title">{selectedReservationForPayment.client}</p>
-                    <p className="rx-context-copy">
-                      {selectedReservationForPayment.class} · {formatFechaCorta(selectedReservationForPayment.fecha)} · {selectedReservationForPayment.time}
-                    </p>
-                    <p className="rx-context-meta">
-                      {selectedReservationForPayment.codigo
-                        ? `Código ${selectedReservationForPayment.codigo}`
-                        : `Reserva #${selectedReservationForPayment.id}`}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* --- MÉTODO DE PAGO (mismos que el POS) --- */}
-              {!metodoPago && (
-                <div className="rx-field">
-                  <span className="rx-label">Método de pago</span>
-                  <div className="rx-payment-methods">
-                    {PAY_METHODS.map(({ key, label, icon }) => (
-                      <button
-                        key={key}
-                        type="button"
-                        onClick={() => setMetodoPago(key)}
-                        className="rx-payment-method"
-                      >
-                        <MaterialIcon name={icon} className="text-2xl" filled />
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* --- PANEL: EFECTIVO (captura entregado y calcula cambio) --- */}
-              {metodoPago === 'efectivo' && (
-                <div className="rx-form-stack">
-                  <BotonCambiarMetodo onClick={() => setMetodoPago(null)} />
-                  <label className="rx-field">
-                    <span className="rx-label">Efectivo recibido</span>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={efectivoInput}
-                      onChange={(e) => setEfectivoInput(e.target.value)}
-                      placeholder={`Mínimo ${formatMoney(payTotal)}`}
-                      autoFocus
-                      className={`rx-input rx-input--amount ${efectivoInsuficiente ? 'rx-input--error' : ''}`}
-                    />
-                    {efectivoInsuficiente && (
-                      <span className="rx-error-text" role="alert">
-                        <MaterialIcon name="warning" className="text-base" filled />
-                        El efectivo es insuficiente
-                      </span>
-                    )}
-                  </label>
-                  {efectivoInput !== '' && efectivoRecibido >= payTotal && (
-                    <div className="rx-change-box">
-                      <div className="rx-change-row">
-                        <span className="rx-change-label">Cambio a devolver</span>
-                        <strong className="rx-change-value">{formatMoney(cambio)}</strong>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* --- PANEL: TARJETA (terminal física externa, sin datos) --- */}
-              {metodoPago === 'tarjeta' && (
-                <div className="rx-form-stack">
-                  <BotonCambiarMetodo onClick={() => setMetodoPago(null)} />
-                  <div className="rx-payment-information">
-                    <MaterialIcon name="credit_card" className="rx-payment-information-icon text-5xl" />
-                    <p className="rx-payment-information-label">Total a cobrar</p>
-                    <p className="rx-payment-information-value">{formatMoney(payTotal)}</p>
-                    <p className="rx-payment-information-help">Presenta la tarjeta en la terminal física.</p>
-                  </div>
-                </div>
-              )}
-
-              {/* --- PANEL: TRANSFERENCIA (referencia opcional) --- */}
-              {metodoPago === 'transferencia' && (
-                <div className="rx-form-stack">
-                  <BotonCambiarMetodo onClick={() => setMetodoPago(null)} />
-                  <div className="rx-payment-information">
-                    <MaterialIcon name="account_balance" className="rx-payment-information-icon text-4xl" />
-                    <p className="rx-payment-information-label">Total a transferir</p>
-                    <p className="rx-payment-information-value">{formatMoney(payTotal)}</p>
-                  </div>
-                  <label className="rx-field">
-                    <span className="rx-label">Referencia de transferencia</span>
-                    <input
-                      type="text"
-                      value={referenciaInput}
-                      onChange={(e) => setReferenciaInput(e.target.value)}
-                      placeholder="Ej. TRF-20261012-001"
-                      className="rx-input"
-                    />
-                    <span className="rx-help-text">La referencia es opcional.</span>
-                  </label>
-                </div>
-              )}
-            </div>
-
-            <footer className="rx-modal-footer">
-              <button
-                type="button"
-                onClick={closePaymentModal}
-                disabled={paymentLoading}
-                className="rx-btn rx-btn--outline"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmPayment}
-                disabled={paymentLoading || !canConfirmPayment}
-                className="rx-btn rx-btn--dark"
-              >
-                {paymentLoading ? (
-                  <>
-                    <span className="rx-btn-spinner" aria-hidden="true" />
-                    Procesando…
-                  </>
-                ) : (
-                  <>
-                    <MaterialIcon name="check_circle" className="text-xl" />
-                    Confirmar cobro
-                  </>
-                )}
-              </button>
-            </footer>
-          </section>
-        </div>
+        <PaymentModal
+          total={Number(selectedReservationForPayment.price)}
+          context={<div className="rx-context-card">
+            <p className="rx-context-title">{selectedReservationForPayment.client}</p>
+            <p className="rx-context-copy">{selectedReservationForPayment.class} · {selectedReservationForPayment.fecha} · {selectedReservationForPayment.time}</p>
+            <p className="rx-context-meta">Código {selectedReservationForPayment.codigo}</p>
+          </div>}
+          onConfirm={handleConfirmPayment}
+          onClose={closePaymentModal}
+        />
       )}
 
       {/* ========== COMPROBANTE DEL COBRO ========== */}
@@ -2070,6 +1878,7 @@ export default function Dashboard({ vista = 'recepcion' }) {
                     <span>{formatMoney(ticket.total)}</span>
                   </div>
                   <p><span className="rx-receipt-label">Método:</span> {METHOD_LABELS[ticket.metodoPago] || ticket.metodoPago}</p>
+                  {(ticket.pagos ?? []).map(p => <p key={p.metodo}><span className="rx-receipt-label">{METHOD_LABELS[p.metodo] || p.metodo}:</span> {formatMoney(p.monto)}</p>)}
                   {ticket.efectivoRecibido !== null && (
                     <p><span className="rx-receipt-label">Recibido:</span> {formatMoney(ticket.efectivoRecibido)}</p>
                   )}

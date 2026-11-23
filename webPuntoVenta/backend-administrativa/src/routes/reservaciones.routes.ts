@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import movilRoutes from './reservaciones-movil.routes';
 import { Reservacion } from '../models/Reservaciones/reservacion';
 import { Horario } from '../models/Horarios/horarios';
 import { esObjectId, esFechaISO } from '../lib/validacion';
@@ -8,10 +7,10 @@ const router = Router();
 const COBRO_API = process.env.COBRO_API_URL ?? 'http://localhost:3000/cobro/api';
 
 // Todas las escrituras pasan por las transacciones y reglas de Recepción.
-async function enviarCobro(res: any, ruta: string, metodo: string, datos: unknown) {
+async function enviarCobro(req: any, res: any, ruta: string, metodo: string, datos: unknown) {
     try {
         const respuesta = await fetch(`${COBRO_API}${ruta}`, {
-            method: metodo, headers: { 'Content-Type': 'application/json' },
+            method: metodo, headers: { 'Content-Type': 'application/json', Authorization: req.headers.authorization },
             body: JSON.stringify(datos), signal: AbortSignal.timeout(15000),
         });
         const cuerpo = await respuesta.json();
@@ -45,7 +44,7 @@ router.post('/', async (req, res) => {
     if (horario.fecha !== fechaReservacion || (horaClase !== undefined && horaClase !== horario.horaInicio)) {
         return res.status(409).json({ error: 'La fecha y hora no coinciden con la sesión seleccionada.' });
     }
-    return enviarCobro(res, '/reservas', 'POST', {
+    return enviarCobro(req, res, '/reservas', 'POST', {
         clienteId, client: 'Cliente registrado', type: 'cliente', horarioId: idHorario,
         class: horario.nombreClase, time: horario.horaInicio, fecha: fechaReservacion, origen: 'recepcion',
     });
@@ -53,7 +52,7 @@ router.post('/', async (req, res) => {
 
 router.post('/:id/reagendar', async (req, res) => {
     if (!/^[1-9]\d*$/.test(req.params.id)) return res.status(409).json({ error: 'Esta reservación histórica no tiene un ID de Recepción. Su historial se conserva; requiere conciliación antes de reagendar.' });
-    return enviarCobro(res, `/reservas/${req.params.id}/reagendar`, 'POST', {
+    return enviarCobro(req, res, `/reservas/${req.params.id}/reagendar`, 'POST', {
         horarioId: req.body?.horarioId ?? req.body?.idHorario,
         fecha: req.body?.fecha ?? req.body?.fechaReservacion,
     });
@@ -68,20 +67,13 @@ router.patch('/:id', async (req, res) => {
     if (esCambioHorario) {
         const campos = ['idHorario', 'horarioId', 'fecha', 'fechaReservacion'];
         if (Object.keys(datos).some(campo => !campos.includes(campo))) return res.status(400).json({ error: 'Envía únicamente el nuevo horario y fecha para reagendar.' });
-        return enviarCobro(res, `/reservas/${req.params.id}/reagendar`, 'POST', {
+        return enviarCobro(req, res, `/reservas/${req.params.id}/reagendar`, 'POST', {
             horarioId: datos.idHorario ?? datos.horarioId, fecha: datos.fechaReservacion ?? datos.fecha,
         });
     }
     if (Object.keys(datos).some(campo => !['status', 'estatus', 'asistenciaConfirmada'].includes(campo))) return res.status(400).json({ error: 'No se permite modificar directamente los datos de la reservación.' });
     const status = datos.status ?? (datos.estatus === 'cancelada' ? 'cancelado' : datos.asistenciaConfirmada === true ? 'asistido' : undefined);
-    return enviarCobro(res, `/reservas/${req.params.id}`, 'PATCH', { status });
+    return enviarCobro(req, res, `/reservas/${req.params.id}`, 'PATCH', { status });
 });
 
-const combinado = Router();
-combinado.use((req, res, next) => {
-    const numericId = /^\/[1-9]\d*(?:\/|$)/.test(req.path);
-    const numericClient = /^[1-9]\d*$/.test(String(req.body?.idCliente ?? req.query.idCliente ?? ''));
-    if (numericId || (req.method === 'POST' && numericClient)) return router(req, res, next);
-    return movilRoutes(req, res, next);
-});
-export default combinado;
+export default router;

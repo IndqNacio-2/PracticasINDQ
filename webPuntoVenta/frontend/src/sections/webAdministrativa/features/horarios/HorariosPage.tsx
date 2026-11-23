@@ -614,7 +614,7 @@ export function HorariosPage() {
       const [hs, cs, us, ps] = await Promise.all([
         horariosApi.listar(),
         api.get<Clase[]>('/clases'),
-        api.get<Usuario[]>('/usuarios'),
+        api.get<Usuario[]>('/usuarios?rol=entrenador&estatus=activo'),
         programacionApi.listar(),
       ]);
       setHorarios(hs);

@@ -50,6 +50,21 @@ saleRouter.post("/", async (request, response) => {
   try {
     const result = await saleRepository.insertSale(input, (response.locals.posUser as PosUser).id);
 
+    if (result.outcome === 'payment-schema-required') {
+      response.status(409).json({ status: 'error', message: result.message });
+      return;
+    }
+
+    if (result.outcome === 'invalid-payment') {
+      response.status(400).json({ status: 'error', message: result.message });
+      return;
+    }
+
+    if (result.outcome === 'inactive-product') {
+      response.status(422).json({ status: 'error', message: `El producto ${result.productName} está inactivo y no puede venderse.` });
+      return;
+    }
+
     // Algun producto del carrito ya no existe en el catalogo.
     if (result.outcome === "product-not-found") {
       response.status(404).json({

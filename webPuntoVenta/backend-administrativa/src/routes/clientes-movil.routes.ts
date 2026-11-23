@@ -6,6 +6,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { normalizarCliente, perfilCompartido, validarPassword } from '../lib/cliente-compartido';
 import { asyncHandler } from '../lib/asynchandler';
 import { requireAuth, requireRole } from '../middleware/auth';
+import { crearConsultasMovil } from './consulta-movil.routes';
 
 const AUDIENCIA = 'clientes-postgres';
 const hash = (texto: string) => createHash('sha256').update(texto).digest('hex');
@@ -110,7 +111,7 @@ export function crearRutasClientesMovil(pool: Pool, secreto: () => string | unde
         res.json({ token: firmar(c.id, c.token_version), cliente: perfilCompartido(c) });
     }));
 
-    router.use('/me', asyncHandler(async (req, res, next) => {
+    router.use(['/me', '/clases', '/horarios', '/membresias', '/reservaciones'], asyncHandler(async (req, res, next) => {
         let payload: jwt.JwtPayload;
         const secret = clave();
         try {
@@ -123,6 +124,7 @@ export function crearRutasClientesMovil(pool: Pool, secreto: () => string | unde
         if (!c?.activo || c.token_version !== payload.tv) throw fallo(401, 'Sesión inválida o cliente inactivo.');
         res.locals.cliente = c; next();
     }));
+    router.use(crearConsultasMovil(pool));
     router.get('/me', (_req, res) => res.json(perfilCompartido(res.locals.cliente)));
     router.patch('/me', asyncHandler(async (req, res) => {
         if (req.body?.password !== undefined || req.body?.confirmarPassword !== undefined) throw fallo(400, 'Usa la ruta de cambio de contraseña.');

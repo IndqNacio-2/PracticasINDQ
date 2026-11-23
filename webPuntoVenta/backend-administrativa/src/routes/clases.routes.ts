@@ -41,8 +41,4 @@ router.patch('/:id', async (req, res) => {
     res.json(clase);
 });
 
-router.delete('/:id', (_req, res) => {
-    res.status(405).json({ error: 'Las clases no se eliminan. Usa PATCH /:id con estatus inactivo.' });
-});
-
 export default router;

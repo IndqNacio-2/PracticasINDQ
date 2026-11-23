@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { CashClosingRecord, SaleRecord } from "../types";
 import MaterialIcon from "./MaterialIcon";
 import { getStoredUser } from '../auth/session';
+import { paymentAmount } from '../services/paymentAmounts';
 
 /*
  * Defino los datos que el módulo de Corte de caja
@@ -39,6 +40,7 @@ const PAYMENT_METHOD_LABELS: Record<
   SaleRecord["paymentMethod"],
   string
 > = {
+  mixto: "Mixto",
   efectivo: "Efectivo",
   tarjeta: "Tarjeta",
   transferencia: "Transferencia",
@@ -52,6 +54,7 @@ const PAYMENT_METHOD_ICONS: Record<
   SaleRecord["paymentMethod"],
   string
 > = {
+  mixto: "call_split",
   efectivo: "payments",
   tarjeta: "credit_card",
   transferencia: "account_balance",
@@ -184,17 +187,11 @@ export default function CashClosingPage({
       0,
     );
 
-    const cashSales = sales
-      .filter((sale) => sale.paymentMethod === "efectivo")
-      .reduce((total, sale) => total + sale.total, 0);
+    const cashSales = sales.reduce((total, sale) => total + paymentAmount(sale, 'efectivo'), 0);
 
-    const cardSales = sales
-      .filter((sale) => sale.paymentMethod === "tarjeta")
-      .reduce((total, sale) => total + sale.total, 0);
+    const cardSales = sales.reduce((total, sale) => total + paymentAmount(sale, 'tarjeta'), 0);
 
-    const transferSales = sales
-      .filter((sale) => sale.paymentMethod === "transferencia")
-      .reduce((total, sale) => total + sale.total, 0);
+    const transferSales = sales.reduce((total, sale) => total + paymentAmount(sale, 'transferencia'), 0);
 
     /*
      * Calculo el efectivo que debería existir en la caja

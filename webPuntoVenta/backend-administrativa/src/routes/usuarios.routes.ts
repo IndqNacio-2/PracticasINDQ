@@ -53,8 +53,17 @@ router.get('/codigo-disponible', soloAdmin, async (req, res) => {
 });
 
 // GET /api/usuarios?rol=entrenador&estatus=activo
-// Lo usan también los selects de clases y horarios (entrenadores): basta con estar autenticado.
+// Fuera de administración solo se expone el catálogo mínimo de entrenadores
+// activos, solicitado explícitamente por los selectores de programación.
 router.get('/', requireRole('administrador', 'recepcion', 'vendedor', 'entrenador'), async (req, res) => {
+    if (req.auth?.rol !== 'administrador') {
+        if (!['recepcion', 'entrenador'].includes(req.auth?.rol ?? '') || req.query.rol !== 'entrenador' || req.query.estatus !== 'activo') {
+            return res.status(403).json({ error: 'Solo Administración puede consultar el listado de usuarios.' });
+        }
+        const entrenadores: any[] = await Usuario.find({ rol: 'entrenador', estatus: 'activo' })
+            .select('_id nombre apellidos rol estatus').sort({ nombre: 1, apellidos: 1 });
+        return res.json(entrenadores.map(u => ({ idUsuario: String(u._id), nombre: u.nombre, apellidos: u.apellidos, rol: u.rol, estatus: u.estatus })));
+    }
     const filtro: any = {};
     if (esRol(req.query.rol)) filtro.rol = req.query.rol;
     if (req.query.estatus === 'activo' || req.query.estatus === 'inactivo') filtro.estatus = req.query.estatus;

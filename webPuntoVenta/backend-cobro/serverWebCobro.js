@@ -18,7 +18,7 @@ const { esCorreoValido, esNombreValido, esTelefonoValido } = require('./validaci
 const { normalizarSalud } = require('./saludCliente');
 const { normalizarCodigoCliente } = require('./codigoCliente');
 const { normalizarMenor } = require('./menoresCliente');
-const { accesoClientes } = require('./permisosPersonal');
+const { accesoClientes, accesoReservasCobros } = require('./permisosPersonal');
 const membresiasService = require('./membresiasService');
 
 const app = express();
@@ -26,6 +26,7 @@ const app = express();
 app.use(cors()); //permite que react hable con este backend
 app.use(express.json());
 app.use('/api/clientes', accesoClientes);
+app.use(['/api/reservas', '/api/cobros', '/api/kpis'], accesoReservasCobros);
 
 // El panel administrativo se sirve por este mismo gateway (monto /admin/api) en
 // el mismo puerto 3000 que este backend de cobro, por lo que la llamada es
@@ -1016,13 +1017,10 @@ app.get('/api/clases', async (req, res) => {
 app.post('/api/cobros', async (req, res) => {
   const reservaId = Number(req.body?.reservaId);
   const metodoPago = String(req.body?.metodoPago ?? 'efectivo');
-  const usuario =
-    typeof req.body?.usuario === 'string' && req.body.usuario.trim()
-      ? req.body.usuario.trim().slice(0, 120)
-      : null;
+  const usuario = req.personal.id;
 
   // Las mismas formas de pago que acepta el Punto de Venta.
-  const METODOS_PAGO = ['efectivo', 'tarjeta', 'transferencia'];
+  const METODOS_PAGO = ['efectivo', 'tarjeta', 'transferencia', 'mixto'];
 
   //validacion 1 el id de la reservación es obligatorio
   if (!Number.isInteger(reservaId) || reservaId <= 0) {
@@ -1046,7 +1044,7 @@ app.post('/api/cobros', async (req, res) => {
   }
 
   // La referencia de la transferencia es opcional y solo aplica a transferencia.
-  const referencia =
+  let referencia =
     metodoPago === 'transferencia' && req.body?.referencia !== undefined && req.body?.referencia !== null
       ? String(req.body.referencia).trim()
       : null;
@@ -1092,6 +1090,21 @@ app.post('/api/cobros', async (req, res) => {
     }
 
     const monto = Number(reserva.precio);
+    let mixto = null;
+    if (metodoPago === 'mixto') {
+      try { mixto = require('./pagoMixto').validarMixto(req.body, monto); }
+      catch (error) {
+        await conexion.query('ROLLBACK');
+        return res.status(400).json({ error: error.message });
+      }
+      const esquema = await conexion.query(`SELECT EXISTS (SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'webcobro' AND table_name = 'pagos' AND column_name = 'pagos') AS disponible`);
+      if (!esquema.rows[0]?.disponible) {
+        await conexion.query('ROLLBACK');
+        return res.status(409).json({ error: 'Falta habilitar pagos mixtos de Recepción en la base de datos (backend-cobro/db/pagos-mixtos.sql).' });
+      }
+      referencia = mixto.referencia;
+    }
 
     //validacion 6 en efectivo, el cliente debe alcanzar el monto a cobrar
     if (metodoPago === 'efectivo' && efectivoRecibido < monto) {
@@ -1100,7 +1113,7 @@ app.post('/api/cobros', async (req, res) => {
     }
 
     // El cambio solo existe cuando se paga en efectivo de más (igual que el POS).
-    const cambio = metodoPago === 'efectivo' ? Math.max(efectivoRecibido - monto, 0) : null;
+    const cambio = mixto ? mixto.cambio : metodoPago === 'efectivo' ? Math.max(efectivoRecibido - monto, 0) : null;
 
     /*
      * Folio diario basado en la fecha de PostgreSQL, no en el reloj del navegador.
@@ -1136,8 +1149,8 @@ app.post('/api/cobros', async (req, res) => {
       await conexion.query(
         `INSERT INTO webcobro.pagos
            (reserva_id, cliente_id, cliente_nombre, monto, metodo_pago,
-            efectivo_recibido, cambio, referencia, folio, usuario)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            efectivo_recibido, cambio, referencia, folio, usuario${mixto ? ', pagos' : ''})
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10${mixto ? ', $11::jsonb' : ''})
          RETURNING id, folio, monto::float8 AS monto, metodo_pago,
                    efectivo_recibido::float8 AS efectivo_recibido,
                    cambio::float8 AS cambio, referencia, usuario, creado_en`,
@@ -1147,11 +1160,12 @@ app.post('/api/cobros', async (req, res) => {
           reserva.cliente,
           monto,
           metodoPago,
-          metodoPago === 'efectivo' ? efectivoRecibido : null,
+          mixto ? mixto.efectivoRecibido : metodoPago === 'efectivo' ? efectivoRecibido : null,
           cambio,
           referencia,
           folio,
           usuario,
+          ...(mixto ? [JSON.stringify(mixto.pagos)] : []),
         ],
       )
     ).rows[0];
@@ -1181,6 +1195,7 @@ app.post('/api/cobros', async (req, res) => {
       horaClase: reserva.hora,
       usuario: nuevoPago.usuario,
       metodoPago: nuevoPago.metodo_pago,
+      pagos: mixto?.pagos,
       total: nuevoPago.monto,
       efectivoRecibido: nuevoPago.efectivo_recibido,
       cambio: nuevoPago.cambio,
@@ -1212,6 +1227,7 @@ app.post('/api/cobros', async (req, res) => {
         reservaId: reserva.id,
         monto: nuevoPago.monto,
         metodoPago: nuevoPago.metodo_pago,
+        pagos: mixto?.pagos,
         efectivoRecibido: nuevoPago.efectivo_recibido,
         cambio: nuevoPago.cambio,
         referencia: nuevoPago.referencia,

@@ -7,7 +7,9 @@
  */
 
 // Formas de pago que acepta el sistema.
-export type PayMethod = "efectivo" | "tarjeta" | "transferencia";
+export type PaymentMethod = "efectivo" | "tarjeta" | "transferencia";
+export type PayMethod = PaymentMethod | "mixto";
+export interface PaymentPart { method: PaymentMethod; amount: number }
 
 // Un articulo del carrito: producto y cuantas unidades se cobran.
 export interface SaleItemInput {
@@ -26,6 +28,7 @@ export interface SaleInput {
   items: SaleItemInput[];
   discount: number;
   paymentMethod: PayMethod;
+  payments?: PaymentPart[];
   cashReceived?: number;
   transferRef?: string;
   registeredBy: string;
@@ -51,6 +54,7 @@ export interface SaleRecord {
   discount: number;
   total: number;
   paymentMethod: PayMethod;
+  payments?: PaymentPart[];
   cashReceived?: number;
   change?: number;
   transferRef?: string;

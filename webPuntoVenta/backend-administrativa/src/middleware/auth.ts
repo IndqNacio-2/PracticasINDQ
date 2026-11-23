@@ -17,7 +17,11 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
     return res.status(401).json({ message: 'Token requerido.' });
   }
   try {
-    const payload = jwt.verify(header.slice(7), process.env.JWT_SECRET!) as jwt.JwtPayload;
+    const payload = jwt.verify(header.slice(7), process.env.JWT_SECRET!, { algorithms: ['HS256'] });
+    if (typeof payload === 'string' || typeof payload.sub !== 'string' || !/^[a-f\d]{24}$/i.test(payload.sub) ||
+        !['administrador', 'recepcion', 'vendedor', 'entrenador', 'checador'].includes(String(payload.rol))) {
+      throw new Error('Sesión de personal inválida');
+    }
     req.auth = { id: String(payload.sub), rol: payload.rol as UserRole };
     next();
   } catch {

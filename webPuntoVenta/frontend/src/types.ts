@@ -90,6 +90,9 @@ export interface ToastMessage {
   type: 'success' | 'error' | 'warning' | 'info';
 }
 
+export type PaymentMethod = 'efectivo' | 'tarjeta' | 'transferencia';
+export interface PaymentPart { method: PaymentMethod; amount: number }
+
 export interface SaleRecord {
   id: number;
   sellerId: string | null;
@@ -101,7 +104,8 @@ export interface SaleRecord {
   subtotal: number;
   discount: number;
   total: number;
-  paymentMethod: 'efectivo' | 'tarjeta' | 'transferencia';
+  paymentMethod: PaymentMethod | 'mixto';
+  payments?: PaymentPart[];
   cashReceived?: number;
   change?: number;
   transferRef?: string;

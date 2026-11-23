@@ -11,7 +11,7 @@ import { Router, type Response } from "express";
 import * as wasteRepository from "./waste.repository.js";
 import { validateWasteInput } from "./waste.validation.js";
 import type { ValidationIssue } from "./waste.types.js";
-import { requirePosUser } from '../auth.js';
+import { requirePosUser, type PosUser } from '../auth.js';
 
 export const wasteRouter = Router();
 wasteRouter.use(requirePosUser);
@@ -48,7 +48,9 @@ wasteRouter.post("/", async (request, response) => {
   }
 
   try {
-    const result = await wasteRepository.insertWasteRecord(input);
+    const result = await wasteRepository.insertWasteRecord({
+      ...input, registeredBy: (response.locals.posUser as PosUser).id,
+    });
 
     // El producto ya no existe en el catalogo.
     if (result.outcome === "product-not-found") {

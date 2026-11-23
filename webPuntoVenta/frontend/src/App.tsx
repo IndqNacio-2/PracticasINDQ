@@ -159,15 +159,15 @@ export default function App({ initialModule, embedded = false }: AppProps = {}) 
   useEffect(() => {
     async function loadDatabase(): Promise<void> {
       try {
-        const [loadedProducts, loadedWaste, loadedSales, loadedClosings] =
+        const [, loadedWaste, loadedSales, loadedClosings] =
           await Promise.all([
-            getProducts(),
+            // Mostrar el catálogo aunque otro módulo falle durante el inicio.
+            getProducts().then(setProducts),
             getWasteRecords(),
             getSales(),
             getCashClosings(),
           ])
 
-        setProducts(loadedProducts)
         setWasteRecords(loadedWaste)
         setSales(loadedSales)
         setCashClosings(loadedClosings)
@@ -579,7 +579,8 @@ export default function App({ initialModule, embedded = false }: AppProps = {}) 
    * ticket con la venta que devuelve el servidor.
    */
   const handleConfirmPayment = async (paymentData: {
-    method: "efectivo" | "tarjeta" | "transferencia"
+    method: "efectivo" | "tarjeta" | "transferencia" | "mixto"
+    payments?: import('./types').PaymentPart[]
     cashReceived?: number
     transferRef?: string
   }): Promise<void> => {
@@ -591,6 +592,7 @@ export default function App({ initialModule, embedded = false }: AppProps = {}) 
         })),
         discount,
         paymentMethod: paymentData.method,
+        payments: paymentData.payments,
         cashReceived: paymentData.cashReceived,
         transferRef: paymentData.transferRef,
       })

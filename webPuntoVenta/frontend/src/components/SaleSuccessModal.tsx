@@ -4,7 +4,7 @@ import type { SaleRecord } from '../types';
 import MaterialIcon from './MaterialIcon';
 
 const fmt = (n: number) => `$${n.toFixed(2)}`;
-const METHOD_LABELS = { efectivo: 'Efectivo', tarjeta: 'Tarjeta', transferencia: 'Transferencia' };
+const METHOD_LABELS = { efectivo: 'Efectivo', tarjeta: 'Tarjeta', transferencia: 'Transferencia', mixto: 'Mixto' };
 
 interface SaleSuccessModalProps {
   sale: SaleRecord;
@@ -31,7 +31,8 @@ export default function SaleSuccessModal({ sale, onNewSale, onShowTicket }: Sale
             <Row label="Fecha" value={sale.date} />
             <Row label="Hora" value={sale.time} />
             <Row label="Método" value={METHOD_LABELS[sale.paymentMethod]} />
-            {sale.paymentMethod === 'efectivo' && sale.cashReceived != null && (
+            {sale.paymentMethod === 'mixto' && sale.payments?.map(part => <Row key={part.method} label={METHOD_LABELS[part.method]} value={fmt(part.amount)} />)}
+            {(sale.paymentMethod === 'efectivo' || sale.paymentMethod === 'mixto') && sale.cashReceived != null && (
               <>
                 <Row label="Recibido" value={fmt(sale.cashReceived)} />
                 <Row label="Cambio" value={

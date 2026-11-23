@@ -219,10 +219,6 @@ export function ClientesPage({ soloRegistro = false, rutaClientes = '/clientes',
       setFormError(errores.correo);
       return;
     }
-    if (form.correo.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.correo.trim())) {
-      setFormError('Introduce un correo electrónico válido.');
-      return;
-    }
     setGuardando(true);
     try {
       const cuerpo = {

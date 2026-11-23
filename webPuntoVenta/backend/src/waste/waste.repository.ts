@@ -54,6 +54,9 @@ export async function insertWasteRecord(
 
   try {
     await client.query("BEGIN");
+    // Serializa el cálculo MAX(id)+1 antes de bloquear productos; evita folios
+    // duplicados cuando distintas cajas registran mermas de productos distintos.
+    await client.query('LOCK TABLE webpontoventa.waste_records IN EXCLUSIVE MODE');
 
     /*
      * Busco el producto y lo bloqueo mientras dure la transaccion.
