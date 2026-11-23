@@ -56,7 +56,7 @@ test('kiosco: diseño compartido, logo local y buscador accesible', () => {
   const html = pagina.html();
   assert.match(html, /class="rx-kiosk"/);
   assert.match(html, /rx-kiosk-clock/);
-  assert.match(html, /aria-label="Código de empleado o ID del socio"/);
+  assert.match(html, /aria-label="Código de usuario o cliente"/);
   assert.match(html, /\/branding\/nuucleo-symbol.png/);
   assert.equal(pagina.botonMarcar(), undefined);
 });

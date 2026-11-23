@@ -18,6 +18,7 @@ async function montar(t) {
   let referencias = true, ocupados = 0, existeCliente = true;
   const consultas = [];
   async function query(sql, valores = []) {
+    assert.doesNotMatch(sql, /to_jsonb\(webcobro\.clientes\)/, 'La fila completa se referencia por su nombre de tabla, no esquema.tabla');
     consultas.push({ sql, valores });
     if (sql === 'SELECT 1') return new Promise(() => {}); // impide arranque y aplicación de schema.sql
     if (sql.includes('COUNT(*)')) return { rows: [{ n: sql.includes("estado_cupo = 'confirmada'") ? ocupados : 0 }], rowCount: 1 };
@@ -34,8 +35,12 @@ async function montar(t) {
     if (sql.includes('UPDATE webcobro.reservas') && sql.includes('SET estado = $2')) {
       reserva = { ...reserva, status: valores[1] }; return { rows: [reserva], rowCount: 1 };
     }
-    if (sql.includes('UPDATE webcobro.clientes') || sql.includes('INSERT INTO webcobro.clientes')) return { rows: [{ id: 1, nombre: 'Ana Prueba', activo: !sql.includes('FALSE') }], rowCount: 1 };
+    if (sql.includes('UPDATE webcobro.clientes') || sql.includes('INSERT INTO webcobro.clientes')) {
+      if (valores.includes('SOC-CARRERA')) throw Object.assign(new Error('duplicado concurrente'), { code: '23505' });
+      return { rows: [{ id: 1, nombre: 'Ana Prueba', activo: !sql.includes('FALSE') }], rowCount: 1 };
+    }
     if (sql.includes('FROM webcobro.clientes')) {
+      if (sql.includes("->>'codigo_usuario'")) return { rows: valores[0] === 'SOC-OCUPADO' ? [{ id: 2 }] : [], rowCount: 0 };
       if (sql.includes('LOWER(correo)')) return { rows: [], rowCount: 0 };
       return { rows: existeCliente ? [{ id: 1, nombre: 'Ana Prueba', activo: true, membresia: 'Premium' }] : [], rowCount: existeCliente ? 1 : 0 };
     }
@@ -74,9 +79,91 @@ async function montar(t) {
   };
 }
 
-test('correo opcional: formatos válidos e inválidos', () => {
-  for (const correo of ['', null, undefined, 'ana@example.test', ' Ana+ventas@example.com ']) assert.equal(esCorreoValido(correo), true);
-  for (const correo of ['no-es-correo', 'a@b', 'a b@example.test', {}, 42, 'a@@b.com']) assert.equal(esCorreoValido(correo), false);
+test('listado de clientes y disponibilidad usan una referencia de fila válida en PostgreSQL', async t => {
+  const api = await montar(t);
+  assert.equal((await api.enviar('/clientes', 'GET')).status, 200);
+  assert.equal((await api.enviar('/clientes/codigo-disponible?codigo=SOC-LIBRE', 'GET')).status, 200);
+  assert.ok(api.consultas.some(c => c.sql.includes("COALESCE(to_jsonb(clientes)->>'codigo_usuario'")));
+});
+
+test('clientes: validaciones de nombre, teléfono y correo en POST y PATCH', async t => {
+  const api = await montar(t);
+  for (const [ruta, metodo] of [['/clientes', 'POST'], ['/clientes/1', 'PATCH']]) {
+    for (const cambio of [{ nombre: 'Ana123' }, { nombre: 'Ana!' }, { nombre: 'A B' }, { nombre: 42 }, { telefono: '12345678901' }, { telefono: '123abc' }, { telefono: 123 }, { correo: 'a..b@example.com' }, { correo: 'a@-example.com' }, { correo: 'a@b..com' }, { correo: `${'a'.repeat(65)}@example.com` }]) {
+      const antes = api.consultas.filter(c => /INSERT INTO webcobro.clientes|UPDATE webcobro.clientes/.test(c.sql)).length;
+      const respuesta = await api.enviar(ruta, metodo, { nombre: 'José Muñoz', correo: 'ana@example.com', ...cambio });
+      assert.equal(respuesta.status, 400, JSON.stringify(cambio));
+      assert.equal(api.consultas.filter(c => /INSERT INTO webcobro.clientes|UPDATE webcobro.clientes/.test(c.sql)).length, antes);
+    }
+    const respuesta = await api.enviar(ruta, metodo, { nombre: 'José Muñoz', telefono: '0123456789', correo: 'ana+ventas@example.com' });
+    assert.equal(respuesta.status, metodo === 'POST' ? 201 : 200);
+  }
+  assert.equal((await api.enviar('/clientes/1', 'PATCH', { activo: false })).status, 200);
+  assert.equal((await api.enviar('/clientes/1', 'PATCH', { telefono: '' })).status, 200);
+  for (const correo of ['', '   ', null]) {
+    assert.equal((await api.enviar('/clientes', 'POST', { nombre: 'Ana Salud', correo })).status, 400);
+    assert.equal((await api.enviar('/clientes/1', 'PATCH', { correo })).status, 400);
+  }
+  assert.equal((await api.enviar('/clientes', 'POST', { nombre: 'Ana Salud' })).status, 400);
+});
+
+test('código editable: valida disponibilidad, formato y guarda sin cambiar el ID', async t => {
+  const api = await montar(t);
+  for (const [ruta, metodo] of [['/clientes', 'POST'], ['/clientes/1', 'PATCH']]) {
+    assert.equal((await api.enviar(ruta, metodo, { nombre: 'Ana Prueba', correo: 'ana@example.com', codigo: 'SOC-OCUPADO' })).status, 409);
+    assert.equal((await api.enviar(ruta, metodo, { nombre: 'Ana Prueba', correo: 'ana@example.com', codigo: 'SOC-CARRERA' })).status, 409);
+    for (const codigo of ['12', 'CLI-2', 'EMP-101', 'ab', 'SOC 123', {}, 'A'.repeat(31)]) {
+      assert.equal((await api.enviar(ruta, metodo, { nombre: 'Ana Prueba', correo: 'ana@example.com', codigo })).status, 400);
+    }
+    assert.equal((await api.enviar(ruta, metodo, { nombre: 'Ana Prueba', correo: 'ana@example.com', codigo: ' soc-123 ' })).status, metodo === 'POST' ? 201 : 200);
+  }
+  const alta = api.consultas.find(c => c.sql.includes('INSERT INTO webcobro.clientes') && c.sql.includes('codigo_usuario') && c.valores.includes('SOC-123'));
+  assert.equal(alta.valores[8], 'SOC-123');
+  const cambio = api.consultas.find(c => c.sql.startsWith('UPDATE webcobro.clientes SET codigo_usuario') && c.valores.includes('SOC-123'));
+  assert.equal(cambio.valores[0], 'SOC-123');
+  assert.equal(cambio.valores.at(-1), 1);
+  assert.doesNotMatch(cambio.sql.split('WHERE')[0], /SET id|DELETE/);
+  assert.equal((await api.enviar('/clientes/1', 'PATCH', { codigo: 'CLI-1' })).status, 200);
+  assert.equal((await api.enviar('/clientes/1', 'PATCH', { codigo: '' })).status, 200);
+  const disponible = await api.enviar('/clientes/codigo-disponible?codigo=SOC-OCUPADO', 'GET');
+  assert.equal(disponible.status, 200);
+  assert.equal((await disponible.json()).disponible, false);
+});
+
+test('correo obligatorio: formatos válidos e inválidos', () => {
+  for (const correo of ['ana@example.test', ' Ana+ventas@example.com ']) assert.equal(esCorreoValido(correo), true);
+  for (const correo of ['', '   ', null, undefined, 'no-es-correo', 'a@b', 'a b@example.test', {}, 42, 'a@@b.com']) assert.equal(esCorreoValido(correo), false);
+});
+
+test('salud: normaliza etiquetas sin duplicados y valida tipos y longitud', () => {
+  const { normalizarSalud } = require('./saludCliente');
+  assert.deepEqual(normalizarSalud({ enfermedades: [' Asma ', 'asma'], lesiones: [] }), { enfermedades: ['Asma'], lesiones: [] });
+  assert.deepEqual(normalizarSalud({ activo: false }), {});
+  for (const valor of [null, 'Asma', {}, [42], [''], ['x'.repeat(61)]]) {
+    assert.throws(() => normalizarSalud({ enfermedades: valor }));
+    assert.throws(() => normalizarSalud({ lesiones: valor }));
+  }
+});
+
+test('salud: rutas reales guardan, limpian y conservan campos omitidos', async t => {
+  const api = await montar(t);
+  assert.equal((await api.enviar('/clientes', 'POST', { nombre: 'Ana Salud', correo: 'ana@example.com', enfermedades: [' Asma ', 'asma'], lesiones: ['Rodilla'] })).status, 201);
+  const alta = api.consultas.find(c => c.sql.includes('INSERT INTO webcobro.clientes'));
+  assert.deepEqual(JSON.parse(JSON.stringify(alta.valores.slice(-2))), [['Asma'], ['Rodilla']]);
+  assert.match(alta.sql, /enfermedades, lesiones/);
+  assert.equal((await api.enviar('/clientes/1', 'PATCH', { enfermedades: [] })).status, 200);
+  const cambio = api.consultas.find(c => c.sql.includes('UPDATE webcobro.clientes SET enfermedades'));
+  assert.match(cambio.sql, /enfermedades = \$1::text\[\]/);
+  assert.doesNotMatch(cambio.sql.split('RETURNING')[0], /lesiones =/);
+  assert.deepEqual(JSON.parse(JSON.stringify(cambio.valores)), [[], 1]);
+  assert.equal((await api.enviar('/clientes/1', 'PATCH', { activo: false })).status, 200);
+  const estatus = api.consultas.find(c => c.sql.includes('UPDATE webcobro.clientes SET activo'));
+  assert.doesNotMatch(estatus.sql.split('RETURNING')[0], /enfermedades =|lesiones =/);
+  for (const method of ['POST', 'PATCH']) {
+    assert.equal((await api.enviar(method === 'POST' ? '/clientes' : '/clientes/1', method, { nombre: 'Ana Salud', lesiones: [7] })).status, 400);
+  }
+  await api.enviar('/clientes', 'GET');
+  assert.ok(api.consultas.some(c => /SELECT id, nombre, membresia, telefono, correo, activo, enfermedades, lesiones/.test(c.sql)));
 });
 
 test('clientes: POST/PATCH rechazan correo inválido y DELETE desactiva sin borrar', async t => {

@@ -8,10 +8,13 @@ function clasificarAsistencia(ahora, turno) {
 
 function montarAsistencia(app, pool, opciones = {}) {
   const turnosHabilitados = opciones.turnosHabilitados === true;
+  // El gateway inyecta el acceso a Administración; Cobro no abre otra conexión Mongo.
+  const usuario = async (codigo) => app.locals.asistenciaUsuarios
+    ? app.locals.asistenciaUsuarios(codigo) : null;
   const normalizar = (valor) => {
     const codigo = String(valor ?? '').trim().toUpperCase();
-    if (/^EMP-\d{3}$/.test(codigo) || /^CLI-\d+$/.test(codigo)) return codigo;
-    return /^\d+$/.test(codigo) ? `CLI-${codigo}` : null;
+    if (/^USR-[A-F0-9]{24}$/.test(codigo) || /^EMP-\d{3}$/.test(codigo) || /^CLI-\d+$/.test(codigo)) return codigo;
+    return /^\d+$/.test(codigo) ? `CLI-${codigo}` : /^[A-Z0-9][A-Z0-9-]{2,29}$/.test(codigo) && !codigo.startsWith('EMP-') && !codigo.startsWith('CLI-') ? codigo : null;
   };
   const estadoSQL = turnosHabilitados ? 'estado' : 'NULL::text AS estado';
   // Una falta automática NO es una entrada física ni debe activar la salida.
@@ -24,7 +27,7 @@ function montarAsistencia(app, pool, opciones = {}) {
       AND dia_semana = EXTRACT(DOW FROM CURRENT_DATE)::int
       ORDER BY hora_inicio, id LIMIT 1`, [codigo])).rows[0] || null;
   };
-  const persona = async (db, codigo) => (await db.query(codigo.startsWith('EMP-')
+  const persona = async (db, codigo) => codigo.startsWith('USR-') ? usuario(codigo) : (await db.query(codigo.startsWith('EMP-')
     ? 'SELECT codigo, nombre, rol FROM webcobro.empleados WHERE codigo = $1'
     : 'SELECT id, nombre, membresia FROM webcobro.clientes WHERE id = $1',
   [codigo.startsWith('EMP-') ? codigo : codigo.slice(4)])).rows[0];
@@ -36,9 +39,27 @@ function montarAsistencia(app, pool, opciones = {}) {
     tipo: r.tipo, estado: r.estado ?? null, automatica: r.automatica === true,
     fecha: new Date(r.creado_en).toISOString(), ts: new Date(r.creado_en).getTime() });
   const ruta = (handler) => async (req, res) => {
-    const codigo = normalizar(req.params?.identificador ?? req.params?.codigo ?? req.body?.codigo);
+    let codigo = normalizar(req.params?.identificador ?? req.params?.codigo ?? req.body?.codigo);
     if (!codigo) return res.status(400).json({ error: 'Formato inválido. Ejemplo: EMP-101 o CLI-3' });
-    try { return await handler(req, res, codigo); }
+    try {
+      const codigoIngresado = codigo;
+      if (codigo.startsWith('USR-')) {
+        if (!await usuario(codigo)) return res.status(404).json({ error: 'Usuario no registrado o inactivo' });
+      } else if (!/^CLI-\d+$/.test(codigo)) {
+        const u = await usuario(codigo);
+        const empleado = /^EMP-\d{3}$/.test(codigo) ? await persona(pool, codigo) : null;
+        const cliente = (await pool.query(`SELECT id FROM webcobro.clientes
+          WHERE UPPER(to_jsonb(clientes)->>'codigo_usuario') = $1`, [codigo])).rows[0];
+        if ([u, empleado, cliente].filter(Boolean).length > 1) {
+          return res.status(409).json({ error: 'Código compartido entre personas. Asigna un código único antes de marcar.' });
+        }
+        if (!u && !empleado && !cliente) return res.status(404).json({ error: `Código ${codigo} no registrado` });
+        // Las marcas permanecen bajo la identidad original aunque cambie el código visible.
+        codigo = u ? `USR-${u.id.toUpperCase()}` : empleado ? codigo : `CLI-${cliente.id}`;
+      }
+      req.codigoIngresado = codigoIngresado;
+      return await handler(req, res, codigo);
+    }
     catch (error) {
       console.error('Error de asistencia:', error.message);
       return res.status(500).json({ error: 'No se pudo procesar la asistencia' });
@@ -51,13 +72,14 @@ function montarAsistencia(app, pool, opciones = {}) {
       FROM webcobro.asistencias WHERE codigo = $1 ORDER BY creado_en DESC, id DESC LIMIT 10`, [codigo]);
     res.json(resultado.rows.map(serializar));
   }));
-  app.get('/api/asistencia/empleado/:codigo', ruta(async (_req, res, codigo) => {
+  app.get('/api/asistencia/empleado/:codigo', ruta(async (req, res, codigo) => {
     const p = await persona(pool, codigo);
     if (!p) return res.status(404).json({ error: `Código ${codigo} no registrado` });
     const hoy = await ultima(pool, codigo, true);
     const ultimo = await ultima(pool, codigo);
     const turno = await turnoHoy(pool, codigo);
-    res.json({ tipo: codigo.startsWith('EMP-') ? 'empleado' : 'cliente', codigo,
+    res.json({ tipo: codigo.startsWith('CLI-') ? 'cliente' : 'empleado', codigo,
+      codigoIngresado: req.codigoIngresado,
       nombre: p.nombre, rol: p.rol ?? null, membresia: p.membresia ?? null,
       marcoHoy: Boolean(hoy), ultimaMarcaHoy: hoy?.tipo ?? null,
       siguienteTipo: hoy?.tipo === 'entrada' ? 'salida' : 'entrada',

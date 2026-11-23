@@ -4,8 +4,12 @@ import { Badge } from '../../components/Badge';
 import { api, apiCobro } from '../../lib/api';
 import type { Cliente, Reservacion } from '../../types';
 import { MembresiasCliente, type MembresiaComprada } from './MembresiasCliente';
+import { SaludEtiquetas } from './SaludEtiquetas';
 
 interface ClienteRecepcion {
+  codigo?: string | null;
+  enfermedades?: string[];
+  lesiones?: string[];
   id: number; nombre: string; correo: string | null; telefono: string; activo: boolean;
   membresiasCompradas?: MembresiaComprada[];
 }
@@ -45,7 +49,7 @@ function InfoRow({ label, value }: { label: string; value?: string | number }) {
   );
 }
 
-export function ClienteDetalle() {
+export function ClienteDetalle({ rutaClientes = '/clientes' }: { rutaClientes?: string } = {}) {
   const { id } = useParams();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<Tab>('general');
@@ -69,7 +73,8 @@ export function ClienteDetalle() {
           const socio = socios.find(c => String(c.id) === id);
           if (!socio) return;
           setCliente({ idUsuario: String(socio.id), nombre: socio.nombre, apellidos: '', correo: socio.correo ?? '',
-            telefono: socio.telefono ?? '', codigoAcceso: `CLI-${socio.id}`, estatus: socio.activo ? 'activo' : 'inactivo',
+            telefono: socio.telefono ?? '', codigoAcceso: socio.codigo || `CLI-${socio.id}`, estatus: socio.activo ? 'activo' : 'inactivo',
+            enfermedades: socio.enfermedades ?? [], lesiones: socio.lesiones ?? [],
             rol: 'cliente', fechaCreacion: '', fechaRegistro: '', direccion: '', fechaNacimiento: '' });
           setCompras(socio.membresiasCompradas ?? []);
           setReservas(historial.filter(r => r.clienteId === socio.id).map(r => ({
@@ -94,11 +99,11 @@ export function ClienteDetalle() {
     return () => { vigente = false; };
   }, [id]);
   if (loading) return <p className="text-center py-20 text-gray-500" role="status">Cargando perfil del cliente…</p>;
-  if (error) return <div className="text-center py-20"><p role="alert" className="text-red-600">{error}</p><button onClick={() => navigate('/clientes')} className="rx-btn rx-btn--outline mt-4">← Volver a clientes</button></div>;
+  if (error) return <div className="text-center py-20"><p role="alert" className="text-red-600">{error}</p><button onClick={() => navigate(rutaClientes)} className="rx-btn rx-btn--outline mt-4">← Volver a clientes</button></div>;
   if (!cliente) return (
     <div className="text-center py-20 text-gray-400">
       <p className="text-lg">Cliente no encontrado</p>
-      <button onClick={() => navigate('/clientes')} className="rx-btn rx-btn--outline mt-4">← Volver a clientes</button>
+      <button onClick={() => navigate(rutaClientes)} className="rx-btn rx-btn--outline mt-4">← Volver a clientes</button>
     </div>
   );
 
@@ -112,7 +117,7 @@ export function ClienteDetalle() {
     <div className="w-full min-w-0 space-y-5">
       {/* Header */}
       <div className="flex items-center gap-4">
-        <button onClick={() => navigate('/clientes')} className="rx-icon-btn">
+        <button onClick={() => navigate(rutaClientes)} className="rx-icon-btn" aria-label="Volver a clientes">
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
         </button>
         <div>
@@ -180,6 +185,10 @@ export function ClienteDetalle() {
           )}
 
           {activeTab === 'salud' && (
+            /^[1-9]\d*$/.test(id ?? '') ? <div className="space-y-5">
+              <div><h3 className="font-semibold mb-2">Enfermedades</h3><SaludEtiquetas items={cliente.enfermedades} /></div>
+              <div><h3 className="font-semibold mb-2">Lesiones</h3><SaludEtiquetas items={cliente.lesiones} /></div>
+            </div> :
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               {cliente.perfilSalud ? (
                 <>

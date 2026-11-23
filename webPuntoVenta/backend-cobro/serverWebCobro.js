@@ -14,7 +14,9 @@ const cors = require('cors');
 const { Pool } = require('pg');
 const { imprimirTicket } = require('./ticketService');
 const flujoReservas = require('./reservasFlujo');
-const { esCorreoValido } = require('./validacionCliente');
+const { esCorreoValido, esNombreValido, esTelefonoValido } = require('./validacionCliente');
+const { normalizarSalud } = require('./saludCliente');
+const { normalizarCodigoCliente } = require('./codigoCliente');
 const membresiasService = require('./membresiasService');
 
 const app = express();
@@ -527,7 +529,7 @@ app.post('/api/reservas', async (req, res) => {
 //GET para clientes para llenar tabla del dashboard
 app.get('/api/clientes', async (req, res) => {
   const resultado = await pool.query(
-    `SELECT id, nombre, membresia, telefono, correo, activo,
+    `SELECT id, nombre, membresia, telefono, correo, activo, enfermedades, lesiones,
             EXISTS (SELECT 1 FROM webcobro.membresias_compras mc WHERE mc.cliente_id = webcobro.clientes.id) AS "tieneCompras",
              COALESCE((SELECT jsonb_agg(jsonb_build_object(
                'id', mc.id, 'nombre', mc.condiciones->>'nombre',
@@ -535,7 +537,8 @@ app.get('/api/clientes', async (req, res) => {
                'fechaFin', to_char(mc.fecha_fin, 'YYYY-MM-DD')
              ) ORDER BY mc.fecha_fin DESC, mc.id DESC)
                FROM webcobro.membresias_compras mc WHERE mc.cliente_id = webcobro.clientes.id), '[]'::jsonb) AS "membresiasCompradas",
-            to_char(vigencia_hasta, 'YYYY-MM-DD') AS vigencia_hasta
+             COALESCE(to_jsonb(clientes)->>'codigo_usuario', 'CLI-' || id::text) AS codigo,
+             to_char(vigencia_hasta, 'YYYY-MM-DD') AS vigencia_hasta
        FROM webcobro.clientes ORDER BY id`,
   );
   res.json(resultado.rows);
@@ -545,13 +548,36 @@ app.get('/api/clientes', async (req, res) => {
  * POST para registrar un cliente nuevo (socio). Lo usa el módulo
  * administrativo: queda en webcobro.clientes y aparece al instante en cobro.
  */
+app.get('/api/clientes/codigo-disponible', async (req, res) => {
+  const id = typeof req.query.excluirId === 'string' && /^[1-9]\d*$/.test(req.query.excluirId) ? Number(req.query.excluirId) : null;
+  let codigo;
+  try { codigo = normalizarCodigoCliente(req.query.codigo, id); }
+  catch (error) { return res.status(400).json({ error: error.message }); }
+  res.set('Cache-Control', 'no-store');
+  if (!codigo) return res.json({ disponible: true });
+  const resultado = await pool.query(`SELECT id FROM webcobro.clientes
+    WHERE UPPER(to_jsonb(clientes)->>'codigo_usuario') = $1 AND ($2::integer IS NULL OR id <> $2)`, [codigo, id]);
+  res.json({ disponible: resultado.rows.length === 0 });
+});
+
 app.post('/api/clientes', async (req, res) => {
+  let codigoUsuario;
+  try { codigoUsuario = normalizarCodigoCliente(req.body?.codigo); }
+  catch (error) { return res.status(400).json({ error: error.message }); }
+  if (codigoUsuario) {
+    const usado = await pool.query(`SELECT id FROM webcobro.clientes WHERE UPPER(to_jsonb(clientes)->>'codigo_usuario') = $1`, [codigoUsuario]);
+    if (usado.rows.length) return res.status(409).json({ error: 'Ese código de usuario ya está en uso por otro cliente.' });
+  }
+  let salud;
+  try { salud = normalizarSalud(req.body ?? {}); }
+  catch (error) { return res.status(400).json({ error: error.message }); }
   const { nombre, membresia, telefono, correo, activo, vigencia_hasta } = req.body ?? {};
   if (!esCorreoValido(correo)) return res.status(400).json({ error: 'Introduce un correo electrónico válido.' });
 
-  if (typeof nombre !== 'string' || nombre.trim().length < 3) {
-    return res.status(400).json({ error: 'El nombre del cliente es obligatorio (mínimo 3 letras).' });
+  if (!esNombreValido(nombre)) {
+    return res.status(400).json({ error: 'El nombre debe contener al menos 3 letras y solo admite letras y espacios.' });
   }
+  if (!esTelefonoValido(telefono)) return res.status(400).json({ error: 'El teléfono solo admite números y un máximo de 10 dígitos.' });
 
   const plan = typeof membresia === 'string' && membresia.trim() ? membresia.trim() : 'Sin membresía';
   if (!['Sin membresía', 'Básica', 'Premium'].includes(plan)) {
@@ -572,11 +598,12 @@ app.post('/api/clientes', async (req, res) => {
   const vig = typeof vigencia_hasta === 'string' ? vigencia_hasta : '';
   const nuevo = (
     await pool.query(
-      `INSERT INTO webcobro.clientes (nombre, membresia, telefono, correo, activo, vigencia_hasta)
-       VALUES ($1, $2, $3, $4, $5, NULLIF($6, '')::date)
-       RETURNING id, nombre, membresia, telefono, correo, activo,
+      `INSERT INTO webcobro.clientes (nombre, membresia, telefono, correo, activo, vigencia_hasta, enfermedades, lesiones${codigoUsuario ? ', codigo_usuario' : ''})
+       VALUES ($1, $2, $3, $4, $5, NULLIF($6, '')::date, $7::text[], $8::text[]${codigoUsuario ? ', $9' : ''})
+       RETURNING id, nombre, membresia, telefono, correo, activo, enfermedades, lesiones,
+                 COALESCE(to_jsonb(clientes)->>'codigo_usuario', 'CLI-' || id::text) AS codigo,
                  to_char(vigencia_hasta, 'YYYY-MM-DD') AS vigencia_hasta`,
-      [nombre.trim(), plan, tel, correoLimpio || null, activo === false ? false : true, vig],
+      [nombre.trim(), plan, tel, correoLimpio || null, activo === false ? false : true, vig, salud.enfermedades ?? [], salud.lesiones ?? [], ...(codigoUsuario ? [codigoUsuario] : [])],
     )
   ).rows[0];
 
@@ -846,6 +873,9 @@ app.post('/api/reservas/:id/reagendar', async (req, res) => {
  * vigencia). Lo usa el módulo administrativo; cobro lo refleja al recargar.
  */
 app.patch('/api/clientes/:id', async (req, res) => {
+  let salud;
+  try { salud = normalizarSalud(req.body ?? {}); }
+  catch (error) { return res.status(400).json({ error: error.message }); }
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) {
     return res.status(400).json({ error: 'El id del cliente no es válido.' });
@@ -861,10 +891,26 @@ app.patch('/api/clientes/:id', async (req, res) => {
   const { nombre, membresia, telefono, correo, activo, vigencia_hasta } = req.body ?? {};
   const campos = [];
   const valores = [];
+  if (req.body?.codigo !== undefined) {
+    let codigo;
+    try { codigo = normalizarCodigoCliente(req.body.codigo, id); }
+    catch (error) { return res.status(400).json({ error: error.message }); }
+    if (codigo) {
+      const usado = await pool.query(`SELECT id FROM webcobro.clientes WHERE UPPER(to_jsonb(clientes)->>'codigo_usuario') = $1 AND id <> $2`, [codigo, id]);
+      if (usado.rows.length) return res.status(409).json({ error: 'Ese código de usuario ya está en uso por otro cliente.' });
+    }
+    valores.push(codigo); campos.push(`codigo_usuario = $${valores.length}`);
+  }
+  for (const campo of ['enfermedades', 'lesiones']) {
+    if (salud[campo] !== undefined) {
+      valores.push(salud[campo]);
+      campos.push(`${campo} = $${valores.length}::text[]`);
+    }
+  }
 
   if (nombre !== undefined) {
-    if (typeof nombre !== 'string' || nombre.trim().length < 3) {
-      return res.status(400).json({ error: 'El nombre del cliente es obligatorio (mínimo 3 letras).' });
+    if (!esNombreValido(nombre)) {
+      return res.status(400).json({ error: 'El nombre debe contener al menos 3 letras y solo admite letras y espacios.' });
     }
     valores.push(nombre.trim());
     campos.push(`nombre = $${valores.length}`);
@@ -877,7 +923,8 @@ app.patch('/api/clientes/:id', async (req, res) => {
     campos.push(`membresia = $${valores.length}`);
   }
   if (telefono !== undefined) {
-    valores.push(String(telefono));
+    if (!esTelefonoValido(telefono)) return res.status(400).json({ error: 'El teléfono solo admite números y un máximo de 10 dígitos.' });
+    valores.push((telefono ?? '').trim());
     campos.push(`telefono = $${valores.length}`);
   }
   if (correo !== undefined) {
@@ -912,7 +959,8 @@ app.patch('/api/clientes/:id', async (req, res) => {
   const actualizado = (
     await pool.query(
       `UPDATE webcobro.clientes SET ${campos.join(', ')} WHERE id = $${valores.length}
-       RETURNING id, nombre, membresia, telefono, correo, activo,
+       RETURNING id, nombre, membresia, telefono, correo, activo, enfermedades, lesiones,
+                 COALESCE(to_jsonb(clientes)->>'codigo_usuario', 'CLI-' || id::text) AS codigo,
                  to_char(vigencia_hasta, 'YYYY-MM-DD') AS vigencia_hasta`,
       valores,
     )
@@ -1225,6 +1273,13 @@ if (process.env.ASISTENCIA_TURNOS_HABILITADOS === 'true' &&
 }
 
 //Iniciar Servidor
+app.use((error, _req, res, _next) => {
+  if (error.code === '23505') return res.status(409).json({ error: 'El código de usuario o correo ya está en uso por otro cliente.' });
+  if (error.code === '42703') return res.status(503).json({ error: 'Falta aplicar la migración de códigos de cliente. Contacta al administrador.' });
+  if (error.code === '23514') return res.status(400).json({ error: 'El código de usuario no es válido o está reservado.' });
+  console.error('Error en Cobro:', error.message);
+  res.status(error.status || 500).json({ error: error.status === 400 ? 'Solicitud inválida.' : 'No se pudo completar la operación.' });
+});
 const PORT = Number(process.env.PORT) || 3002;
 
 // Exporta la app para que el gateway unificado pueda montarla bajo su prefijo
@@ -1238,8 +1293,10 @@ module.exports = app;
  * que correr `npm run db:setup` a mano. Se usa la consulta sin bitácora para
  * no imprimir todo el esquema en la terminal.
  */
-const aplicarEsquema = () =>
-  consultaOriginal(fs.readFileSync(path.join(__dirname, 'db', 'schema.sql'), 'utf8'));
+const aplicarEsquema = async () => {
+  await consultaOriginal(fs.readFileSync(path.join(__dirname, 'db', 'schema.sql'), 'utf8'));
+  await consultaOriginal(fs.readFileSync(path.join(__dirname, 'db', 'codigo-cliente.sql'), 'utf8'));
+};
 
 // Revisa cada minuto las clases que ya pasaron para marcar inasistencias,
 // aunque nadie tenga abierta la pantalla de recepción.

@@ -4,15 +4,20 @@ import { DataState } from '../../components/DataState';
 import { DataTable } from '../../components/DataTable';
 import { Modal } from '../../components/Modal';
 import { InputField, SelectField } from '../../components/FormField';
-import { apiCobro } from '../../lib/api';
+import { api, apiCobro } from '../../lib/api';
 import { useNavigate } from 'react-router';
 import { MembresiasCliente, type MembresiaComprada } from './MembresiasCliente';
+import ListaSalud, { SaludEtiquetas } from './SaludEtiquetas';
+import { esNombreValido, esTelefonoValido, esCorreoValido, errorCodigoCliente } from './validacionCliente';
 
 // Un cliente tal como lo devuelve GET /cobro/api/clientes. Estos registros
 // viven en la tabla webcobro.clientes (PostgreSQL): son los mismos socios que
 // usa el módulo de Cobro (front desk) para reservar clases.
 interface SocioCobro {
+  enfermedades?: string[];
+  lesiones?: string[];
   id: number;
+  codigo?: string | null;
   nombre: string;
   codigo?: string | null;
   membresiasCompradas?: MembresiaComprada[];
@@ -22,6 +27,9 @@ interface SocioCobro {
 }
 
 interface SocioForm {
+  codigo?: string;
+  enfermedades: string[];
+  lesiones: string[];
   nombre: string;
   correo: string;
   telefono: string;
@@ -29,6 +37,9 @@ interface SocioForm {
 }
 
 const FORM_VACIO: SocioForm = {
+  codigo: '',
+  enfermedades: [],
+  lesiones: [],
   nombre: '',
   correo: '',
   telefono: '',
@@ -41,7 +52,7 @@ function estatusDe(s: SocioCobro): 'activo' | 'inactivo' {
   return 'activo';
 }
 
-export function ClientesPage({ soloRegistro = false }: { soloRegistro?: boolean } = {}) {
+export function ClientesPage({ soloRegistro = false, rutaClientes = '/clientes' }: { soloRegistro?: boolean; rutaClientes?: string } = {}) {
   const navigate = useNavigate();
   const [clientes, setClientes] = useState<SocioCobro[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,6 +66,44 @@ export function ClientesPage({ soloRegistro = false }: { soloRegistro?: boolean 
   const [accionError, setAccionError] = useState<string | null>(null);
   const [procesando, setProcesando] = useState<number | null>(null);
   const [actualizando, setActualizando] = useState(false);
+  const [activacion, setActivacion] = useState<{ nombre: string; codigo: string } | null>(null);
+  const [tocados, setTocados] = useState<Partial<Record<'nombre' | 'correo' | 'telefono' | 'codigo', boolean>>>({});
+  const [avisos, setAvisos] = useState<Partial<Record<'nombre' | 'telefono', string>>>({});
+  const [consultaCodigo, setConsultaCodigo] = useState<{ valor: string; error: string; pendiente: boolean } | null>(null);
+  const codigoLimpio = (form.codigo ?? '').trim().toUpperCase();
+  const codigoLocalError = errorCodigoCliente(codigoLimpio, editando?.id)
+    || (codigoLimpio && clientes.some(s => s.id !== editando?.id && (s.codigo || `CLI-${s.id}`).toUpperCase() === codigoLimpio)
+      ? 'Ese código de usuario ya está en uso por otro cliente.' : '');
+  const necesitaConsultaCodigo = Boolean(codigoLimpio && codigoLimpio !== (editando?.codigo || (editando ? `CLI-${editando.id}` : '')));
+  const codigoPendiente = modal && necesitaConsultaCodigo && !codigoLocalError
+    && (consultaCodigo?.valor !== codigoLimpio || consultaCodigo.pendiente);
+
+  useEffect(() => {
+    if (!modal || !necesitaConsultaCodigo || codigoLocalError || typeof window === 'undefined') return;
+    let vigente = true;
+    setConsultaCodigo({ valor: codigoLimpio, error: '', pendiente: true });
+    const timer = window.setTimeout(async () => {
+      try {
+        const resultado = await apiCobro.get<{ disponible: boolean }>(`/clientes/codigo-disponible?codigo=${encodeURIComponent(codigoLimpio)}${editando ? `&excluirId=${editando.id}` : ''}`);
+        if (vigente) setConsultaCodigo({ valor: codigoLimpio, error: resultado.disponible ? '' : 'Ese código de usuario ya está en uso por otro cliente.', pendiente: false });
+      } catch (err) {
+        if (vigente) setConsultaCodigo({ valor: codigoLimpio, error: err instanceof Error ? err.message : 'No se pudo comprobar el código. Intenta de nuevo.', pendiente: false });
+      }
+    }, 300);
+    return () => { vigente = false; window.clearTimeout(timer); };
+  }, [modal, codigoLimpio, editando?.id, necesitaConsultaCodigo, codigoLocalError]);
+
+  const errores = {
+    codigo: codigoLocalError || (necesitaConsultaCodigo && consultaCodigo?.valor === codigoLimpio ? consultaCodigo.error : ''),
+    nombre: avisos.nombre || (!esNombreValido(form.nombre) ? 'El nombre debe contener al menos 3 letras y solo admite letras y espacios.' : ''),
+    correo: !form.correo.trim() ? 'El correo es obligatorio.'
+      : !esCorreoValido(form.correo) ? 'Introduce un correo electrónico válido.'
+      : clientes.some(s => s.id !== editando?.id && s.correo?.trim().toLowerCase() === form.correo.trim().toLowerCase())
+        ? 'Ese correo ya está en uso por otro cliente.' : '',
+    telefono: avisos.telefono || (!esTelefonoValido(form.telefono) ? 'El teléfono solo admite números y un máximo de 10 dígitos.' : ''),
+  };
+
+  const tocar = (campo: 'nombre' | 'correo' | 'telefono' | 'codigo') => setTocados(prev => ({ ...prev, [campo]: true }));
 
   // Recarga en segundo plano sin desmontar la tabla ni perder sus filtros.
   useEffect(() => {
@@ -102,6 +151,9 @@ export function ClientesPage({ soloRegistro = false }: { soloRegistro?: boolean 
     };
   }, []);
   const abrirNuevo = () => {
+    setConsultaCodigo(null);
+    setTocados({});
+    setAvisos({});
     setEditando(null);
     setForm(FORM_VACIO);
     setFormError(null);
@@ -109,8 +161,14 @@ export function ClientesPage({ soloRegistro = false }: { soloRegistro?: boolean 
   };
 
   const abrirEditar = (s: SocioCobro) => {
+    setConsultaCodigo(null);
+    setTocados({ nombre: true, correo: true, telefono: true });
+    setAvisos({});
     setEditando(s);
     setForm({
+      codigo: s.codigo || `CLI-${s.id}`,
+      enfermedades: s.enfermedades ?? [],
+      lesiones: s.lesiones ?? [],
       nombre: s.nombre,
       correo: s.correo ?? '',
       telefono: s.telefono ?? '',
@@ -124,18 +182,35 @@ export function ClientesPage({ soloRegistro = false }: { soloRegistro?: boolean 
   // su búsqueda/página. No se actualiza la UI si el servidor rechaza el cambio.
   const save = async () => {
     if (guardando) return;
-    setFormError(null);
-    if (form.nombre.trim().length < 3) {
-      setFormError('El nombre del cliente es obligatorio (mínimo 3 letras).');
+    if (errores.codigo || codigoPendiente) {
+      tocar('codigo');
+      setFormError(errores.codigo || 'Espera a que termine la comprobación del código.');
       return;
     }
-    if (form.correo.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.correo.trim())) {
-      setFormError('Introduce un correo electrónico válido.');
+    setFormError(null);
+    setTocados({ nombre: true, correo: true, telefono: true });
+    if (!esNombreValido(form.nombre)) {
+      setFormError('El nombre debe contener al menos 3 letras y solo admite letras y espacios.');
+      return;
+    }
+    if (!esTelefonoValido(form.telefono)) {
+      setFormError('El teléfono solo admite números y un máximo de 10 dígitos.');
+      return;
+    }
+    if (!esCorreoValido(form.correo)) {
+      setFormError(form.correo.trim() ? 'Introduce un correo electrónico válido.' : 'El correo es obligatorio.');
+      return;
+    }
+    if (errores.correo) {
+      setFormError(errores.correo);
       return;
     }
     setGuardando(true);
     try {
       const cuerpo = {
+        ...(form.codigo !== undefined && (!editando || codigoLimpio !== (editando.codigo || `CLI-${editando.id}`)) ? { codigo: codigoLimpio } : {}),
+        enfermedades: form.enfermedades,
+        lesiones: form.lesiones,
         nombre: form.nombre.trim(),
         correo: form.correo.trim(),
         telefono: form.telefono.trim(),
@@ -191,8 +266,29 @@ export function ClientesPage({ soloRegistro = false }: { soloRegistro?: boolean 
 
   const activos = clientes.filter(c => estatusDe(c) === 'activo').length;
 
+  const habilitarMovil = async (s: SocioCobro) => {
+    if (procesando !== null) return;
+    setProcesando(s.id);
+    setAccionError(null);
+    setActivacion(null);
+    try {
+      const respuesta = await api.post<{ codigoActivacion: string }>(`/movil/clientes/${s.id}/activacion`);
+      setActivacion({ nombre: s.nombre, codigo: respuesta.codigoActivacion });
+    } catch (err) {
+      setAccionError(err instanceof Error ? err.message : 'No se pudo habilitar el acceso móvil.');
+    } finally { setProcesando(null); }
+  };
+
   return (
     <section className="rx-admin-dashboard rx-clientes w-full min-w-0">
+      {activacion && (
+        <Modal open title="Activar cuenta móvil" onClose={() => setActivacion(null)} size="sm">
+          <p>Entrega este código únicamente a {activacion.nombre} después de comprobar su identidad.</p>
+          <p className="my-4 break-all font-mono select-all">{activacion.codigo}</p>
+          <p>Vence en 15 minutos y solo se puede utilizar una vez. No es el código del checador. Generar otro invalida el anterior.</p>
+          <button type="button" className="rx-btn rx-btn--outline mt-4" onClick={() => setActivacion(null)}>Cerrar</button>
+        </Modal>
+      )}
       <header className="rx-page-header rx-admin-dashboard-header">
         <div className="rx-page-heading rx-page-heading--stacked">
           <span className="rx-section-eyebrow">Atención de clientes</span>
@@ -224,19 +320,14 @@ export function ClientesPage({ soloRegistro = false }: { soloRegistro?: boolean 
       <DataState loading={loading}>
         <DataTable
           variant="spaced"
-          searchPlaceholder="Buscar por nombre, correo o teléfono…"
+          searchPlaceholder="Buscar por código, nombre, correo o teléfono…"
           searchKeys={['codigo', 'nombre', 'correo', 'telefono']}
-          data={clientes as unknown as Record<string, unknown>[]}
+          data={clientes.map(s => ({ ...s, codigo: s.codigo || `CLI-${s.id}` })) as unknown as Record<string, unknown>[]}
           emptyMessage="No hay clientes que mostrar"
           columns={[
             {
               key: 'codigo', header: 'Código Usuario',
-              render: row => {
-                const s = row as unknown as SocioCobro;
-                return (
-                  <span className="rx-code">{s.codigo || `—`}</span>
-                );
-              }
+              render: row => <span className="rx-code">{String(row.codigo ?? '—')}</span>,
             },
             {
               key: 'nombre', header: 'Cliente',
@@ -255,6 +346,8 @@ export function ClientesPage({ soloRegistro = false }: { soloRegistro?: boolean 
               }
             },
             { key: 'telefono', header: 'Teléfono' },
+            { key: 'enfermedades', header: 'Enfermedades', render: row => <SaludEtiquetas items={(row as unknown as SocioCobro).enfermedades} /> },
+            { key: 'lesiones', header: 'Lesiones', render: row => <SaludEtiquetas items={(row as unknown as SocioCobro).lesiones} /> },
             {
               key: 'membresiasCompradas', header: 'Membresías compradas',
               render: row => <MembresiasCliente compras={(row as unknown as SocioCobro).membresiasCompradas} />
@@ -269,7 +362,8 @@ export function ClientesPage({ soloRegistro = false }: { soloRegistro?: boolean 
             const activoManual = s.activo !== false;
             return (
               <div className="flex items-center gap-2 justify-end">
-                <button type="button" onClick={() => navigate(`/clientes/${s.id}`)} className="rx-btn rx-btn--outline" title="Ver perfil e historial">Ver perfil</button>
+                <button type="button" onClick={() => navigate(`${rutaClientes}/${s.id}`)} className="rx-btn rx-btn--outline" title="Ver perfil e historial">Ver perfil</button>
+                <button type="button" disabled={procesando !== null || actualizando || !s.activo || !s.correo} onClick={() => void habilitarMovil(s)} className="rx-btn rx-btn--outline" title="Generar código temporal para activar la cuenta móvil">Acceso móvil</button>
                 <button type="button" disabled={procesando !== null || actualizando} onClick={() => abrirEditar(s)} className="rx-icon-btn" title="Editar" aria-label={`Editar a ${s.nombre}`}>
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                 </button>
@@ -293,17 +387,39 @@ export function ClientesPage({ soloRegistro = false }: { soloRegistro?: boolean 
         subtitle={editando ? 'Actualiza los datos del cliente.' : 'Registra los datos del cliente para comenzar su atención.'}
         footer={<>
           <button type="button" disabled={guardando} onClick={() => setModal(false)} className="rx-btn rx-btn--outline">Cancelar</button>
-          <button type="submit" form="form-cliente" disabled={guardando} className="rx-btn rx-btn--dark">
+          <button type="submit" form="form-cliente" disabled={guardando || Boolean(errores.codigo) || codigoPendiente} className="rx-btn rx-btn--dark">
             <span className="material-symbols-rounded text-xl" aria-hidden="true">{editando ? 'save' : 'person_add'}</span>
             {guardando ? 'Guardando...' : editando ? 'Guardar cambios' : 'Registrar cliente'}
           </button>
         </>}>
-        <form id="form-cliente" className="rx-modal-body rx-form-stack" onSubmit={async e => { e.preventDefault(); await save(); }}>
+        <form id="form-cliente" noValidate className="rx-modal-body rx-form-stack" onSubmit={async e => { e.preventDefault(); await save(); }}>
         <fieldset disabled={guardando} className="rx-form-stack rx-membership-fields">
-          <InputField label="Nombre completo" required autoComplete="name" aria-label="Nombre completo" value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))} placeholder="Ej. Juan Pérez" />
-          <InputField label="Correo" type="email" autoComplete="email" aria-label="Correo" value={form.correo} onChange={e => setForm(f => ({ ...f, correo: e.target.value }))} placeholder="Opcional, debe ser único" />
-          <InputField label="Teléfono" type="tel" value={form.telefono} onChange={e => setForm(f => ({ ...f, telefono: e.target.value }))} />
+          <InputField label="Código Usuario" aria-label="Código Usuario" autoComplete="off" maxLength={30}
+            value={form.codigo ?? ''} placeholder="Automático si se deja vacío (CLI-ID)"
+            error={tocados.codigo ? errores.codigo : undefined} onBlur={() => tocar('codigo')}
+            onChange={e => { tocar('codigo'); setConsultaCodigo(null); setFormError(null); setForm(f => ({ ...f, codigo: e.target.value.toUpperCase() })); }} />
+          <span className="rx-help-text" role="status" aria-live="polite">{codigoPendiente ? 'Comprobando disponibilidad del código…' : 'De 3 a 30 letras, números o guiones. Vacío conserva el código automático. No cambia el ID ni el historial.'}</span>
+          <InputField label="Nombre completo" required autoComplete="name" aria-label="Nombre completo" error={tocados.nombre ? errores.nombre : undefined} onBlur={() => tocar('nombre')} value={form.nombre} onChange={e => {
+            const texto = e.target.value.normalize('NFC');
+            const nombre = texto.replace(/[^\p{L}\p{M} ]/gu, '');
+            tocar('nombre'); setFormError(null);
+            setAvisos(prev => ({ ...prev, nombre: texto !== nombre ? 'Solo se permiten letras y espacios; se eliminaron los caracteres no válidos.' : '' }));
+            setForm(f => ({ ...f, nombre }));
+          }} placeholder="Ej. Juan Pérez" />
+          <InputField label="Correo" required type="email" maxLength={254} autoComplete="email" aria-label="Correo" error={tocados.correo ? errores.correo : undefined} onBlur={() => tocar('correo')} value={form.correo} onChange={e => {
+            tocar('correo'); setFormError(null);
+            setForm(f => ({ ...f, correo: e.target.value }));
+          }} placeholder="Ej. nombre@ejemplo.com" />
+          <InputField label="Teléfono" type="tel" inputMode="numeric" autoComplete="tel-national" aria-label="Teléfono" maxLength={10} pattern="[0-9]{0,10}" title="Solo números, máximo 10 dígitos" error={tocados.telefono ? errores.telefono : undefined} onBlur={() => tocar('telefono')} value={form.telefono} onChange={e => {
+            const texto = e.target.value;
+            const telefono = texto.replace(/[^0-9]/g, '').slice(0, 10);
+            tocar('telefono'); setFormError(null);
+            setAvisos(prev => ({ ...prev, telefono: texto !== telefono ? 'Solo se permiten números y un máximo de 10 dígitos; se ajustó el valor ingresado.' : '' }));
+            setForm(f => ({ ...f, telefono }));
+          }} />
           <SelectField label="Estatus" value={form.activo ? 'activo' : 'inactivo'} onChange={e => setForm(f => ({ ...f, activo: e.target.value === 'activo' }))} options={[{ value: 'activo', label: 'Activo' }, { value: 'inactivo', label: 'Inactivo' }]} />
+          <ListaSalud key={`enfermedades-${editando?.id ?? 'nuevo'}-${modal}`} label="Enfermedades" items={form.enfermedades} onChange={enfermedades => setForm(f => ({ ...f, enfermedades }))} />
+          <ListaSalud key={`lesiones-${editando?.id ?? 'nuevo'}-${modal}`} label="Lesiones" items={form.lesiones} onChange={lesiones => setForm(f => ({ ...f, lesiones }))} />
           <span className="rx-help-text">Las membresías se venden desde Recepción. Las compras y sus vigencias se consultan en la tabla de clientes.</span>
         </fieldset>
         {formError && <p className="rx-alert rx-alert--danger" role="alert">{formError}</p>}

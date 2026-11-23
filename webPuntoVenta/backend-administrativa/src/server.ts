@@ -15,6 +15,8 @@ import membresiaRoutes from './routes/membresia.routes';
 import reportesRoutes from './routes/reportes.routes';
 import { requireAuth, requireRole } from './middleware/auth';
 import { connectDB } from './lib/mongo';
+import { pool } from './lib/post';
+import { crearRutasClientesMovil } from './routes/clientes-movil.routes';
 import { iniciarMantenimientoHorizonte } from './services/mantener-horizonte-sesiones';
 
 if (!process.env.JWT_SECRET) {
@@ -31,6 +33,7 @@ app.use(express.json());
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 app.use('/api/auth', authRoutes);
+app.use('/api/movil', crearRutasClientesMovil(pool));
 app.use('/api/clientes', clienteRoutes);
 app.use('/api/reservaciones', reservacionRoutes);
 app.use('/api/horarios', horarioRoutes);
