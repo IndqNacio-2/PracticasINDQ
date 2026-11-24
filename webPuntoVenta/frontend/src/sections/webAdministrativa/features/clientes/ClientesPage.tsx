@@ -46,6 +46,17 @@ const FORM_VACIO: SocioForm = {
   activo: true,
 };
 
+const LESIONES_PARTES: { value: string; label: string }[] = [
+  { value: 'brazo', label: 'Brazo' },
+  { value: 'mano', label: 'Mano' },
+  { value: 'pierna', label: 'Pierna' },
+  { value: 'cintura', label: 'Cintura' },
+  { value: 'espalda', label: 'Espalda' },
+  { value: 'hombro', label: 'Hombro' },
+  { value: 'cuello', label: 'Cuello' },
+  { value: 'pie', label: 'Pie' },
+];
+
 // La baja del cliente es independiente de las vigencias de sus compras.
 function estatusDe(s: SocioCobro): 'activo' | 'inactivo' {
   if (s.activo === false) return 'inactivo';
@@ -68,6 +79,8 @@ export function ClientesPage({ soloRegistro = false, rutaClientes = '/clientes' 
   const [actualizando, setActualizando] = useState(false);
   const [activacion, setActivacion] = useState<{ nombre: string; codigo: string } | null>(null);
   const [tocados, setTocados] = useState<Partial<Record<'nombre' | 'correo' | 'telefono' | 'codigo', boolean>>>({});
+  const [lesionParte, setLesionParte] = useState('');
+  const [lesionDescripcion, setLesionDescripcion] = useState('');
   const [avisos, setAvisos] = useState<Partial<Record<'nombre' | 'telefono', string>>>({});
   const [consultaCodigo, setConsultaCodigo] = useState<{ valor: string; error: string; pendiente: boolean } | null>(null);
   const codigoLimpio = (form.codigo ?? '').trim().toUpperCase();
@@ -279,6 +292,22 @@ export function ClientesPage({ soloRegistro = false, rutaClientes = '/clientes' 
     } finally { setProcesando(null); }
   };
 
+  const agregarLesion = () => {
+    if (!lesionParte) return;
+    const entrada = lesionDescripcion.trim()
+      ? `${lesionParte}: ${lesionDescripcion.trim()}`
+      : lesionParte;
+    if (!form.lesiones.includes(entrada)) {
+      setForm(f => ({ ...f, lesiones: [...f.lesiones, entrada] }));
+      setLesionParte('');
+      setLesionDescripcion('');
+    }
+  };
+
+  const quitarLesion = (entrada: string) => {
+    setForm(f => ({ ...f, lesiones: f.lesiones.filter(l => l !== entrada) }));
+  };
+
   return (
     <section className="rx-admin-dashboard rx-clientes w-full min-w-0">
       {activacion && (
@@ -419,7 +448,56 @@ export function ClientesPage({ soloRegistro = false, rutaClientes = '/clientes' 
           }} />
           <SelectField label="Estatus" value={form.activo ? 'activo' : 'inactivo'} onChange={e => setForm(f => ({ ...f, activo: e.target.value === 'activo' }))} options={[{ value: 'activo', label: 'Activo' }, { value: 'inactivo', label: 'Inactivo' }]} />
           <ListaSalud key={`enfermedades-${editando?.id ?? 'nuevo'}-${modal}`} label="Enfermedades" items={form.enfermedades} onChange={enfermedades => setForm(f => ({ ...f, enfermedades }))} />
-          <ListaSalud key={`lesiones-${editando?.id ?? 'nuevo'}-${modal}`} label="Lesiones" items={form.lesiones} onChange={lesiones => setForm(f => ({ ...f, lesiones }))} />
+          <div className="rx-form-stack">
+            <div className="text-sm font-medium">
+              Lesiones <span className="rx-help-text">(opcional)</span>
+              <div className="flex gap-2 mt-2">
+                <SelectField
+                  label="Parte del cuerpo"
+                  options={LESIONES_PARTES}
+                  value={lesionParte}
+                  onChange={e => setLesionParte(e.target.value)}
+                />
+                <InputField
+                  label="Descripción breve"
+                  value={lesionDescripcion}
+                  onChange={e => setLesionDescripcion(e.target.value)}
+                  placeholder="Ej. lesión en el hombro derecho cuando hace fuerza"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={agregarLesion}
+                disabled={!lesionParte}
+                className="rx-btn rx-btn--outline mt-2"
+              >
+                Agregar lesión
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-2 mt-2">
+              {form.lesiones.length > 0
+                ? form.lesiones.map(entrada => {
+                    const idx = entrada.indexOf(':');
+                    const parte = idx > 0 ? entrada.slice(0, idx).trim() : entrada;
+                    const descripcion = idx > 0 ? entrada.slice(idx + 1).trim() : '';
+                    return (
+                      <span key={entrada} className="rx-badge break-words">
+                        {parte}
+                        {descripcion ? ` — ${descripcion}` : ''}
+                        <button
+                          type="button"
+                          aria-label={`Quitar ${parte}`}
+                          onClick={() => quitarLesion(entrada)}
+                          className="ml-1"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    );
+                  })
+                : <span className="rx-help-text">Ninguna registrada</span>}
+            </div>
+          </div>
           <span className="rx-help-text">Las membresías se venden desde Recepción. Las compras y sus vigencias se consultan en la tabla de clientes.</span>
         </fieldset>
         {formError && <p className="rx-alert rx-alert--danger" role="alert">{formError}</p>}
