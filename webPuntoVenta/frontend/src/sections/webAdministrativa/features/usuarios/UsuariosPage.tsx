@@ -101,12 +101,12 @@ function FormacionEditor({ titulo, descripcion, items, onChange, onError, disabl
   return (
     <div className="col-span-2 space-y-3">
       <div>
-        <p className="text-sm font-medium text-gray-800">{titulo}</p>
-        <p className="text-xs text-gray-500">{descripcion}</p>
+        <p className="text-sm font-medium text-[color:var(--rx-ink)]">{titulo}</p>
+        <p className="text-xs text-[color:var(--rx-ink-secondary)]">{descripcion}</p>
       </div>
 
       {items.map((item, i) => (
-        <div key={i} className="rounded-xl border border-gray-100 p-3 space-y-3">
+        <div key={i} className="rounded-[var(--rx-radius-medium)] border border-[var(--rx-line)] p-3 space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <InputField label="Nombre" required value={item.nombre} className="col-span-2"
               onChange={e => actualizar(i, { nombre: e.target.value })} />
@@ -125,7 +125,7 @@ function FormacionEditor({ titulo, descripcion, items, onChange, onError, disabl
             </label>
             {item.documento && (
               <>
-                <span className="text-xs text-green-600">Documento adjunto</span>
+                <span className="text-xs text-[color:var(--rx-success)]">Documento adjunto</span>
                 <button type="button" disabled={disabled} className="rx-btn rx-btn--outline"
                   onClick={() => actualizar(i, { documento: '' })}>Quitar documento</button>
               </>
@@ -340,21 +340,24 @@ export function UsuariosPage() {
   };
 
   return (
-    <div className="space-y-5 max-w-7xl">
-      <div className="flex items-center justify-between">
+    <div className="rx-usuarios">
+      <header className="rx-page-header rx-module-header">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>Usuarios de la Plataforma</h1>
-          <p className="text-gray-500 text-sm mt-0.5">{usuarios.filter(u => u.estatus === 'activo').length} activos de {usuarios.length} totales</p>
+          <h1 className="rx-page-title">Usuarios de la Plataforma</h1>
+          <p className="rx-page-subtitle">{usuarios.filter(u => u.estatus === 'activo').length} activos de {usuarios.length} totales</p>
         </div>
-        {puedeGestionar && (
-          <button onClick={openNew} className="rx-btn rx-btn--accent">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-            Nuevo usuario
-          </button>
-        )}
-      </div>
+        <div className="rx-module-header-actions">
+          {puedeGestionar && (
+            <button onClick={openNew} className="rx-btn rx-btn--accent">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+              Nuevo usuario
+            </button>
+          )}
+        </div>
+      </header>
 
-      <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit">
+      <div className="rx-usuarios-content space-y-5">
+      <div className="flex gap-1 bg-[var(--rx-surface-soft)] p-1 rounded-[var(--rx-radius-medium)] w-fit">
         {filterTabs.map(tab => (
           <button key={tab.value} onClick={() => setFilter(tab.value)}
             className={`rx-tab ${filter === tab.value ? 'rx-tab--active' : ''}`}>
@@ -380,10 +383,10 @@ export function UsuariosPage() {
                 const u = row as unknown as Usuario;
                 return (
                   <div className="flex items-center gap-3">
-                    <UsuarioAvatar foto={u.foto} nombre={u.nombre} apellidos={u.apellidos} className="w-8 h-8 rounded-full bg-[#F3F4F6] text-[#6B7280] text-xs font-bold" />
+                    <UsuarioAvatar foto={u.foto} nombre={u.nombre} apellidos={u.apellidos} className="w-8 h-8 rounded-full bg-[var(--rx-surface-soft)] text-[color:var(--rx-ink-secondary)] text-xs font-bold" />
                     <div>
-                      <p className="font-medium text-gray-800">{u.nombre} {u.apellidos}</p>
-                      <p className="text-xs text-gray-400">{u.correo}</p>
+                      <p className="font-medium text-[color:var(--rx-ink)]">{u.nombre} {u.apellidos}</p>
+                      <p className="text-xs text-[color:var(--rx-ink-muted)]">{u.correo}</p>
                     </div>
                   </div>
                 );
@@ -404,7 +407,7 @@ export function UsuariosPage() {
           actions={(row) => {
             const u = row as unknown as Usuario;
             // Sin permiso (entrenador) no se muestran acciones de edición/baja.
-            if (!puedeGestionar) return <span className="text-gray-300 text-xs">Solo lectura</span>;
+            if (!puedeGestionar) return <span className="text-[color:var(--rx-line-strong)] text-xs">Solo lectura</span>;
             return (
               <div className="flex items-center gap-2 justify-end">
                 <button onClick={() => openEdit(u)} className="rx-icon-btn" title="Editar">
@@ -421,14 +424,15 @@ export function UsuariosPage() {
           }}
         />
       </DataState>
+      </div>
 
       <Modal open={modal.open} onClose={cerrarModal} title={modal.editing ? 'Editar usuario' : 'Nuevo usuario'}>
         <div className="grid grid-cols-2 gap-4">
-          <div className="col-span-2 flex flex-wrap items-center gap-4 rounded-xl border border-gray-100 p-4">
-            <UsuarioAvatar foto={form.foto} nombre={form.nombre} apellidos={form.apellidos} className="w-16 h-16 rounded-full bg-gray-100 text-gray-500 text-lg font-bold" />
+          <div className="col-span-2 flex flex-wrap items-center gap-4 rounded-[var(--rx-radius-medium)] border border-[var(--rx-line)] p-4">
+            <UsuarioAvatar foto={form.foto} nombre={form.nombre} apellidos={form.apellidos} className="w-16 h-16 rounded-full bg-[var(--rx-surface-soft)] text-[color:var(--rx-ink-secondary)] text-lg font-bold" />
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-gray-800">Foto de perfil</p>
-              <p className="text-xs text-gray-500 mt-1">Opcional · JPG, PNG o WEBP · máximo 10 MB. Se reduce automáticamente.</p>
+              <p className="text-sm font-medium text-[color:var(--rx-ink)]">Foto de perfil</p>
+              <p className="text-xs text-[color:var(--rx-ink-secondary)] mt-1">Opcional · JPG, PNG o WEBP · máximo 10 MB. Se reduce automáticamente.</p>
               <input ref={inputFoto} aria-label="Seleccionar foto de perfil" type="file" accept="image/jpeg,image/png,image/webp" disabled={saving || procesandoFoto}
                 className="hidden"
                 onChange={e => { const archivo = e.currentTarget.files?.[0]; e.currentTarget.value = ''; void seleccionarFoto(archivo); }} />
@@ -437,7 +441,7 @@ export function UsuariosPage() {
                 <Icon name="photo_camera" size={20} />
                 {procesandoFoto ? 'Procesando foto...' : form.foto ? 'Cambiar foto' : 'Agregar foto'}
               </button>
-              {procesandoFoto && <p role="status" className="mt-2 text-xs text-gray-500">Procesando foto...</p>}
+              {procesandoFoto && <p role="status" className="mt-2 text-xs text-[color:var(--rx-ink-secondary)]">Procesando foto...</p>}
               {form.foto && <button type="button" disabled={saving || procesandoFoto} className="rx-btn rx-btn--outline mt-2" onClick={() => setForm(f => ({ ...f, foto: '' }))}>Quitar foto</button>}
             </div>
           </div>
@@ -449,7 +453,7 @@ export function UsuariosPage() {
             <div className="rx-field">
               <label className="rx-label" htmlFor="numero-acceso">Código de Acceso <span className="rx-required-mark">*</span></label>
               <div className="flex items-center gap-2">
-                <span className="rounded-xl bg-gray-100 px-3 py-2 font-semibold" aria-label="Prefijo automático">{modal.editing && !codigoNuevo ? form.codigoAcceso.replace(/\d+$/, '') || '—' : form.rol ? PREFIJOS_USUARIO[form.rol] : '—'}</span>
+                <span className="rounded-[var(--rx-radius-medium)] bg-[var(--rx-surface-soft)] px-3 py-2 font-semibold" aria-label="Prefijo automático">{modal.editing && !codigoNuevo ? form.codigoAcceso.replace(/\d+$/, '') || '—' : form.rol ? PREFIJOS_USUARIO[form.rol] : '—'}</span>
                 <input id="numero-acceso" className="rx-input" type="text" inputMode="numeric" pattern="[0-9]+" maxLength={27}
                   aria-label="Número de acceso" aria-describedby="ayuda-numero-acceso" aria-invalid={Boolean(form.codigoAcceso && errorCodigo)}
                   disabled={!form.rol || saving} value={form.codigoAcceso.match(/\d+$/)?.[0] ?? ''}
@@ -458,12 +462,12 @@ export function UsuariosPage() {
                     setForm(f => ({ ...f, codigoAcceso: `${f.rol ? PREFIJOS_USUARIO[f.rol] : ''}${e.target.value.replace(/\D/g, '')}` }));
                   }} />
               </div>
-              <p id="ayuda-numero-acceso" className="mt-1 text-xs text-gray-500">El prefijo depende del rol. El número no puede repetirse entre usuarios, aunque tengan otro rol.</p>
+              <p id="ayuda-numero-acceso" className="mt-1 text-xs text-[color:var(--rx-ink-secondary)]">El prefijo depende del rol. El número no puede repetirse entre usuarios, aunque tengan otro rol.</p>
               {modal.editing && !codigoNuevo && validarCodigoUsuario(form.codigoAcceso, form.rol) &&
-                <p className="mt-1 text-xs text-gray-500">Código anterior: {form.codigoAcceso}. Se conserva mientras no cambies el rol o el número; al cambiarlos se aplicará el prefijo del rol.</p>}
+                <p className="mt-1 text-xs text-[color:var(--rx-ink-secondary)]">Código anterior: {form.codigoAcceso}. Se conserva mientras no cambies el rol o el número; al cambiarlos se aplicará el prefijo del rol.</p>}
               {form.codigoAcceso && errorCodigo && <p role="alert" className="rx-error-text">{errorCodigo}</p>}
             </div>
-          {verificandoCodigo && <p role="status" className="text-xs text-gray-500">Verificando número de acceso...</p>}
+          {verificandoCodigo && <p role="status" className="text-xs text-[color:var(--rx-ink-secondary)]">Verificando número de acceso...</p>}
           <SelectField label="Estatus" value={form.estatus} onChange={e => setForm(f => ({ ...f, estatus: e.target.value as Estatus }))} options={[{ value: 'activo', label: 'Activo' }, { value: 'inactivo', label: 'Inactivo' }]} />
           {/* Contraseña: obligatoria al crear; al editar, si se deja en blanco no se cambia. */}
           <InputField
@@ -479,13 +483,13 @@ export function UsuariosPage() {
           {/* Datos del coach: solo aparecen cuando el rol es Entrenador. Se muestran en la app móvil. */}
           {esEntrenador && (
             <>
-              <div className="col-span-2 border-t border-gray-100 pt-4">
-                <p className="text-base font-semibold text-gray-900">Datos del coach</p>
-                <p className="text-xs text-gray-500">Esta información se muestra en la aplicación móvil.</p>
+              <div className="col-span-2 border-t border-[var(--rx-line)] pt-4">
+                <p className="text-base font-semibold text-[color:var(--rx-ink)]">Datos del coach</p>
+                <p className="text-xs text-[color:var(--rx-ink-secondary)]">Esta información se muestra en la aplicación móvil.</p>
               </div>
 
               <div className="col-span-2">
-                <label className="block text-sm font-medium text-gray-800 mb-1" htmlFor="resumen-coach">
+                <label className="block text-sm font-medium text-[color:var(--rx-ink)] mb-1" htmlFor="resumen-coach">
                   Resumen de formación o historia
                 </label>
                 <textarea
@@ -495,10 +499,10 @@ export function UsuariosPage() {
                   disabled={saving}
                   value={form.resumen}
                   onChange={e => setForm(f => ({ ...f, resumen: e.target.value }))}
-                  className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
+                  className="w-full rounded-[var(--rx-radius-medium)] border border-[var(--rx-line)] px-3 py-2 text-sm"
                   placeholder="Cuenta brevemente su formación, trayectoria o historia como coach."
                 />
-                <p className="text-xs text-gray-400 text-right">{form.resumen.length}/{MAX_RESUMEN}</p>
+                <p className="text-xs text-[color:var(--rx-ink-muted)] text-right">{form.resumen.length}/{MAX_RESUMEN}</p>
               </div>
 
               <FormacionEditor
@@ -520,8 +524,8 @@ export function UsuariosPage() {
             </>
           )}
         </div>
-        {formError && <p role="alert" className="mt-3 text-sm text-red-500">{formError}</p>}
-        <div className="flex gap-3 mt-6 pt-4 border-t border-gray-100">
+        {formError && <p role="alert" className="mt-3 text-sm text-[color:var(--rx-danger)]">{formError}</p>}
+        <div className="flex gap-3 mt-6 pt-4 border-t border-[var(--rx-line)]">
           <button onClick={cerrarModal} disabled={saving} className="rx-btn rx-btn--outline flex-1">Cancelar</button>
           <button onClick={save} disabled={saving || procesandoFoto || verificandoCodigo || Boolean(errorCodigo)} className="rx-btn rx-btn--dark flex-1">
             {saving && <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" /></svg>}
@@ -531,7 +535,7 @@ export function UsuariosPage() {
       </Modal>
 
       <Modal open={!!confirmToggle} onClose={() => setConfirmToggle(null)} title={confirmToggle?.estatus === 'activo' ? 'Dar de baja usuario' : 'Reactivar usuario'} size="sm">
-        <p className="text-gray-600 text-sm">
+        <p className="text-[color:var(--rx-ink-secondary)] text-sm">
           {confirmToggle?.estatus === 'activo'
             ? `¿Estás seguro de dar de baja a ${confirmToggle?.nombre} ${confirmToggle?.apellidos}? El usuario no podrá acceder al sistema.`
             : `¿Reactivar la cuenta de ${confirmToggle?.nombre} ${confirmToggle?.apellidos}?`
