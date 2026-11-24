@@ -7,7 +7,7 @@ import { InputField, SelectField } from '../../components/FormField';
 import { api, apiCobro } from '../../lib/api';
 import { useNavigate } from 'react-router';
 import { MembresiasCliente, type MembresiaComprada } from './MembresiasCliente';
-import ListaSalud, { SaludEtiquetas } from './SaludEtiquetas';
+import ListaSalud, { ListaLesiones, SaludEtiquetas } from './SaludEtiquetas';
 import { esNombreValido, esTelefonoValido, esCorreoValido, errorCodigoCliente } from './validacionCliente';
 
 // Un cliente tal como lo devuelve GET /cobro/api/clientes. Estos registros
@@ -448,7 +448,7 @@ export function ClientesPage({ soloRegistro = false, rutaClientes = '/clientes',
           }} />
           <SelectField label="Estatus" value={form.activo ? 'activo' : 'inactivo'} onChange={e => setForm(f => ({ ...f, activo: e.target.value === 'activo' }))} options={[{ value: 'activo', label: 'Activo' }, { value: 'inactivo', label: 'Inactivo' }]} />
           <ListaSalud key={`enfermedades-${editando?.id ?? 'nuevo'}-${modal}`} label="Enfermedades" items={form.enfermedades} onChange={enfermedades => setForm(f => ({ ...f, enfermedades }))} />
-          <ListaSalud key={`lesiones-${editando?.id ?? 'nuevo'}-${modal}`} label="Lesiones" items={form.lesiones} onChange={lesiones => setForm(f => ({ ...f, lesiones }))} />
+          <ListaLesiones key={`lesiones-${editando?.id ?? 'nuevo'}-${modal}`} items={form.lesiones} onChange={lesiones => setForm(f => ({ ...f, lesiones }))} />
           <span className="rx-help-text">Las membresías se venden desde Recepción. Las compras y sus vigencias se consultan en la tabla de clientes.</span>
         </fieldset>
         {formError && <p className="rx-alert rx-alert--danger" role="alert">{formError}</p>}
