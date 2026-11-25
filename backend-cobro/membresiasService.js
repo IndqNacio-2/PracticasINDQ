@@ -111,6 +111,26 @@ function registrarRutas(app, pool, adminApi) {
           .map(async claseId => ({ claseId, ...await saldo(pool, c, claseId) }))) }))));
     } catch (e) { console.error(e); res.status(500).json({ error: 'No se pudo consultar el saldo.' }); }
   });
+  // Listado de membresías vendidas (todas las del club, de la más reciente a la más antigua).
+  app.get('/api/membresias/compras', personal, async (_req, res) => {
+    try {
+      const filas = (await pool.query(`SELECT c.id, c.cliente_id, c.catalogo_id, c.condiciones, c.creado_en,
+          to_char(c.fecha_inicio, 'YYYY-MM-DD') AS inicio, to_char(c.fecha_fin, 'YYYY-MM-DD') AS fin,
+          cl.nombre AS cliente, p.folio, p.monto::float8 AS monto, p.metodo_pago
+        FROM webcobro.membresias_compras c
+        JOIN webcobro.clientes cl ON cl.id = c.cliente_id
+        LEFT JOIN webcobro.pagos p ON p.id = c.pago_id
+        ORDER BY c.id DESC`)).rows;
+      const hoy = fechaLocal();
+      res.json(filas.map(c => ({
+        idCompra: String(c.id), folio: c.folio ?? '', idCliente: String(c.cliente_id), nombreCliente: c.cliente,
+        idMembresia: c.catalogo_id, fechaInicio: c.inicio, fechaFin: c.fin, precio: Number(c.monto ?? 0), metodoPago: c.metodo_pago ?? '',
+        vigencia: c.inicio > hoy ? 'por_iniciar' : c.fin < hoy ? 'vencida' : 'vigente',
+        condiciones: { nombre: c.condiciones?.nombre ?? 'Membresía', opcion: c.condiciones?.opcion ?? {} },
+        fechaCreacion: new Date(c.creado_en).toISOString(),
+      })));
+    } catch (e) { console.error(e); res.status(500).json({ error: 'No se pudieron consultar las membresías vendidas.' }); }
+  });
   app.get('/api/membresias/compras/:id/ticket', personal, async (req, res) => {
     if (!/^\d+$/.test(req.params.id)) return res.status(400).json({ error: 'Compra inválida.' });
     try {

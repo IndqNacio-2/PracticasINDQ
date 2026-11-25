@@ -507,3 +507,44 @@ export const eliminarHorario = async (req: Request, res: Response) => {
     await Horario.findByIdAndDelete(req.params.id);
     res.json({ mensaje: 'Horario eliminado' });
 };
+
+//
+// GET /api/horarios/resumen — indicadores de "Clases y horarios" (diseño: 5 tarjetas).
+// Semana = lunes a domingo de la semana actual (hora local del servidor).
+const isoLocal = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+export const resumenHorarios = async (_req: Request, res: Response) => {
+    await mantenerHorizonteSesiones().catch(error => {
+        console.error('[Horizonte movil:resumen] No se pudieron extender las sesiones:', error);
+    });
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+    const lunes = new Date(hoy);
+    lunes.setDate(hoy.getDate() - ((hoy.getDay() + 6) % 7));
+    const domingo = new Date(lunes);
+    domingo.setDate(lunes.getDate() + 6);
+    const [hoyISO, desde, hasta] = [isoLocal(hoy), isoLocal(lunes), isoLocal(domingo)];
+
+    const [clasesActivas, semana] = await Promise.all([
+        Clase.countDocuments({ estatus: 'activo' }),
+        Horario.find({ fecha: { $gte: desde, $lte: hasta } }),
+    ]);
+    const activas = semana.filter((h: any) => h.estatus === 'activo');
+    const conOcupacion = await conOcupacionReal(activas);
+    const lugares = conOcupacion.reduce((a, h) => a + h.capacidadTotal, 0);
+    const ocupados = conOcupacion.reduce((a, h) => a + (h.capacidadTotal - h.capacidadDisponible), 0);
+    // Cambios = sesiones canceladas, movidas (excepción de plantilla) o únicas (manuales) de la semana
+    const cambios = semana.filter((h: any) => h.estatus === 'inactivo' || h.origen === 'manual' || h.esExcepcionPlantilla).length;
+
+    res.json({
+        semana: { desde, hasta },
+        clasesActivas,
+        sesionesHoy: activas.filter((h: any) => h.fecha === hoyISO).length,
+        sesionesSemana: activas.length,
+        ocupacionSemana: lugares ? Math.round((ocupados / lugares) * 100) : 0,
+        lugaresSemana: lugares,
+        reservadosSemana: ocupados,
+        cambiosSemana: cambios,
+    });
+};

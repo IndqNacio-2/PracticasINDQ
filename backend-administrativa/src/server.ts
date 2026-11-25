@@ -13,6 +13,8 @@ import usuarioRoutes from './routes/usuarios.routes';
 import ventaRoutes from './routes/ventas.routes';
 import membresiaRoutes from './routes/membresia.routes';
 import reportesRoutes from './routes/reportes.routes';
+import saludRoutes from './routes/salud.routes';
+import dashboardRoutes from './routes/dashboard.routes';
 import { requireAuth, requireRole } from './middleware/auth';
 import { accesoProgramacion } from './middleware/programacion';
 import { connectDB } from './lib/mongo';
@@ -51,6 +53,9 @@ app.use('/api/usuarios', usuarioRoutes);
 app.use('/api/ventas', ventaRoutes);
 app.use('/api/membresias', membresiaRoutes);
 app.use('/api/reportes', requireAuth, requireRole('administrador'), reportesRoutes);
+// Catálogos de salud (solo lectura) e ingresos del panel administrativo.
+app.use('/api/salud', saludRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 
 // Exporta la app para que el gateway unificado pueda montarla bajo su prefijo
 // (/admin) en un solo puerto. Con GATEWAY_MODE no abre su propio puerto y un

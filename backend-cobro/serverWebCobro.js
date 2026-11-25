@@ -18,6 +18,23 @@ const { esCorreoValido, esNombreValido, esTelefonoValido } = require('./validaci
 const { normalizarSalud } = require('./saludCliente');
 const { normalizarCodigoCliente } = require('./codigoCliente');
 const { normalizarMenor } = require('./menoresCliente');
+
+// Copias de documentos del menor (acta, INE del tutor, CURP, credencial escolar). La columna se
+// agrega con db/documentos-menor.sql; mientras no exista, se ignoran sin romper el registro.
+const DOCUMENTOS_MENOR = ['actaNacimiento', 'ineTutor', 'curpMenor', 'credencialEscolar'];
+let columnaDocumentos = null;
+const hayColumnaDocumentos = async () => {
+  if (columnaDocumentos === null) {
+    columnaDocumentos = (await pool.query(`SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'webcobro' AND table_name = 'clientes' AND column_name = 'documentos_menor'`)).rowCount > 0;
+  }
+  return columnaDocumentos;
+};
+const normalizarDocumentos = (valor) => {
+  if (valor === undefined) return undefined;
+  if (!valor || typeof valor !== 'object' || Array.isArray(valor)) throw new Error('Los documentos del menor no son válidos.');
+  return Object.fromEntries(DOCUMENTOS_MENOR.map((k) => [k, valor[k] === true]));
+};
 const { accesoClientes, accesoReservasCobros } = require('./permisosPersonal');
 const membresiasService = require('./membresiasService');
 
@@ -516,7 +533,7 @@ app.get('/api/clientes', async (req, res) => {
   const resultado = await pool.query(
     `SELECT id, nombre, membresia, telefono, correo, activo, enfermedades, lesiones,
              to_char(fecha_nacimiento, 'YYYY-MM-DD') AS "fechaNacimiento",
-             nombre_tutor AS "nombreTutor", clave_elector_tutor AS "claveElectorTutor", estado_documentacion AS "estadoDocumentacion",
+             nombre_tutor AS "nombreTutor", clave_elector_tutor AS "claveElectorTutor", estado_documentacion AS "estadoDocumentacion", to_jsonb(clientes)->'documentos_menor' AS "documentosMenor",
             EXISTS (SELECT 1 FROM webcobro.membresias_compras mc WHERE mc.cliente_id = webcobro.clientes.id) AS "tieneCompras",
              COALESCE((SELECT jsonb_agg(jsonb_build_object(
                'id', mc.id, 'nombre', mc.condiciones->>'nombre',
@@ -562,6 +579,9 @@ app.post('/api/clientes', async (req, res) => {
   let salud;
   try { salud = normalizarSalud(req.body ?? {}); }
   catch (error) { return res.status(400).json({ error: error.message }); }
+  let documentos;
+  try { documentos = normalizarDocumentos(req.body?.documentosMenor); }
+  catch (error) { return res.status(400).json({ error: error.message }); }
   const { nombre, membresia, telefono, correo, activo, vigencia_hasta } = req.body ?? {};
   if (!esCorreoValido(correo)) return res.status(400).json({ error: 'Introduce un correo electrónico válido.' });
 
@@ -593,12 +613,17 @@ app.post('/api/clientes', async (req, res) => {
        VALUES ($1, $2, $3, $4, $5, NULLIF($6, '')::date, $7::text[], $8::text[], NULLIF($9, '')::date, $10, $11, $12${codigoUsuario ? ', $13' : ''})
        RETURNING id, nombre, membresia, telefono, correo, activo, enfermedades, lesiones,
                  to_char(fecha_nacimiento, 'YYYY-MM-DD') AS "fechaNacimiento",
-                 nombre_tutor AS "nombreTutor", clave_elector_tutor AS "claveElectorTutor", estado_documentacion AS "estadoDocumentacion",
+                 nombre_tutor AS "nombreTutor", clave_elector_tutor AS "claveElectorTutor", estado_documentacion AS "estadoDocumentacion", to_jsonb(clientes)->'documentos_menor' AS "documentosMenor",
                  COALESCE(to_jsonb(clientes)->>'codigo_usuario', 'CLI-' || id::text) AS codigo,
                  to_char(vigencia_hasta, 'YYYY-MM-DD') AS vigencia_hasta`,
       [nombre.trim(), plan, tel, correoLimpio || null, activo === false ? false : true, vig, salud.enfermedades ?? [], salud.lesiones ?? [], menor.fechaNacimiento, menor.nombreTutor, menor.claveElectorTutor, menor.estadoDocumentacion, ...(codigoUsuario ? [codigoUsuario] : [])],
     )
   ).rows[0];
+
+  if (documentos && await hayColumnaDocumentos()) {
+    await pool.query('UPDATE webcobro.clientes SET documentos_menor = $2::jsonb WHERE id = $1', [nuevo.id, JSON.stringify(documentos)]);
+    nuevo.documentosMenor = documentos;
+  }
 
   res.status(201).json({ mensaje: 'Cliente registrado', cliente: nuevo });
 });
@@ -954,6 +979,14 @@ app.patch('/api/clientes/:id', async (req, res) => {
     campos.push(`vigencia_hasta = $${valores.length}::date`);
   }
 
+  if (req.body?.documentosMenor !== undefined && await hayColumnaDocumentos()) {
+    let documentos;
+    try { documentos = normalizarDocumentos(req.body.documentosMenor); }
+    catch (error) { return res.status(400).json({ error: error.message }); }
+    valores.push(JSON.stringify(documentos));
+    campos.push(`documentos_menor = $${valores.length}::jsonb`);
+  }
+
   if (campos.length === 0) {
     return res.status(400).json({ error: 'No hay cambios para guardar.' });
   }
@@ -964,7 +997,7 @@ app.patch('/api/clientes/:id', async (req, res) => {
       `UPDATE webcobro.clientes SET ${campos.join(', ')} WHERE id = $${valores.length}
        RETURNING id, nombre, membresia, telefono, correo, activo, enfermedades, lesiones,
                  to_char(fecha_nacimiento, 'YYYY-MM-DD') AS "fechaNacimiento",
-                 nombre_tutor AS "nombreTutor", clave_elector_tutor AS "claveElectorTutor", estado_documentacion AS "estadoDocumentacion",
+                 nombre_tutor AS "nombreTutor", clave_elector_tutor AS "claveElectorTutor", estado_documentacion AS "estadoDocumentacion", to_jsonb(clientes)->'documentos_menor' AS "documentosMenor",
                  COALESCE(to_jsonb(clientes)->>'codigo_usuario', 'CLI-' || id::text) AS codigo,
                  to_char(vigencia_hasta, 'YYYY-MM-DD') AS vigencia_hasta`,
       valores,

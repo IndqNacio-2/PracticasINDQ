@@ -1,57 +1,66 @@
-import React from 'react'
-import ReactDOM from 'react-dom/client'
-import App from './App'
-import './index.css'
-import LoginPage from './auth/LoginPage'
-import ModuleGuard from './auth/ModuleGuard'
-import ChecadorGuard from './auth/ChecadorGuard'
-import { LOGIN_PATH } from './auth/session'
-import { instalarAvisosDeCambios } from './services/cambiosAplicacion'
+import React, { lazy, Suspense } from 'react';
+import ReactDOM from 'react-dom/client';
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import './styles/nuucleo.css';
+import './styles/extensiones.css';
+import { FeedbackProvider } from './ui/kit';
+import { AppShell } from './shell/AppShell';
+import Login from './pages/Login';
+import { inicioDe, usuarioGuardado, type Modulo } from './lib/session';
 
-instalarAvisosDeCambios()
+const PAGINAS: Record<Modulo, React.LazyExoticComponent<() => React.ReactElement>> = {
+  dashboard: lazy(() => import('./pages/Dashboard')),
+  recepcion: lazy(() => import('./pages/Recepcion')),
+  venta: lazy(() => import('./pages/Venta')),
+  usuarios: lazy(() => import('./pages/Usuarios')),
+  clientes: lazy(() => import('./pages/Clientes')),
+  clases: lazy(() => import('./pages/Clases')),
+  membresias: lazy(() => import('./pages/Membresias')),
+  reservaciones: lazy(() => import('./pages/Reservaciones')),
+  inventario: lazy(() => import('./pages/Inventario')),
+  movimientos: lazy(() => import('./pages/Movimientos')),
+  merma: lazy(() => import('./pages/Merma')),
+  corte: lazy(() => import('./pages/Corte')),
+  reportes: lazy(() => import('./pages/Reportes')),
+  checador: lazy(() => import('./pages/Checador')),
+};
 
-// Las tres secciones viven en la misma aplicación y comparten la sesión.
-//   /administrativa/login -> acceso único del personal
-//   /                  -> Punto de Venta (solo vendedor)
-//   /administrativa/*  -> sección webAdministrativa
-//   /cobro/*           -> sección webCobro
-import WebAdministrativaSection from './sections/webAdministrativa/Section'
-import WebCobroSection from './sections/webCobro/Section'
-
-// Decide qué aplicación mostrar según la dirección abierta en el navegador.
-const legacyLoginPaths = ['/login', '/cobro/front-desk/login']
-const path = window.location.pathname.replace(/\/+$/, '') || '/'
-const isLogin = path === LOGIN_PATH || legacyLoginPaths.includes(path)
-let content: React.ReactNode
-
-if (legacyLoginPaths.includes(path)) {
-  window.history.replaceState({}, '', LOGIN_PATH)
+function Inicio() {
+  const u = usuarioGuardado();
+  return <Navigate to={u ? inicioDe(u.rol) : '/login'} replace />;
 }
 
-if (isLogin) {
-  content = <LoginPage />
-} else if (path.startsWith('/administrativa')) {
-  content = (
-    <ModuleGuard allowedRole="administrador">
-      <WebAdministrativaSection />
-    </ModuleGuard>
-  )
-} else if (path === '/cobro/asistencia' || path === '/cobro/asistencia/') {
-  content = <ChecadorGuard><WebCobroSection /></ChecadorGuard>
-} else if (path.startsWith('/cobro')) {
-  content = (
-    <ModuleGuard allowedRole="recepcion">
-      <WebCobroSection />
-    </ModuleGuard>
-  )
-} else {
-  content = (
-    <ModuleGuard allowedRole="vendedor">
-      <App />
-    </ModuleGuard>
-  )
-}
+// Direcciones anteriores (administrativa, cobro y punto de venta) → módulos nuevos.
+const ANTERIORES: [string, string][] = [
+  ['/administrativa/login', '/login'], ['/cobro/front-desk/login', '/login'],
+  ['/administrativa/dashboard', '/dashboard'], ['/administrativa/usuarios', '/usuarios'], ['/administrativa/clientes', '/clientes'],
+  ['/administrativa/clases-horarios', '/clases'], ['/administrativa/membresias', '/membresias'], ['/administrativa/reservaciones', '/reservaciones'],
+  ['/administrativa/productos', '/inventario'], ['/administrativa/mermas', '/merma'], ['/administrativa/reportes', '/reportes'],
+  ['/cobro/front-desk/dashboard', '/recepcion'], ['/cobro/front-desk/clientes', '/clientes'], ['/cobro/front-desk/membresias', '/membresias'],
+  ['/cobro/front-desk/clases-horarios', '/clases'], ['/cobro/front-desk/inventario', '/inventario'], ['/cobro/asistencia', '/checador'],
+];
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>{content}</React.StrictMode>,
-)
+  <React.StrictMode>
+    <FeedbackProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<Inicio />} />
+          <Route path="/login" element={<Login />} />
+          {ANTERIORES.map(([de, a]) => <Route key={de} path={de} element={<Navigate to={a} replace />} />)}
+          {(Object.keys(PAGINAS) as Modulo[]).map((m) => {
+            const Pagina = PAGINAS[m];
+            return (
+              <Route key={m} path={`/${m}`} element={
+                <AppShell modulo={m}>
+                  <Suspense fallback={<div className="dempty"><span className="nu-spin" />Cargando…</div>}><Pagina /></Suspense>
+                </AppShell>
+              } />
+            );
+          })}
+          <Route path="*" element={<Inicio />} />
+        </Routes>
+      </BrowserRouter>
+    </FeedbackProvider>
+  </React.StrictMode>,
+);

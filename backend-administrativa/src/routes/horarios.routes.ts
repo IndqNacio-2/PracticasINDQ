@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { listarHorarios, listarHorariosReservables, crearHorario, editarHorario, editarExcepcionHorario, eliminarHorario } from '../controllers/horarios.controller';
+import { listarHorarios, listarHorariosReservables, resumenHorarios, crearHorario, editarHorario, editarExcepcionHorario, eliminarHorario } from '../controllers/horarios.controller';
 import { Horario } from '../models/Horarios/horarios';
 import { Clase } from '../models/Clases/clases';
 import { Usuario } from '../models/Usuarios/usuarios';
@@ -9,6 +9,7 @@ const router = Router();
 
 router.get('/', listarHorarios);
 router.get('/reservables', listarHorariosReservables);
+router.get('/resumen', resumenHorarios);
 // Solo confirma referencias; no expone información personal del entrenador.
 router.get('/:id/validacion', async (req, res) => {
     if (!esObjectId(req.params.id)) return res.status(400).json({ error: 'El horario no es válido.' });
