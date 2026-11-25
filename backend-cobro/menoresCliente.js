@@ -23,6 +23,19 @@ function normalizarMenor(datos, existente = {}, hoy = new Date()) {
     if (!/^[A-Z0-9]{18}$/i.test(resultado.claveElectorTutor)) throw new Error('La clave de elector del tutor debe contener 18 letras o números.');
   }
   resultado.claveElectorTutor = resultado.claveElectorTutor.toUpperCase();
+  const claves = ['actaNacimiento', 'ineTutor', 'curp', 'credencialEscolar'];
+  const documentos = datos.documentosMenor === undefined ? existente.documentosMenor ?? {} : datos.documentosMenor;
+  if (!documentos || typeof documentos !== 'object' || Array.isArray(documentos)
+    || Object.keys(documentos).some(c => !claves.includes(c))
+    || Object.values(documentos).some(v => typeof v !== 'boolean')) {
+    throw new Error('Las copias entregadas deben indicarse con valores verdadero o falso.');
+  }
+  resultado.documentosMenor = Object.fromEntries(claves.map(c => [c, documentos[c] === true]));
+  // Recibir copias no valida automáticamente su contenido. Una revisión nueva
+  // no puede declararse completa si falta cualquiera de los cuatro documentos.
+  if (datos.documentosMenor !== undefined || datos.estadoDocumentacion !== undefined) {
+    if (!claves.every(c => resultado.documentosMenor[c])) resultado.estadoDocumentacion = 'pendiente';
+  }
   return resultado;
 }
 

@@ -277,7 +277,7 @@ export default function CashClosingPage({
       {/* Muestro el título y el estado temporal del turno. */}
       <header className="rx-page-header">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--rx-surface-soft)] text-[var(--rx-ink)]">
+          <div className="flex h-10 w-10 items-center justify-center rounded-[var(--rx-radius-medium)] bg-[var(--rx-surface-soft)] text-[var(--rx-ink)]">
             <MaterialIcon
               name="payments"
               className="text-2xl"
@@ -352,7 +352,7 @@ export default function CashClosingPage({
         {/* Capturo el fondo inicial y el efectivo contado del turno. */}
         <div className="rx-card rx-closing-panel">
           <div className="rx-closing-panel-header">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--rx-surface-soft)] text-[var(--rx-ink)]">
+            <div className="flex h-9 w-9 items-center justify-center rounded-[var(--rx-radius-medium)] bg-[var(--rx-surface-soft)] text-[var(--rx-ink)]">
               <MaterialIcon
                 name="calculate"
                 className="text-xl"
@@ -459,7 +459,7 @@ export default function CashClosingPage({
               />
 
               <div
-                role="status" aria-live="polite" aria-atomic="true" className={`mt-3 flex items-start gap-3 rounded-xl p-3.5 ${differenceStatus.containerClassName}`}
+                role="status" aria-live="polite" aria-atomic="true" className={`mt-3 flex items-start gap-3 rounded-[var(--rx-radius-medium)] p-3.5 ${differenceStatus.containerClassName}`}
               >
                 <MaterialIcon
                   name={differenceStatus.icon}
@@ -752,7 +752,7 @@ export default function CashClosingPage({
         </div>
 
         {/* Aclaro qué funciones quedan pendientes para el cierre real. */}
-        <div className="mt-5 flex items-start gap-3 rounded-xl border border-[var(--rx-line)] bg-[var(--rx-surface-soft)] p-4">
+        <div className="mt-5 flex items-start gap-3 rounded-[var(--rx-radius-medium)] border border-[var(--rx-line)] bg-[var(--rx-surface-soft)] p-4">
           <MaterialIcon
             name="info"
             className="mt-0.5 text-xl text-[var(--rx-ink)]"
@@ -908,7 +908,7 @@ function ConfirmCashClosingModal({
         </div>
 
         {/* Repaso el resultado del arqueo antes de confirmar. */}
-        <div className="mb-5 space-y-2 rounded-xl border border-[var(--rx-line)] bg-[var(--rx-surface-soft)] p-4 text-sm">
+        <div className="mb-5 space-y-2 rounded-[var(--rx-radius-medium)] border border-[var(--rx-line)] bg-[var(--rx-surface-soft)] p-4 text-sm">
           <div className="flex justify-between">
             <span className="text-[var(--rx-ink-secondary)]">Total vendido</span>
             <strong className="text-[var(--rx-ink)]">

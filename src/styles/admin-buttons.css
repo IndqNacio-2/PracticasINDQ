@@ -1,10 +1,6 @@
 /* Botones de Administración: GUIA-DISENO-RECEPCION-DEMO.md, secciones 9, 12 y 31.
    Reutiliza los tokens globales sin cambiar los botones de Cobro o del POS. */
-:root {
-  --rx-button-danger: #E03131;
-  --rx-button-danger-hover: #C92A2A;
-  --rx-control-focus: rgba(198, 242, 78, 0.45);
-}
+
 
 @layer components {
   :where(.rx-admin-shell, .rx-admin-modal, .rx-admin-login) .rx-btn {
@@ -39,13 +35,13 @@
   }
 
   :where(.rx-admin-shell, .rx-admin-modal, .rx-admin-login) .rx-btn--danger {
-    color: #FFFFFF;
+    color: var(--rx-surface);
     background: var(--rx-button-danger);
     border-color: var(--rx-button-danger);
   }
 
   :where(.rx-admin-shell, .rx-admin-modal, .rx-admin-login) .rx-btn--danger:hover:not(:disabled) {
-    color: #FFFFFF;
+    color: var(--rx-surface);
     background: var(--rx-button-danger-hover);
     border-color: var(--rx-button-danger-hover);
   }
@@ -72,11 +68,11 @@
 
   .rx-icon-btn:hover:not(:disabled) { border-color: var(--rx-ink-muted); }
   .rx-icon-btn--remove { width: 22px; height: 22px; flex-basis: 22px; }
-  .rx-tab--active { color: #FFFFFF; background: var(--rx-dark); border-color: var(--rx-dark); }
-  .rx-tab--active:hover { color: #FFFFFF; border-color: var(--rx-dark); }
+  .rx-tab--active { color: var(--rx-surface); background: var(--rx-dark); border-color: var(--rx-dark); }
+  .rx-tab--active:hover { color: var(--rx-surface); border-color: var(--rx-dark); }
 
   :where(.rx-admin-shell, .rx-admin-modal) .rx-icon-btn.rx-btn--dark {
-    color: #FFFFFF;
+    color: var(--rx-surface);
     background: var(--rx-dark);
     border-color: var(--rx-dark);
   }

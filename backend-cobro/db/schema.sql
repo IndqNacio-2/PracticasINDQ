@@ -25,10 +25,16 @@ ALTER TABLE webcobro.clientes ADD COLUMN IF NOT EXISTS vigencia_hasta DATE;
 -- Correo del socio (opcional): lo captura el módulo administrativo y debe ser
 -- único cuando se proporciona. Los socios viejos de cobro no lo tenían.
 ALTER TABLE webcobro.clientes ADD COLUMN IF NOT EXISTS correo TEXT;
+-- Separar ADD y DEFAULT evita atribuir la fecha de migración a altas históricas.
+ALTER TABLE webcobro.clientes ADD COLUMN IF NOT EXISTS fecha_registro TIMESTAMPTZ;
+ALTER TABLE webcobro.clientes ALTER COLUMN fecha_registro SET DEFAULT CURRENT_TIMESTAMP;
 -- Migración aditiva: no cambia clientes, compras, vigencias ni reservaciones.
 ALTER TABLE webcobro.clientes ADD COLUMN IF NOT EXISTS enfermedades TEXT[] NOT NULL DEFAULT '{}';
 ALTER TABLE webcobro.clientes ADD COLUMN IF NOT EXISTS lesiones TEXT[] NOT NULL DEFAULT '{}';
 ALTER TABLE webcobro.clientes ADD COLUMN IF NOT EXISTS fecha_nacimiento DATE;
+ALTER TABLE webcobro.clientes ADD COLUMN IF NOT EXISTS documentos_menor JSONB NOT NULL
+  DEFAULT '{"actaNacimiento":false,"ineTutor":false,"curp":false,"credencialEscolar":false}'::jsonb
+  CHECK (jsonb_typeof(documentos_menor) = 'object');
 ALTER TABLE webcobro.clientes ADD COLUMN IF NOT EXISTS nombre_tutor TEXT NOT NULL DEFAULT '';
 ALTER TABLE webcobro.clientes ADD COLUMN IF NOT EXISTS clave_elector_tutor TEXT NOT NULL DEFAULT '';
 ALTER TABLE webcobro.clientes ADD COLUMN IF NOT EXISTS estado_documentacion TEXT NOT NULL DEFAULT 'pendiente'

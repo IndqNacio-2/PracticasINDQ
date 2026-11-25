@@ -48,7 +48,7 @@ export default function ProductCard({
       >
         <MaterialIcon
           name={product.icon}
-          className="select-none text-5xl text-[#374151]"
+          className="select-none text-5xl text-[color:var(--rx-ink-secondary)]"
           filled
         />
 

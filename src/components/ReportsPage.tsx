@@ -162,10 +162,10 @@ const PAYMENT_METHOD_BAR_CLASSES: Record<
     SaleRecord["paymentMethod"],
     string
 > = {
-    mixto: "bg-[#374151]",
-    efectivo: "bg-[#111827]",
-    tarjeta: "bg-[#6B7280]",
-    transferencia: "bg-[#9CA3AF]",
+    mixto: "bg-[var(--rx-ink-secondary)]",
+    efectivo: "bg-[var(--rx-dark)]",
+    tarjeta: "bg-[var(--rx-ink-secondary)]",
+    transferencia: "bg-[var(--rx-ink-muted)]",
 };
 
 /*
@@ -213,13 +213,13 @@ const WASTE_REASON_ICONS: Record<WasteReason, string> = {
  * para que las dos pantallas se lean igual.
  */
 const WASTE_REASON_BAR_CLASSES: Record<WasteReason, string> = {
-    damaged: "bg-[#F59E0B]",
-    expired: "bg-[#DC2626]",
-    broken: "bg-[#DC2626]",
-    "internal-use": "bg-[#9CA3AF]",
-    "inventory-error": "bg-[#6B7280]",
-    lost: "bg-[#6B7280]",
-    other: "bg-[#6B7280]",
+    damaged: "bg-[var(--rx-warning)]",
+    expired: "bg-[var(--rx-danger-ink)]",
+    broken: "bg-[var(--rx-danger-ink)]",
+    "internal-use": "bg-[var(--rx-ink-muted)]",
+    "inventory-error": "bg-[var(--rx-ink-secondary)]",
+    lost: "bg-[var(--rx-ink-secondary)]",
+    other: "bg-[var(--rx-ink-secondary)]",
 };
 
 /*
@@ -227,13 +227,13 @@ const WASTE_REASON_BAR_CLASSES: Record<WasteReason, string> = {
  * para identificar cada motivo.
  */
 const WASTE_REASON_ICON_CLASSES: Record<WasteReason, string> = {
-    damaged: "bg-[#FEF3C7] text-[#92400E]",
-    expired: "bg-[#FEE2E2] text-[#991B1B]",
-    broken: "bg-[#FEE2E2] text-[#991B1B]",
-    "internal-use": "bg-[#F3F4F6] text-[#4B5563]",
-    "inventory-error": "bg-[#F3F4F6] text-[#4B5563]",
-    lost: "bg-[#F3F4F6] text-[#4B5563]",
-    other: "bg-[#F3F4F6] text-[#4B5563]",
+    damaged: "bg-[var(--rx-warning-bg)] text-[color:var(--rx-warning-ink)]",
+    expired: "bg-[var(--rx-danger-bg)] text-[color:var(--rx-danger-ink)]",
+    broken: "bg-[var(--rx-danger-bg)] text-[color:var(--rx-danger-ink)]",
+    "internal-use": "bg-[var(--rx-surface-soft)] text-[color:var(--rx-ink-secondary)]",
+    "inventory-error": "bg-[var(--rx-surface-soft)] text-[color:var(--rx-ink-secondary)]",
+    lost: "bg-[var(--rx-surface-soft)] text-[color:var(--rx-ink-secondary)]",
+    other: "bg-[var(--rx-surface-soft)] text-[color:var(--rx-ink-secondary)]",
 };
 
 /*
@@ -272,14 +272,14 @@ function ReportRow({
   return (
     <div
       className={`flex items-start justify-between gap-4 py-2 ${
-        emphasized ? "border-t border-[#E5E7EB]" : ""
+        emphasized ? "border-t border-[var(--rx-line)]" : ""
       }`}
     >
       <p
         className={`text-sm ${
           emphasized
-            ? "font-bold text-[#0D0F14]"
-            : "text-[#6B7280]"
+            ? "font-bold text-[color:var(--rx-ink)]"
+            : "text-[color:var(--rx-ink-secondary)]"
         }`}
       >
         {label}
@@ -288,8 +288,8 @@ function ReportRow({
       <p
         className={`flex-shrink-0 tabular-nums ${
           emphasized
-            ? "text-base font-bold text-[#0D0F14]"
-            : "text-sm font-semibold text-[#374151]"
+            ? "text-base font-bold text-[color:var(--rx-ink)]"
+            : "text-sm font-semibold text-[color:var(--rx-ink-secondary)]"
         }`}
       >
         {value}
@@ -314,9 +314,9 @@ function SummaryCard({
   iconClassName: string;
 }) {
   return (
-    <article className="rounded-2xl border border-[#E5E7EB] bg-white p-4">
+    <article className="rounded-[var(--rx-radius-extra-large)] border border-[var(--rx-line)] bg-[var(--rx-surface)] p-4">
       <div
-        className={`mb-3 flex h-10 w-10 items-center justify-center rounded-xl ${iconClassName}`}
+        className={`mb-3 flex h-10 w-10 items-center justify-center rounded-[var(--rx-radius-medium)] ${iconClassName}`}
       >
         <MaterialIcon
           name={icon}
@@ -325,11 +325,11 @@ function SummaryCard({
         />
       </div>
 
-      <p className="truncate text-xl font-bold tabular-nums text-[#0D0F14]">
+      <p className="truncate text-xl font-bold tabular-nums text-[color:var(--rx-ink)]">
         {value}
       </p>
 
-      <p className="mt-1 text-xs font-medium text-[#6B7280]">
+      <p className="mt-1 text-xs font-medium text-[color:var(--rx-ink-secondary)]">
         {title}
       </p>
     </article>
@@ -354,18 +354,18 @@ function ReportSection({
   children: ReactNode;
 }) {
   return (
-    <div className="mb-5 overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white">
-      <div className="flex items-center gap-3 border-b border-[#E5E7EB] px-5 py-4">
+    <div className="mb-5 overflow-hidden rounded-[var(--rx-radius-extra-large)] border border-[var(--rx-line)] bg-[var(--rx-surface)]">
+      <div className="flex items-center gap-3 border-b border-[var(--rx-line)] px-5 py-4">
         <div
-          className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl ${iconClassName}`}
+          className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-[var(--rx-radius-medium)] ${iconClassName}`}
         >
           <MaterialIcon name={icon} className="text-xl" filled />
         </div>
 
         <div>
-          <h2 className="font-bold text-[#0D0F14]">{title}</h2>
+          <h2 className="font-bold text-[color:var(--rx-ink)]">{title}</h2>
 
-          <p className="text-xs text-[#9CA3AF]">{description}</p>
+          <p className="text-xs text-[color:var(--rx-ink-muted)]">{description}</p>
         </div>
       </div>
 
@@ -388,7 +388,7 @@ function BarRow({
   percent,
   barClassName,
   icon,
-  iconClassName = "bg-[#F3F4F6] text-[#6B7280]",
+  iconClassName = "bg-[var(--rx-surface-soft)] text-[color:var(--rx-ink-secondary)]",
 }: {
   label: string;
   detail: string;
@@ -399,7 +399,7 @@ function BarRow({
   iconClassName?: string;
 }) {
   return (
-    <div className="border-b border-[#F3F4F6] px-5 py-3.5 last:border-b-0">
+    <div className="border-b border-[var(--rx-surface-soft)] px-5 py-3.5 last:border-b-0">
       <div className="mb-2 flex items-center justify-between gap-4">
         <div className="flex min-w-0 items-center gap-3">
           {icon && (
@@ -411,26 +411,26 @@ function BarRow({
           )}
 
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-[#0D0F14]">
+            <p className="truncate text-sm font-semibold text-[color:var(--rx-ink)]">
               {label}
             </p>
 
-            <p className="truncate text-xs text-[#9CA3AF]">{detail}</p>
+            <p className="truncate text-xs text-[color:var(--rx-ink-muted)]">{detail}</p>
           </div>
         </div>
 
         <div className="flex flex-shrink-0 items-center gap-3">
-          <span className="text-sm font-bold tabular-nums text-[#0D0F14]">
+          <span className="text-sm font-bold tabular-nums text-[color:var(--rx-ink)]">
             {value}
           </span>
 
-          <span className="w-10 text-right text-xs font-semibold tabular-nums text-[#9CA3AF]">
+          <span className="w-10 text-right text-xs font-semibold tabular-nums text-[color:var(--rx-ink-muted)]">
             {percent}%
           </span>
         </div>
       </div>
 
-      <div className="h-2 overflow-hidden rounded-full bg-[#F3F4F6]">
+      <div className="h-2 overflow-hidden rounded-full bg-[var(--rx-surface-soft)]">
         <div
           className={`h-full rounded-full transition-all duration-300 ${barClassName}`}
           style={{ width: `${percent}%` }}
@@ -447,9 +447,9 @@ function BarRow({
 function EmptySection({ icon, message }: { icon: string; message: string }) {
   return (
     <div className="flex flex-col items-center justify-center gap-2 px-6 py-12 text-center">
-      <MaterialIcon name={icon} className="text-3xl text-[#CBD5E1]" />
+      <MaterialIcon name={icon} className="text-3xl text-[color:var(--rx-line-strong)]" />
 
-      <p className="text-sm text-[#9CA3AF]">{message}</p>
+      <p className="text-sm text-[color:var(--rx-ink-muted)]">{message}</p>
     </div>
   );
 }
@@ -801,11 +801,11 @@ export default function ReportsPage({
         summary.salesCount > 0 || filteredWasteRecords.length > 0;
 
   return (
-    <section className="flex h-full flex-col overflow-hidden bg-[#F3F4F6]">
+    <section className="flex h-full flex-col overflow-hidden bg-[var(--rx-surface-soft)]">
       {/* Encabezado del módulo. */}
-      <header className="flex flex-shrink-0 items-center justify-between border-b border-[#E5E7EB] bg-white px-7 py-5">
+      <header className="flex flex-shrink-0 items-center justify-between border-b border-[var(--rx-line)] bg-[var(--rx-surface)] px-7 py-5">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#F3F4F6] text-[#111827]">
+          <div className="flex h-10 w-10 items-center justify-center rounded-[var(--rx-radius-medium)] bg-[var(--rx-surface-soft)] text-[color:var(--rx-dark)]">
             <MaterialIcon
               name="bar_chart"
               className="text-2xl"
@@ -814,18 +814,18 @@ export default function ReportsPage({
           </div>
 
           <div>
-            <h1 className="text-xl font-bold text-[#0D0F14]">
+            <h1 className="text-xl font-bold text-[color:var(--rx-ink)]">
               Reportes
             </h1>
 
-            <p className="text-sm text-[#6B7280]">
+            <p className="text-sm text-[color:var(--rx-ink-secondary)]">
               Resumen de las ventas y las mermas registradas en la sesión.
             </p>
           </div>
         </div>
 
         {/* Aclaro de dónde proviene la información del reporte. */}
-        <span className="rounded-full bg-[#F3F4F6] px-3 py-1.5 text-xs font-semibold text-[#6B7280]">
+        <span className="rounded-full bg-[var(--rx-surface-soft)] px-3 py-1.5 text-xs font-semibold text-[color:var(--rx-ink-secondary)]">
           Datos de la sesión actual
         </span>
       </header>
@@ -837,43 +837,43 @@ export default function ReportsPage({
             title="Ventas registradas"
             value={formatUnits(summary.salesCount)}
             icon="receipt_long"
-            iconClassName="bg-[#F3F4F6] text-[#4B5563]"
+            iconClassName="bg-[var(--rx-surface-soft)] text-[color:var(--rx-ink-secondary)]"
           />
 
           <SummaryCard
             title="Importe vendido"
             value={formatCurrency(summary.totalSales)}
             icon="point_of_sale"
-            iconClassName="bg-[#F3F4F6] text-[#111827]"
+            iconClassName="bg-[var(--rx-surface-soft)] text-[color:var(--rx-dark)]"
           />
 
           <SummaryCard
             title="Ticket promedio"
             value={formatCurrency(summary.averageTicket)}
             icon="equalizer"
-            iconClassName="bg-[#DCFCE7] text-[#166534]"
+            iconClassName="bg-[var(--rx-success-bg)] text-[color:var(--rx-success-ink)]"
           />
 
           <SummaryCard
             title="Unidades vendidas"
             value={formatUnits(summary.totalUnits)}
             icon="shopping_bag"
-            iconClassName="bg-[#F3F4F6] text-[#4B5563]"
+            iconClassName="bg-[var(--rx-surface-soft)] text-[color:var(--rx-ink-secondary)]"
           />
 
           <SummaryCard
             title="Pérdida por mermas"
             value={formatCurrency(summary.estimatedLoss)}
             icon="trending_down"
-            iconClassName="bg-[#FEE2E2] text-[#B91C1C]"
+            iconClassName="bg-[var(--rx-danger-bg)] text-[color:var(--rx-danger-ink)]"
           />
         </div>
 
         {/* Permito acotar el periodo y la forma de pago consultada. */}
-        <div className="mb-6 rounded-2xl border border-[#E5E7EB] bg-white p-5">
+        <div className="mb-6 rounded-[var(--rx-radius-extra-large)] border border-[var(--rx-line)] bg-[var(--rx-surface)] p-5">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-[#F3F4F6] text-[#111827]">
+              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-[var(--rx-radius-medium)] bg-[var(--rx-surface-soft)] text-[color:var(--rx-dark)]">
                 <MaterialIcon
                   name="filter_list"
                   className="text-xl"
@@ -882,11 +882,11 @@ export default function ReportsPage({
               </div>
 
               <div>
-                <h2 className="font-bold text-[#0D0F14]">
+                <h2 className="font-bold text-[color:var(--rx-ink)]">
                   Filtros del reporte
                 </h2>
 
-                <p className="text-xs text-[#9CA3AF]">
+                <p className="text-xs text-[color:var(--rx-ink-muted)]">
                   Acota el periodo y la forma de pago que quieres consultar.
                 </p>
               </div>
@@ -896,7 +896,7 @@ export default function ReportsPage({
               <button
                 type="button"
                 onClick={clearFilters}
-                className="flex flex-shrink-0 items-center gap-2 rounded-xl border border-[#E5E7EB] px-3 py-2 text-xs font-semibold text-[#6B7280] hover:border-[#111827] hover:text-[#111827]"
+                className="flex flex-shrink-0 items-center gap-2 rounded-[var(--rx-radius-medium)] border border-[var(--rx-line)] px-3 py-2 text-xs font-semibold text-[color:var(--rx-ink-secondary)] hover:border-[var(--rx-dark)] hover:text-[color:var(--rx-dark)]"
               >
                 <MaterialIcon
                   name="filter_list_off"
@@ -910,7 +910,7 @@ export default function ReportsPage({
 
           <div className="flex flex-wrap gap-3">
             <label className="flex min-w-[180px] flex-1 flex-col gap-1.5">
-              <span className="text-xs font-semibold text-[#6B7280]">
+              <span className="text-xs font-semibold text-[color:var(--rx-ink-secondary)]">
                 Desde
               </span>
 
@@ -920,12 +920,12 @@ export default function ReportsPage({
                 max={toDate === "" ? undefined : toDate}
                 onChange={(event) => setFromDate(event.target.value)}
                 aria-label="Fecha inicial del reporte"
-                className="w-full rounded-xl border border-[#E5E7EB] px-3 py-2.5 text-sm text-[#0D0F14] outline-none focus:border-[#111827]"
+                className="w-full rounded-[var(--rx-radius-medium)] border border-[var(--rx-line)] px-3 py-2.5 text-sm text-[color:var(--rx-ink)] outline-none focus:border-[var(--rx-dark)]"
               />
             </label>
 
             <label className="flex min-w-[180px] flex-1 flex-col gap-1.5">
-              <span className="text-xs font-semibold text-[#6B7280]">
+              <span className="text-xs font-semibold text-[color:var(--rx-ink-secondary)]">
                 Hasta
               </span>
 
@@ -935,12 +935,12 @@ export default function ReportsPage({
                 min={fromDate === "" ? undefined : fromDate}
                 onChange={(event) => setToDate(event.target.value)}
                 aria-label="Fecha final del reporte"
-                className="w-full rounded-xl border border-[#E5E7EB] px-3 py-2.5 text-sm text-[#0D0F14] outline-none focus:border-[#111827]"
+                className="w-full rounded-[var(--rx-radius-medium)] border border-[var(--rx-line)] px-3 py-2.5 text-sm text-[color:var(--rx-ink)] outline-none focus:border-[var(--rx-dark)]"
               />
             </label>
 
             <label className="flex min-w-[200px] flex-1 flex-col gap-1.5">
-              <span className="text-xs font-semibold text-[#6B7280]">
+              <span className="text-xs font-semibold text-[color:var(--rx-ink-secondary)]">
                 Forma de pago
               </span>
 
@@ -954,7 +954,7 @@ export default function ReportsPage({
                   )
                 }
                 aria-label="Filtrar por forma de pago"
-                className="w-full rounded-xl border border-[#E5E7EB] bg-white px-3 py-2.5 text-sm text-[#374151] outline-none focus:border-[#111827]"
+                className="w-full rounded-[var(--rx-radius-medium)] border border-[var(--rx-line)] bg-[var(--rx-surface)] px-3 py-2.5 text-sm text-[color:var(--rx-ink-secondary)] outline-none focus:border-[var(--rx-dark)]"
               >
                 <option value="all">Todas las formas de pago</option>
 
@@ -969,7 +969,7 @@ export default function ReportsPage({
 
           {hasInvalidRange ? (
             /* Aviso cuando el rango de fechas está invertido. */
-            <p className="mt-3 flex items-center gap-2 rounded-xl bg-[#FEE2E2] px-3 py-2 text-xs font-semibold text-[#B91C1C]">
+            <p className="mt-3 flex items-center gap-2 rounded-[var(--rx-radius-medium)] bg-[var(--rx-danger-bg)] px-3 py-2 text-xs font-semibold text-[color:var(--rx-danger-ink)]">
               <MaterialIcon name="error" className="text-base" filled />
 
               La fecha inicial es posterior a la final, así que no hay
@@ -977,7 +977,7 @@ export default function ReportsPage({
             </p>
           ) : (
             /* Confirmo cuántas operaciones entraron al reporte. */
-            <p className="mt-3 text-xs text-[#9CA3AF]">
+            <p className="mt-3 text-xs text-[color:var(--rx-ink-muted)]">
               {formatCount(
                 filteredSales.length,
                 "venta considerada",
@@ -996,9 +996,9 @@ export default function ReportsPage({
 
         {hasData ? (
           /* Cuando ya existen datos muestro el detalle de lo considerado. */
-          <div className="mb-5 overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white">
-            <div className="flex items-center gap-3 border-b border-[#E5E7EB] px-5 py-4">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#F3F4F6] text-[#111827]">
+          <div className="mb-5 overflow-hidden rounded-[var(--rx-radius-extra-large)] border border-[var(--rx-line)] bg-[var(--rx-surface)]">
+            <div className="flex items-center gap-3 border-b border-[var(--rx-line)] px-5 py-4">
+              <div className="flex h-9 w-9 items-center justify-center rounded-[var(--rx-radius-medium)] bg-[var(--rx-surface-soft)] text-[color:var(--rx-dark)]">
                 <MaterialIcon
                   name="insights"
                   className="text-xl"
@@ -1007,11 +1007,11 @@ export default function ReportsPage({
               </div>
 
               <div>
-                <h2 className="font-bold text-[#0D0F14]">
+                <h2 className="font-bold text-[color:var(--rx-ink)]">
                   Detalle del periodo
                 </h2>
 
-                <p className="text-xs text-[#9CA3AF]">
+                <p className="text-xs text-[color:var(--rx-ink-muted)]">
                   Información que se está considerando en el resumen.
                 </p>
               </div>
@@ -1052,8 +1052,8 @@ export default function ReportsPage({
           </div>
         ) : !hasAnyData ? (
           /* Cuando todavía no hay datos explico de dónde saldrá la información. */
-          <div className="flex flex-col items-center justify-center rounded-2xl border border-[#E5E7EB] bg-white py-20 text-center">
-            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-[#F3F4F6] text-[#111827]">
+          <div className="flex flex-col items-center justify-center rounded-[var(--rx-radius-extra-large)] border border-[var(--rx-line)] bg-[var(--rx-surface)] py-20 text-center">
+            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-[var(--rx-radius-extra-large)] bg-[var(--rx-surface-soft)] text-[color:var(--rx-dark)]">
               <MaterialIcon
                 name="bar_chart"
                 className="text-4xl"
@@ -1061,29 +1061,29 @@ export default function ReportsPage({
               />
             </div>
 
-            <h2 className="mb-2 text-lg font-bold text-[#0D0F14]">
+            <h2 className="mb-2 text-lg font-bold text-[color:var(--rx-ink)]">
               Todavía no hay información para el reporte
             </h2>
 
-            <p className="max-w-md text-sm leading-6 text-[#6B7280]">
+            <p className="max-w-md text-sm leading-6 text-[color:var(--rx-ink-secondary)]">
               Los indicadores se calcularán automáticamente cuando registres
               ventas en el Punto de Venta o mermas en el módulo de Mermas.
             </p>
 
             <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
-              <span className="rounded-full bg-[#F3F4F6] px-3 py-1.5 text-xs font-semibold text-[#6B7280]">
+              <span className="rounded-full bg-[var(--rx-surface-soft)] px-3 py-1.5 text-xs font-semibold text-[color:var(--rx-ink-secondary)]">
                 0 ventas registradas
               </span>
 
-              <span className="rounded-full bg-[#F3F4F6] px-3 py-1.5 text-xs font-semibold text-[#6B7280]">
+              <span className="rounded-full bg-[var(--rx-surface-soft)] px-3 py-1.5 text-xs font-semibold text-[color:var(--rx-ink-secondary)]">
                 0 mermas registradas
               </span>
             </div>
           </div>
         ) : (
           /* Cuando los filtros no alcanzan ningún registro lo aclaro. */
-          <div className="flex flex-col items-center justify-center rounded-2xl border border-[#E5E7EB] bg-white py-20 text-center">
-            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-[#F3F4F6] text-[#9CA3AF]">
+          <div className="flex flex-col items-center justify-center rounded-[var(--rx-radius-extra-large)] border border-[var(--rx-line)] bg-[var(--rx-surface)] py-20 text-center">
+            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-[var(--rx-radius-extra-large)] bg-[var(--rx-surface-soft)] text-[color:var(--rx-ink-muted)]">
               <MaterialIcon
                 name="filter_list_off"
                 className="text-4xl"
@@ -1091,11 +1091,11 @@ export default function ReportsPage({
               />
             </div>
 
-            <h2 className="mb-2 text-lg font-bold text-[#0D0F14]">
+            <h2 className="mb-2 text-lg font-bold text-[color:var(--rx-ink)]">
               No hay operaciones en el periodo consultado
             </h2>
 
-            <p className="max-w-md text-sm leading-6 text-[#6B7280]">
+            <p className="max-w-md text-sm leading-6 text-[color:var(--rx-ink-secondary)]">
               Ya existen ventas o mermas registradas, pero ninguna cae dentro
               del rango de fechas o de la forma de pago seleccionada.
             </p>
@@ -1103,7 +1103,7 @@ export default function ReportsPage({
             <button
               type="button"
               onClick={clearFilters}
-              className="mt-4 rounded-xl bg-[#6B7280] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#111827]"
+              className="mt-4 rounded-[var(--rx-radius-medium)] bg-[var(--rx-ink-secondary)] px-4 py-2.5 text-sm font-semibold text-[color:var(--rx-surface)] hover:bg-[var(--rx-dark)]"
             >
               Limpiar filtros
             </button>
@@ -1117,7 +1117,7 @@ export default function ReportsPage({
             title="Ventas del periodo"
             description="Operaciones consideradas después de aplicar los filtros."
             icon="receipt_long"
-            iconClassName="bg-[#F3F4F6] text-[#4B5563]"
+            iconClassName="bg-[var(--rx-surface-soft)] text-[color:var(--rx-ink-secondary)]"
           >
             {filteredSales.length === 0 ? (
               <EmptySection
@@ -1128,7 +1128,7 @@ export default function ReportsPage({
               <div className="max-h-[420px] overflow-auto">
                 <table className="w-full min-w-[760px] text-sm">
                   <thead>
-                    <tr className="bg-[#F9FAFB]">
+                    <tr className="bg-[var(--rx-surface-soft)]">
                       {[
                         "Folio",
                         "Fecha",
@@ -1139,7 +1139,7 @@ export default function ReportsPage({
                       ].map((heading) => (
                         <th
                           key={heading}
-                          className={`sticky top-0 bg-[#F9FAFB] px-5 py-3 text-xs font-bold uppercase tracking-wide text-[#6B7280] ${
+                          className={`sticky top-0 bg-[var(--rx-surface-soft)] px-5 py-3 text-xs font-bold uppercase tracking-wide text-[color:var(--rx-ink-secondary)] ${
                             heading === "Unidades" || heading === "Total"
                               ? "text-right"
                               : "text-left"
@@ -1156,38 +1156,38 @@ export default function ReportsPage({
                     {[...filteredSales].reverse().map((sale) => (
                       <tr
                         key={sale.folio}
-                        className="border-t border-[#F3F4F6] hover:bg-[#FAFAFA]"
+                        className="border-t border-[var(--rx-surface-soft)] hover:bg-[var(--rx-surface-soft)]"
                       >
                         <td className="px-5 py-3">
-                          <span className="rounded-md bg-[#F3F4F6] px-2 py-1 font-mono text-xs font-semibold text-[#6B7280]">
+                          <span className="rounded-md bg-[var(--rx-surface-soft)] px-2 py-1 font-mono text-xs font-semibold text-[color:var(--rx-ink-secondary)]">
                             {sale.folio}
                           </span>
                         </td>
 
-                        <td className="px-5 py-3 text-[#6B7280]">
+                        <td className="px-5 py-3 text-[color:var(--rx-ink-secondary)]">
                           {sale.date}
                         </td>
 
-                        <td className="px-5 py-3 text-[#6B7280]">
+                        <td className="px-5 py-3 text-[color:var(--rx-ink-secondary)]">
                           {sale.time}
                         </td>
 
                         <td className="px-5 py-3">
-                          <span className="inline-flex items-center gap-2 font-semibold text-[#374151]">
+                          <span className="inline-flex items-center gap-2 font-semibold text-[color:var(--rx-ink-secondary)]">
                             <MaterialIcon
                               name={PAYMENT_METHOD_ICONS[sale.paymentMethod]}
-                              className="text-lg text-[#111827]"
+                              className="text-lg text-[color:var(--rx-dark)]"
                             />
 
                             {PAYMENT_METHOD_LABELS[sale.paymentMethod]}
                           </span>
                         </td>
 
-                        <td className="px-5 py-3 text-right tabular-nums text-[#6B7280]">
+                        <td className="px-5 py-3 text-right tabular-nums text-[color:var(--rx-ink-secondary)]">
                           {formatUnits(countSaleUnits(sale))}
                         </td>
 
-                        <td className="px-5 py-3 text-right font-bold tabular-nums text-[#0D0F14]">
+                        <td className="px-5 py-3 text-right font-bold tabular-nums text-[color:var(--rx-ink)]">
                           {formatCurrency(sale.total)}
                         </td>
                       </tr>
@@ -1203,7 +1203,7 @@ export default function ReportsPage({
             title="Formas de pago"
             description="Cómo se cobraron las ventas del periodo consultado."
             icon="payments"
-            iconClassName="bg-[#DCFCE7] text-[#166534]"
+            iconClassName="bg-[var(--rx-success-bg)] text-[color:var(--rx-success-ink)]"
           >
             {summary.salesCount === 0 ? (
               <EmptySection
@@ -1230,7 +1230,7 @@ export default function ReportsPage({
             title="Productos más vendidos"
             description="Los artículos con más unidades vendidas en el periodo."
             icon="local_fire_department"
-            iconClassName="bg-[#F3F4F6] text-[#111827]"
+            iconClassName="bg-[var(--rx-surface-soft)] text-[color:var(--rx-dark)]"
           >
             {reports.topProducts.length === 0 ? (
               <EmptySection
@@ -1245,9 +1245,9 @@ export default function ReportsPage({
                   detail={`${formatCount(row.units, "unidad vendida", "unidades vendidas")} · ${formatCurrency(row.total)}`}
                   value={formatUnits(row.units)}
                   percent={toPercent(row.units, reports.topProductUnits)}
-                  barClassName="bg-[#111827]"
+                  barClassName="bg-[var(--rx-dark)]"
                   icon={row.icon}
-                  iconClassName="bg-[#F3F4F6] text-[#111827]"
+                  iconClassName="bg-[var(--rx-surface-soft)] text-[color:var(--rx-dark)]"
                 />
               ))
             )}
@@ -1258,7 +1258,7 @@ export default function ReportsPage({
             title="Mermas por motivo"
             description="En qué se está perdiendo mercancía dentro del periodo."
             icon="delete_sweep"
-            iconClassName="bg-[#FEE2E2] text-[#B91C1C]"
+            iconClassName="bg-[var(--rx-danger-bg)] text-[color:var(--rx-danger-ink)]"
           >
             {reports.wasteByReason.length === 0 ? (
               <EmptySection
@@ -1286,7 +1286,7 @@ export default function ReportsPage({
             title="Productos con más mermas"
             description="Los artículos que más pérdida generaron en el periodo."
             icon="report"
-            iconClassName="bg-[#F3F4F6] text-[#4B5563]"
+            iconClassName="bg-[var(--rx-surface-soft)] text-[color:var(--rx-ink-secondary)]"
           >
             {reports.wasteByProduct.length === 0 ? (
               <EmptySection
@@ -1301,9 +1301,9 @@ export default function ReportsPage({
                   detail={`${formatCount(row.units, "unidad perdida", "unidades perdidas")} · ${toPercent(row.loss, reports.wasteLoss)}% de la pérdida total`}
                   value={formatCurrency(row.loss)}
                   percent={toPercent(row.loss, reports.wasteProductLoss)}
-                  barClassName="bg-[#6B7280]"
+                  barClassName="bg-[var(--rx-ink-secondary)]"
                   icon="inventory_2"
-                  iconClassName="bg-[#F3F4F6] text-[#4B5563]"
+                  iconClassName="bg-[var(--rx-surface-soft)] text-[color:var(--rx-ink-secondary)]"
                 />
               ))
             )}
@@ -1312,19 +1312,19 @@ export default function ReportsPage({
         )}
 
         {/* Aclaro qué funciones quedan pendientes para el reporte final. */}
-        <div className="mt-5 flex items-start gap-3 rounded-xl border border-[#E5E7EB] bg-[#F3F4F6] p-4">
+        <div className="mt-5 flex items-start gap-3 rounded-[var(--rx-radius-medium)] border border-[var(--rx-line)] bg-[var(--rx-surface-soft)] p-4">
           <MaterialIcon
             name="info"
-            className="mt-0.5 text-xl text-[#111827]"
+            className="mt-0.5 text-xl text-[color:var(--rx-dark)]"
             filled
           />
 
           <div>
-            <p className="text-sm font-bold text-[#111827]">
+            <p className="text-sm font-bold text-[color:var(--rx-dark)]">
               Alcance actual del reporte
             </p>
 
-            <p className="mt-0.5 text-xs leading-5 text-[#6B7280]">
+            <p className="mt-0.5 text-xs leading-5 text-[color:var(--rx-ink-secondary)]">
               El reporte calcula los indicadores del periodo con las ventas y
               las mermas del gimnasio, permite filtrar por rango de fechas y
               por forma de pago, y muestra el detalle de las ventas, el

@@ -4,23 +4,40 @@ import {
   LineChart, Line, PieChart, Pie, Cell, Legend,
 } from 'recharts';
 
+import { Icon } from '../../components/Icon';
 import { api } from '../../lib/api';
 
 type Tab = 'ventas' | 'visitas' | 'asistencia' | 'inventario' | 'personal';
 
 const tabs: { value: Tab; label: string; icon: string }[] = [
-  { value: 'ventas', label: 'Ventas', icon: '💰' },
-  { value: 'visitas', label: 'Visitas', icon: '📈' },
-  { value: 'asistencia', label: 'Asistencia a Clases', icon: '🏋️' },
-  { value: 'inventario', label: 'Inventario', icon: '📦' },
-  { value: 'personal', label: 'Personal', icon: '👥' },
+  { value: 'ventas', label: 'Ventas', icon: 'payments' },
+  { value: 'visitas', label: 'Visitas', icon: 'monitoring' },
+  { value: 'asistencia', label: 'Asistencia a Clases', icon: 'fitness_center' },
+  { value: 'inventario', label: 'Inventario', icon: 'inventory_2' },
+  { value: 'personal', label: 'Personal', icon: 'groups' },
 ];
 
-const PIE_COLORS = ['#4B5563', '#6B7280', '#9CA3AF', '#374151', '#D1D5DB'];
-const TOOLTIP_STYLE = { borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 12 };
-const TH = 'pb-3 text-xs font-semibold text-gray-400 uppercase';
-const CARD = 'bg-white rounded-2xl p-5 border border-gray-100 shadow-sm';
-const TITLE_FONT = { fontFamily: 'DM Sans, sans-serif' };
+const PIE_COLORS = [
+  'var(--rx-dark)',
+  'var(--rx-accent)',
+  'var(--rx-success)',
+  'var(--rx-warning)',
+  'var(--rx-ink-muted)',
+];
+const TOOLTIP_STYLE = {
+  backgroundColor: 'var(--rx-surface)',
+  borderRadius: 12,
+  border: '1px solid var(--rx-line)',
+  color: 'var(--rx-ink)',
+  fontSize: 12,
+};
+const CHART_GRID = 'var(--rx-line)';
+const CHART_TICK = 'var(--rx-ink-muted)';
+const CHART_PRIMARY = 'var(--rx-dark)';
+const CHART_SECONDARY = 'var(--rx-success)';
+const TH = 'rx-reports-table-heading';
+const CARD = 'rx-card rx-reports-card';
+const KPI_ICONS = ['monitoring', 'receipt_long', 'payments', 'workspace_premium'];
 
 // ---------------------------------------------------------------------
 // Tipos de las respuestas de /reportes/*
@@ -111,17 +128,22 @@ function exportarCsv(nombre: string, filas: (string | number)[][]) {
 }
 
 function SinDatos({ texto }: { texto: string }) {
-  return <p className="text-gray-400 text-center py-8 text-sm">{texto}</p>;
+  return <div className="rx-admin-empty" role="status"><p>{texto}</p></div>;
 }
 
 function Resumen({ items }: { items: { label: string; value: string | number }[] }) {
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-      {items.map(s => (
-        <div key={s.label} className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
-          <p className="text-xs text-gray-500 mb-1">{s.label}</p>
-          <p className="text-xl font-bold text-gray-900" style={TITLE_FONT}>{s.value}</p>
-        </div>
+    <div className="rx-grid-kpi rx-admin-kpi-grid rx-reports-kpis" aria-live="polite">
+      {items.map((s, index) => (
+        <article key={s.label} className="rx-kpi-card rx-admin-stat rx-reports-stat">
+          <div>
+            <p className="rx-kpi-label">{s.label}</p>
+            <p className="rx-kpi-value">{s.value}</p>
+          </div>
+          <span className={`rx-reports-stat-icon rx-reports-stat-icon--${(index % 4) + 1}`}>
+            <Icon name={KPI_ICONS[index % KPI_ICONS.length]} size={22} />
+          </span>
+        </article>
       ))}
     </div>
   );
@@ -129,17 +151,18 @@ function Resumen({ items }: { items: { label: string; value: string | number }[]
 
 function Aviso({ texto }: { texto: string }) {
   return (
-    <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800" role="note">
+    <div className="rx-alert rx-alert--warning" role="note">
+      <Icon name="warning" size={20} />
       {texto}
     </div>
   );
 }
 
 const ESTADO_PERSONAL: Record<string, { texto: string; clase: string }> = {
-  puntual: { texto: 'Puntual', clase: 'bg-[#F3F4F6] text-[#6B7280]' },
-  retardo: { texto: 'Retardo', clase: 'bg-amber-50 text-amber-700' },
-  inasistencia: { texto: 'Falta', clase: 'bg-red-50 text-red-600' },
-  sin_turno: { texto: 'Sin turno', clase: 'bg-gray-100 text-gray-500' },
+  puntual: { texto: 'Puntual', clase: 'rx-badge rx-badge--success' },
+  retardo: { texto: 'Retardo', clase: 'rx-badge rx-badge--warning' },
+  inasistencia: { texto: 'Falta', clase: 'rx-badge rx-badge--danger' },
+  sin_turno: { texto: 'Sin turno', clase: 'rx-badge rx-badge--neutral' },
 };
 
 // ---------------------------------------------------------------------
@@ -203,26 +226,37 @@ export function ReportesPage() {
   const horas = Array.from({ length: 24 }, (_, h) => h);
 
   return (
-    <div className="space-y-5 max-w-7xl" aria-busy={cargando}>
-      <div className="flex items-center justify-between flex-wrap gap-3">
+    <div className="rx-admin-module rx-admin-reports" aria-busy={cargando}>
+      <header className="rx-page-header rx-module-header">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900" style={TITLE_FONT}>Reportes</h1>
-          <p className="text-gray-500 text-sm mt-0.5">Análisis y estadísticas del sistema</p>
+          <h1 className="rx-page-title">Reportes</h1>
+          <p className="rx-page-subtitle">Análisis y estadísticas del sistema</p>
         </div>
-        <div className="flex items-center gap-2 text-sm flex-wrap">
-          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="px-3 py-2 border border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-[#111827]" />
-          <span className="text-gray-400">—</span>
-          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="px-3 py-2 border border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-[#111827]" />
-          <select value={horaDesde} onChange={e => setHoraDesde(Number(e.target.value))} aria-label="Hora inicial" className="px-3 py-2 border border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-[#111827]">
+        <div className="rx-module-header-actions rx-reports-period" aria-label="Periodo del reporte">
+          <label className="rx-reports-control">
+            <span>Desde</span>
+            <input type="date" aria-label="Fecha inicial" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="rx-input" />
+          </label>
+          <label className="rx-reports-control">
+            <span>Hasta</span>
+            <input type="date" aria-label="Fecha final" value={dateTo} onChange={e => setDateTo(e.target.value)} className="rx-input" />
+          </label>
+          <label className="rx-reports-control rx-reports-control--time">
+            <span>Hora inicial</span>
+            <select value={horaDesde} onChange={e => setHoraDesde(Number(e.target.value))} aria-label="Hora inicial" className="rx-select">
             {horas.map(h => <option key={h} value={h}>{etiquetaHora(h)}</option>)}
-          </select>
-          <span className="text-gray-400">a</span>
-          <select value={horaHasta} onChange={e => setHoraHasta(Number(e.target.value))} aria-label="Hora final" className="px-3 py-2 border border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-[#111827]">
+            </select>
+          </label>
+          <label className="rx-reports-control rx-reports-control--time">
+            <span>Hora final</span>
+            <select value={horaHasta} onChange={e => setHoraHasta(Number(e.target.value))} aria-label="Hora final" className="rx-select">
             {horas.map(h => <option key={h} value={h}>{etiquetaHora(h)}</option>)}
-          </select>
+            </select>
+          </label>
         </div>
-      </div>
+      </header>
 
+      <div className="rx-admin-module-content rx-reports-content space-y-5">
       {error && (
         <div className="rx-admin-alert" role="alert">
           <span>{error}</span>
@@ -233,14 +267,16 @@ export function ReportesPage() {
       )}
 
       {/* Tabs */}
-      <div className="flex gap-2 overflow-x-auto pb-1">
+      <div className="rx-filter-bar rx-reports-tabs-bar">
+        <div className="rx-tabs rx-reports-tabs" role="tablist" aria-label="Tipo de reporte">
         {tabs.map(tab => (
-          <button key={tab.value} onClick={() => setActiveTab(tab.value)}
-            className={`rx-tab ${activeTab === tab.value ? 'rx-tab--active' : ''}`}>
-            <span>{tab.icon}</span>
+          <button key={tab.value} type="button" role="tab" aria-selected={activeTab === tab.value} onClick={() => setActiveTab(tab.value)}
+            className="rx-tab">
+            <Icon name={tab.icon} size={18} weight={500} />
             {tab.label}
           </button>
         ))}
+        </div>
       </div>
 
       {/* VENTAS */}
@@ -255,34 +291,34 @@ export function ReportesPage() {
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className={CARD}>
-              <h3 className="font-semibold text-gray-900 mb-4" style={TITLE_FONT}>Ventas por día</h3>
+              <h3 className="rx-card-title">Ventas por día</h3>
               {!ventas || ventas.resumen.transacciones === 0 ? (
                 <SinDatos texto={textoVacio('Sin ventas en este rango')} />
               ) : (
                 <ResponsiveContainer width="100%" height={250}>
                   <BarChart data={ventas.porDia.map(d => ({ ...d, dia: etiquetaDia(d.fecha) }))} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                    <XAxis dataKey="dia" tick={{ fontSize: 10, fill: '#94a3b8' }} tickLine={false} axisLine={false} />
-                    <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} tickLine={false} axisLine={false} tickFormatter={v => `$${v}`} />
+                    <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
+                    <XAxis dataKey="dia" tick={{ fontSize: 11, fill: CHART_TICK }} tickLine={false} axisLine={false} />
+                    <YAxis tick={{ fontSize: 11, fill: CHART_TICK }} tickLine={false} axisLine={false} tickFormatter={v => `$${v}`} />
                     <Tooltip formatter={(v) => [dinero(Number(v)), 'Ventas']} contentStyle={TOOLTIP_STYLE} />
-                    <Bar dataKey="ventas" fill="#4B5563" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="ventas" fill={CHART_PRIMARY} radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               )}
             </div>
 
             <div className={CARD}>
-              <h3 className="font-semibold text-gray-900 mb-4" style={TITLE_FONT}>Ventas por horario</h3>
+              <h3 className="rx-card-title">Ventas por horario</h3>
               {!ventas || ventas.resumen.transacciones === 0 ? (
                 <SinDatos texto={textoVacio('Sin ventas en este rango')} />
               ) : (
                 <ResponsiveContainer width="100%" height={250}>
                   <BarChart data={ventas.porHora.map(h => ({ ...h, etiqueta: etiquetaHora(h.hora) }))} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                    <XAxis dataKey="etiqueta" tick={{ fontSize: 10, fill: '#94a3b8' }} tickLine={false} axisLine={false} />
-                    <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} tickLine={false} axisLine={false} tickFormatter={v => `$${v}`} />
+                    <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
+                    <XAxis dataKey="etiqueta" tick={{ fontSize: 11, fill: CHART_TICK }} tickLine={false} axisLine={false} />
+                    <YAxis tick={{ fontSize: 11, fill: CHART_TICK }} tickLine={false} axisLine={false} tickFormatter={v => `$${v}`} />
                     <Tooltip formatter={(v) => [dinero(Number(v)), 'Ventas']} contentStyle={TOOLTIP_STYLE} />
-                    <Bar dataKey="ventas" fill="#6B7280" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="ventas" fill={CHART_PRIMARY} radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               )}
@@ -291,7 +327,7 @@ export function ReportesPage() {
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className={CARD}>
-              <h3 className="font-semibold text-gray-900 mb-4" style={TITLE_FONT}>Ventas por tipo de producto</h3>
+              <h3 className="rx-card-title">Ventas por tipo de producto</h3>
               {!ventas || ventas.porCategoria.length === 0 ? (
                 <SinDatos texto={textoVacio('Sin ventas en este rango')} />
               ) : (
@@ -308,25 +344,25 @@ export function ReportesPage() {
             </div>
 
             <div className={CARD}>
-              <h3 className="font-semibold text-gray-900 mb-4" style={TITLE_FONT}>Productos vendidos</h3>
+              <h3 className="rx-card-title">Productos vendidos</h3>
               {!ventas || ventas.productos.length === 0 ? (
                 <SinDatos texto={textoVacio('Sin ventas en este rango')} />
               ) : (
                 <div className="max-h-[250px] overflow-auto">
-                  <table className="w-full text-sm">
-                    <thead><tr className="border-b border-gray-100">
+                  <table className="rx-table rx-reports-table">
+                    <thead><tr className="border-b border-[var(--rx-line)]">
                       <th className={`${TH} text-left`}>Producto</th>
                       <th className={`${TH} text-right`}>Precio</th>
                       <th className={`${TH} text-center`}>Unidades</th>
                       <th className={`${TH} text-right`}>Importe</th>
                     </tr></thead>
-                    <tbody className="divide-y divide-gray-50">
+                    <tbody >
                       {ventas.productos.map(p => (
                         <tr key={`${p.categoria}-${p.nombre}`}>
-                          <td className="py-2 font-medium text-gray-800">{p.nombre}<span className="block text-xs text-gray-400">{p.categoria}</span></td>
-                          <td className="py-2 text-right text-gray-600">{dinero(p.precio)}</td>
-                          <td className="py-2 text-center text-gray-600">{p.unidades}</td>
-                          <td className="py-2 text-right font-semibold text-gray-800">{dinero(p.importe)}</td>
+                          <td className="py-2 font-medium text-[color:var(--rx-ink)]">{p.nombre}<span className="block text-xs text-[color:var(--rx-ink-muted)]">{p.categoria}</span></td>
+                          <td className="py-2 text-right text-[color:var(--rx-ink-secondary)]">{dinero(p.precio)}</td>
+                          <td className="py-2 text-center text-[color:var(--rx-ink-secondary)]">{p.unidades}</td>
+                          <td className="py-2 text-right font-semibold text-[color:var(--rx-ink)]">{dinero(p.importe)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -338,7 +374,7 @@ export function ReportesPage() {
 
           <div className={CARD}>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-gray-900" style={TITLE_FONT}>Detalle de ventas</h3>
+              <h3 className="rx-card-title">Detalle de ventas</h3>
               <button
                 className="rx-btn rx-btn--outline rx-btn--sm"
                 disabled={!ventas || ventas.tickets.length === 0}
@@ -354,8 +390,8 @@ export function ReportesPage() {
               <SinDatos texto={textoVacio('Sin ventas en este rango')} />
             ) : (
               <>
-                <table className="w-full text-sm">
-                  <thead><tr className="border-b border-gray-100">
+                <table className="rx-table rx-reports-table">
+                  <thead><tr className="border-b border-[var(--rx-line)]">
                     <th className={`${TH} text-left`}>Folio</th>
                     <th className={`${TH} text-left`}>Fecha</th>
                     <th className={`${TH} text-left`}>Hora</th>
@@ -363,21 +399,21 @@ export function ReportesPage() {
                     <th className={`${TH} text-center`}>Artículos</th>
                     <th className={`${TH} text-right`}>Total</th>
                   </tr></thead>
-                  <tbody className="divide-y divide-gray-50">
+                  <tbody >
                     {ventas.tickets.map(t => (
                       <tr key={t.folio}>
-                        <td className="py-3 font-medium text-gray-800">{t.folio}</td>
-                        <td className="py-3 text-gray-500">{t.fecha}</td>
-                        <td className="py-3 text-gray-500">{t.hora}</td>
-                        <td className="py-3 text-gray-500 capitalize">{t.formaPago}</td>
-                        <td className="py-3 text-center text-gray-600">{t.articulos}</td>
-                        <td className="py-3 text-right font-semibold text-gray-800">{dinero(t.total)}</td>
+                        <td className="py-3 font-medium text-[color:var(--rx-ink)]">{t.folio}</td>
+                        <td className="py-3 text-[color:var(--rx-ink-secondary)]">{t.fecha}</td>
+                        <td className="py-3 text-[color:var(--rx-ink-secondary)]">{t.hora}</td>
+                        <td className="py-3 text-[color:var(--rx-ink-secondary)] capitalize">{t.formaPago}</td>
+                        <td className="py-3 text-center text-[color:var(--rx-ink-secondary)]">{t.articulos}</td>
+                        <td className="py-3 text-right font-semibold text-[color:var(--rx-ink)]">{dinero(t.total)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
                 {ventas.ticketsTruncados && (
-                  <p className="text-xs text-gray-400 mt-3">Se muestran las 500 ventas más recientes del rango.</p>
+                  <p className="text-xs text-[color:var(--rx-ink-muted)] mt-3">Se muestran las 500 ventas más recientes del rango.</p>
                 )}
               </>
             )}
@@ -396,36 +432,36 @@ export function ReportesPage() {
           ]} />
 
           <div className={CARD}>
-            <h3 className="font-semibold text-gray-900 mb-1" style={TITLE_FONT}>Visitas por día</h3>
-            <p className="text-xs text-gray-400 mb-4">Entradas de socios registradas en el reloj checador.</p>
+            <h3 className="rx-card-title">Visitas por día</h3>
+            <p className="text-xs text-[color:var(--rx-ink-muted)] mb-4">Entradas de socios registradas en el reloj checador.</p>
             {!visitas || visitas.resumen.totalVisitas === 0 ? (
               <SinDatos texto={textoVacio('Sin visitas en este rango')} />
             ) : (
               <ResponsiveContainer width="100%" height={280}>
                 <LineChart data={visitas.porDia.map(d => ({ ...d, dia: etiquetaDia(d.fecha) }))} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                  <XAxis dataKey="dia" tick={{ fontSize: 10, fill: '#94a3b8' }} tickLine={false} axisLine={false} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: '#94a3b8' }} tickLine={false} axisLine={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
+                  <XAxis dataKey="dia" tick={{ fontSize: 11, fill: CHART_TICK }} tickLine={false} axisLine={false} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: CHART_TICK }} tickLine={false} axisLine={false} />
                   <Tooltip contentStyle={TOOLTIP_STYLE} />
-                  <Line type="monotone" dataKey="visitas" name="Visitas" stroke="#6B7280" strokeWidth={2.5} dot={{ r: 3, fill: '#6B7280' }} />
-                  <Line type="monotone" dataKey="unicos" name="Únicos" stroke="#9CA3AF" strokeWidth={2} strokeDasharray="4 3" dot={false} />
+                  <Line type="monotone" dataKey="visitas" name="Visitas" stroke={CHART_PRIMARY} strokeWidth={2.5} dot={{ r: 3, fill: CHART_PRIMARY }} />
+                  <Line type="monotone" dataKey="unicos" name="Únicos" stroke={CHART_SECONDARY} strokeWidth={2} strokeDasharray="4 3" dot={false} />
                 </LineChart>
               </ResponsiveContainer>
             )}
           </div>
 
           <div className={CARD}>
-            <h3 className="font-semibold text-gray-900 mb-4" style={TITLE_FONT}>Visitas por horario</h3>
+            <h3 className="rx-card-title">Visitas por horario</h3>
             {!visitas || visitas.resumen.totalVisitas === 0 ? (
               <SinDatos texto={textoVacio('Sin visitas en este rango')} />
             ) : (
               <ResponsiveContainer width="100%" height={240}>
                 <BarChart data={visitas.porHora.map(h => ({ ...h, etiqueta: etiquetaHora(h.hora) }))} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                  <XAxis dataKey="etiqueta" tick={{ fontSize: 10, fill: '#94a3b8' }} tickLine={false} axisLine={false} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: '#94a3b8' }} tickLine={false} axisLine={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
+                  <XAxis dataKey="etiqueta" tick={{ fontSize: 11, fill: CHART_TICK }} tickLine={false} axisLine={false} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: CHART_TICK }} tickLine={false} axisLine={false} />
                   <Tooltip contentStyle={TOOLTIP_STYLE} />
-                  <Bar dataKey="visitas" fill="#4B5563" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="visitas" fill={CHART_PRIMARY} radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -448,31 +484,31 @@ export function ReportesPage() {
           )}
 
           <div className={CARD}>
-            <h3 className="font-semibold text-gray-900 mb-4" style={TITLE_FONT}>Asistencia por clase</h3>
+            <h3 className="rx-card-title">Asistencia por clase</h3>
             {!asistencia || asistencia.porClase.length === 0 ? (
               <SinDatos texto={textoVacio('Sin reservaciones en este rango')} />
             ) : (
               <ResponsiveContainer width="100%" height={Math.max(200, asistencia.porClase.length * 44)}>
                 <BarChart data={asistencia.porClase} layout="vertical" margin={{ top: 5, right: 20, left: 20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
-                  <XAxis type="number" allowDecimals={false} tick={{ fontSize: 10, fill: '#94a3b8' }} tickLine={false} axisLine={false} />
-                  <YAxis type="category" dataKey="clase" tick={{ fontSize: 11, fill: '#64748b' }} tickLine={false} axisLine={false} width={110} />
+                  <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} horizontal={false} />
+                  <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11, fill: CHART_TICK }} tickLine={false} axisLine={false} />
+                  <YAxis type="category" dataKey="clase" tick={{ fontSize: 11, fill: CHART_TICK }} tickLine={false} axisLine={false} width={110} />
                   <Tooltip contentStyle={TOOLTIP_STYLE} />
                   <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
-                  <Bar dataKey="asistieron" name="Asistieron" fill="#4B5563" radius={[0, 4, 4, 0]} />
-                  <Bar dataKey="noAsistieron" name="No asistieron" fill="#D1D5DB" radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="asistieron" name="Asistieron" fill={CHART_PRIMARY} radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="noAsistieron" name="No asistieron" fill={CHART_SECONDARY} radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             )}
           </div>
 
           <div className={CARD}>
-            <h3 className="font-semibold text-gray-900 mb-4" style={TITLE_FONT}>Asistencia por entrenador</h3>
+            <h3 className="rx-card-title">Asistencia por entrenador</h3>
             {!asistencia || asistencia.porEntrenador.length === 0 ? (
               <SinDatos texto={textoVacio('Sin reservaciones en este rango')} />
             ) : (
-              <table className="w-full text-sm">
-                <thead><tr className="border-b border-gray-100">
+              <table className="rx-table rx-reports-table">
+                <thead><tr className="border-b border-[var(--rx-line)]">
                   <th className={`${TH} text-left`}>Entrenador</th>
                   <th className={`${TH} text-center`}>Reservadas</th>
                   <th className={`${TH} text-center`}>Asistieron</th>
@@ -480,15 +516,15 @@ export function ReportesPage() {
                   <th className={`${TH} text-center`}>Canceladas</th>
                   <th className={`${TH} text-right`}>Tasa</th>
                 </tr></thead>
-                <tbody className="divide-y divide-gray-50">
+                <tbody >
                   {asistencia.porEntrenador.map(e => (
                     <tr key={e.entrenador}>
-                      <td className="py-3 font-medium text-gray-800">{e.entrenador}</td>
-                      <td className="py-3 text-center text-gray-600">{e.reservadas}</td>
-                      <td className="py-3 text-center text-gray-800 font-semibold">{e.asistieron}</td>
-                      <td className="py-3 text-center text-gray-600">{e.noAsistieron}</td>
-                      <td className="py-3 text-center text-gray-400">{e.canceladas}</td>
-                      <td className="py-3 text-right font-semibold text-gray-800">{pct(e.tasaAsistencia)}</td>
+                      <td className="py-3 font-medium text-[color:var(--rx-ink)]">{e.entrenador}</td>
+                      <td className="py-3 text-center text-[color:var(--rx-ink-secondary)]">{e.reservadas}</td>
+                      <td className="py-3 text-center text-[color:var(--rx-ink)] font-semibold">{e.asistieron}</td>
+                      <td className="py-3 text-center text-[color:var(--rx-ink-secondary)]">{e.noAsistieron}</td>
+                      <td className="py-3 text-center text-[color:var(--rx-ink-muted)]">{e.canceladas}</td>
+                      <td className="py-3 text-right font-semibold text-[color:var(--rx-ink)]">{pct(e.tasaAsistencia)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -497,26 +533,26 @@ export function ReportesPage() {
           </div>
 
           <div className={CARD}>
-            <h3 className="font-semibold text-gray-900 mb-4" style={TITLE_FONT}>Detalle por clase y entrenador</h3>
+            <h3 className="rx-card-title">Detalle por clase y entrenador</h3>
             {!asistencia || asistencia.detalle.length === 0 ? (
               <SinDatos texto={textoVacio('Sin reservaciones en este rango')} />
             ) : (
-              <table className="w-full text-sm">
-                <thead><tr className="border-b border-gray-100">
+              <table className="rx-table rx-reports-table">
+                <thead><tr className="border-b border-[var(--rx-line)]">
                   <th className={`${TH} text-left`}>Clase</th>
                   <th className={`${TH} text-left`}>Entrenador</th>
                   <th className={`${TH} text-center`}>Reservadas</th>
                   <th className={`${TH} text-center`}>Asistieron</th>
                   <th className={`${TH} text-right`}>Tasa</th>
                 </tr></thead>
-                <tbody className="divide-y divide-gray-50">
+                <tbody >
                   {asistencia.detalle.map(d => (
                     <tr key={`${d.clase}-${d.entrenador}`}>
-                      <td className="py-3 font-medium text-gray-800">{d.clase}</td>
-                      <td className="py-3 text-gray-500">{d.entrenador}</td>
-                      <td className="py-3 text-center text-gray-600">{d.reservadas}</td>
-                      <td className="py-3 text-center text-gray-800 font-semibold">{d.asistieron}</td>
-                      <td className="py-3 text-right text-gray-800 font-semibold">{pct(d.tasaAsistencia)}</td>
+                      <td className="py-3 font-medium text-[color:var(--rx-ink)]">{d.clase}</td>
+                      <td className="py-3 text-[color:var(--rx-ink-secondary)]">{d.entrenador}</td>
+                      <td className="py-3 text-center text-[color:var(--rx-ink-secondary)]">{d.reservadas}</td>
+                      <td className="py-3 text-center text-[color:var(--rx-ink)] font-semibold">{d.asistieron}</td>
+                      <td className="py-3 text-right text-[color:var(--rx-ink)] font-semibold">{pct(d.tasaAsistencia)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -541,29 +577,29 @@ export function ReportesPage() {
           ]} />
 
           <div className={CARD}>
-            <h3 className="font-semibold text-gray-900 mb-1" style={TITLE_FONT}>Existencias por producto</h3>
-            <p className="text-xs text-gray-400 mb-4">Las existencias son las de hoy; el rango de fechas solo afecta a las mermas.</p>
+            <h3 className="rx-card-title">Existencias por producto</h3>
+            <p className="text-xs text-[color:var(--rx-ink-muted)] mb-4">Las existencias son las de hoy; el rango de fechas solo afecta a las mermas.</p>
             {!inventario || inventario.productos.length === 0 ? (
               <SinDatos texto={textoVacio('Sin productos registrados')} />
             ) : (
-              <table className="w-full text-sm">
-                <thead><tr className="border-b border-gray-100">
+              <table className="rx-table rx-reports-table">
+                <thead><tr className="border-b border-[var(--rx-line)]">
                   <th className={`${TH} text-left`}>Producto</th>
                   <th className={`${TH} text-left`}>Categoría</th>
                   <th className={`${TH} text-center`}>Stock</th>
                   <th className={`${TH} text-center`}>Mínimo</th>
                   <th className={`${TH} text-right`}>Valor al precio</th>
                 </tr></thead>
-                <tbody className="divide-y divide-gray-50">
+                <tbody >
                   {inventario.productos.map(p => (
                     <tr key={p.id}>
-                      <td className="py-3 font-medium text-gray-800">{p.nombre}<span className="block text-xs text-gray-400">{p.codigo}</span></td>
-                      <td className="py-3 text-gray-500">{p.categoria}</td>
+                      <td className="py-3 font-medium text-[color:var(--rx-ink)]">{p.nombre}<span className="block text-xs text-[color:var(--rx-ink-muted)]">{p.codigo}</span></td>
+                      <td className="py-3 text-[color:var(--rx-ink-secondary)]">{p.categoria}</td>
                       <td className="py-3 text-center">
-                        <span className={p.stock <= p.stockMinimo ? 'text-red-500 font-semibold' : 'text-gray-700 font-medium'}>{p.stock}</span>
+                        <span className={p.stock <= p.stockMinimo ? 'text-[color:var(--rx-danger)] font-semibold' : 'text-[color:var(--rx-ink-secondary)] font-medium'}>{p.stock}</span>
                       </td>
-                      <td className="py-3 text-center text-gray-400">{p.stockMinimo}</td>
-                      <td className="py-3 text-right text-gray-700">{dinero(p.stock * p.precio)}</td>
+                      <td className="py-3 text-center text-[color:var(--rx-ink-muted)]">{p.stockMinimo}</td>
+                      <td className="py-3 text-right text-[color:var(--rx-ink-secondary)]">{dinero(p.stock * p.precio)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -572,20 +608,20 @@ export function ReportesPage() {
           </div>
 
           <div className={CARD}>
-            <h3 className="font-semibold text-gray-900 mb-4" style={TITLE_FONT}>Mermas del periodo</h3>
+            <h3 className="rx-card-title">Mermas del periodo</h3>
             {!inventario || inventario.mermas.length === 0 ? (
               <SinDatos texto={textoVacio('Sin mermas registradas en este rango')} />
             ) : (
               <>
                 <div className="flex flex-wrap gap-2 mb-4">
                   {inventario.mermasPorMotivo.map(m => (
-                    <span key={m.motivo} className="px-3 py-1 rounded-full bg-gray-100 text-xs text-gray-600">
+                    <span key={m.motivo} className="px-3 py-1 rounded-full bg-[var(--rx-surface-soft)] text-xs text-[color:var(--rx-ink-secondary)]">
                       {m.motivo}: {m.unidades} u · {dinero(m.perdida)}
                     </span>
                   ))}
                 </div>
-                <table className="w-full text-sm">
-                  <thead><tr className="border-b border-gray-100">
+                <table className="rx-table rx-reports-table">
+                  <thead><tr className="border-b border-[var(--rx-line)]">
                     <th className={`${TH} text-left`}>Folio</th>
                     <th className={`${TH} text-left`}>Producto</th>
                     <th className={`${TH} text-center`}>Cantidad</th>
@@ -593,15 +629,15 @@ export function ReportesPage() {
                     <th className={`${TH} text-right`}>Pérdida</th>
                     <th className={`${TH} text-right`}>Fecha</th>
                   </tr></thead>
-                  <tbody className="divide-y divide-gray-50">
+                  <tbody >
                     {inventario.mermas.map(m => (
                       <tr key={m.id}>
-                        <td className="py-3 text-gray-500">{m.folio}</td>
-                        <td className="py-3 font-medium text-gray-800">{m.producto}</td>
-                        <td className="py-3 text-center text-red-500 font-semibold">-{m.cantidad}</td>
-                        <td className="py-3 text-gray-500">{m.motivo}</td>
-                        <td className="py-3 text-right text-gray-700">{dinero(m.perdida)}</td>
-                        <td className="py-3 text-right text-gray-400">{m.fecha}</td>
+                        <td className="py-3 text-[color:var(--rx-ink-secondary)]">{m.folio}</td>
+                        <td className="py-3 font-medium text-[color:var(--rx-ink)]">{m.producto}</td>
+                        <td className="py-3 text-center text-[color:var(--rx-danger)] font-semibold">-{m.cantidad}</td>
+                        <td className="py-3 text-[color:var(--rx-ink-secondary)]">{m.motivo}</td>
+                        <td className="py-3 text-right text-[color:var(--rx-ink-secondary)]">{dinero(m.perdida)}</td>
+                        <td className="py-3 text-right text-[color:var(--rx-ink-muted)]">{m.fecha}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -627,12 +663,12 @@ export function ReportesPage() {
           )}
 
           <div className={CARD}>
-            <h3 className="font-semibold text-gray-900 mb-4" style={TITLE_FONT}>Asistencia del personal</h3>
+            <h3 className="rx-card-title">Asistencia del personal</h3>
             {!personal || personal.porEmpleado.length === 0 ? (
               <SinDatos texto={textoVacio('Sin empleados registrados')} />
             ) : (
-              <table className="w-full text-sm">
-                <thead><tr className="border-b border-gray-100">
+              <table className="rx-table rx-reports-table">
+                <thead><tr className="border-b border-[var(--rx-line)]">
                   <th className={`${TH} text-left`}>Empleado</th>
                   <th className={`${TH} text-left`}>Rol</th>
                   <th className={`${TH} text-center`}>Puntuales</th>
@@ -640,16 +676,16 @@ export function ReportesPage() {
                   <th className={`${TH} text-center`}>Faltas</th>
                   <th className={`${TH} text-right`}>% Asistencia</th>
                 </tr></thead>
-                <tbody className="divide-y divide-gray-50">
+                <tbody >
                   {personal.porEmpleado.map(p => (
                     <tr key={p.codigo}>
-                      <td className="py-3 font-medium text-gray-800">{p.nombre}<span className="block text-xs text-gray-400">{p.codigo}</span></td>
-                      <td className="py-3 text-gray-500 capitalize">{p.rol}</td>
-                      <td className="py-3 text-center text-emerald-600 font-semibold">{p.puntuales}</td>
-                      <td className="py-3 text-center text-amber-500 font-semibold">{p.retardos}</td>
-                      <td className="py-3 text-center text-red-500 font-semibold">{p.faltas}</td>
+                      <td className="py-3 font-medium text-[color:var(--rx-ink)]">{p.nombre}<span className="block text-xs text-[color:var(--rx-ink-muted)]">{p.codigo}</span></td>
+                      <td className="py-3 text-[color:var(--rx-ink-secondary)] capitalize">{p.rol}</td>
+                      <td className="py-3 text-center text-[color:var(--rx-success)] font-semibold">{p.puntuales}</td>
+                      <td className="py-3 text-center text-[color:var(--rx-warning)] font-semibold">{p.retardos}</td>
+                      <td className="py-3 text-center text-[color:var(--rx-danger)] font-semibold">{p.faltas}</td>
                       <td className="py-3 text-right">
-                        <span className={`font-semibold ${p.asistenciaPct === null ? 'text-gray-400' : p.asistenciaPct >= 90 ? 'text-emerald-600' : p.asistenciaPct >= 70 ? 'text-amber-500' : 'text-red-500'}`}>
+                        <span className={`font-semibold ${p.asistenciaPct === null ? 'text-[color:var(--rx-ink-muted)]' : p.asistenciaPct >= 90 ? 'text-[color:var(--rx-success)]' : p.asistenciaPct >= 70 ? 'text-[color:var(--rx-warning)]' : 'text-[color:var(--rx-danger)]'}`}>
                           {pct(p.asistenciaPct)}
                         </span>
                       </td>
@@ -661,33 +697,33 @@ export function ReportesPage() {
           </div>
 
           <div className={CARD}>
-            <h3 className="font-semibold text-gray-900 mb-4" style={TITLE_FONT}>Registro de asistencia detallado</h3>
+            <h3 className="rx-card-title">Registro de asistencia detallado</h3>
             {!personal || personal.registros.length === 0 ? (
               <SinDatos texto={textoVacio('Sin registros en este rango')} />
             ) : (
               <>
-                <table className="w-full text-sm">
-                  <thead><tr className="border-b border-gray-100">
+                <table className="rx-table rx-reports-table">
+                  <thead><tr className="border-b border-[var(--rx-line)]">
                     <th className={`${TH} text-left`}>Empleado</th>
                     <th className={`${TH} text-left`}>Fecha</th>
                     <th className={`${TH} text-left`}>Entrada</th>
                     <th className={`${TH} text-left`}>Salida</th>
                     <th className={`${TH} text-center`}>Estado</th>
                   </tr></thead>
-                  <tbody className="divide-y divide-gray-50">
+                  <tbody >
                     {personal.registros.map(r => {
                       const estado = r.estado ? ESTADO_PERSONAL[r.estado] : undefined;
                       return (
                         <tr key={`${r.codigo}-${r.fecha}`}>
-                          <td className="py-3 font-medium text-gray-800">{r.nombre}</td>
-                          <td className="py-3 text-gray-500">{r.fecha}</td>
-                          <td className="py-3 text-gray-600">{r.entrada ?? '—'}</td>
-                          <td className="py-3 text-gray-600">{r.salida ?? '—'}</td>
+                          <td className="py-3 font-medium text-[color:var(--rx-ink)]">{r.nombre}</td>
+                          <td className="py-3 text-[color:var(--rx-ink-secondary)]">{r.fecha}</td>
+                          <td className="py-3 text-[color:var(--rx-ink-secondary)]">{r.entrada ?? '—'}</td>
+                          <td className="py-3 text-[color:var(--rx-ink-secondary)]">{r.salida ?? '—'}</td>
                           <td className="py-3 text-center">
                             {estado ? (
-                              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${estado.clase}`}>{estado.texto}</span>
+                              <span className={estado.clase}>{estado.texto}</span>
                             ) : (
-                              <span className="text-gray-300">—</span>
+                              <span className="text-[color:var(--rx-line-strong)]">—</span>
                             )}
                           </td>
                         </tr>
@@ -696,13 +732,14 @@ export function ReportesPage() {
                   </tbody>
                 </table>
                 {personal.registrosTruncados && (
-                  <p className="text-xs text-gray-400 mt-3">Se muestran los 500 registros más recientes del rango.</p>
+                  <p className="text-xs text-[color:var(--rx-ink-muted)] mt-3">Se muestran los 500 registros más recientes del rango.</p>
                 )}
               </>
             )}
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

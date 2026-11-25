@@ -6,20 +6,20 @@ interface StatCardProps {
   accent?: string;
 }
 
-export function StatCard({ label, value, icon, trend, accent = "#4B5563" }: StatCardProps) {
+export function StatCard({ label, value, icon, trend, accent = "var(--rx-ink-secondary)" }: StatCardProps) {
   return (
-    <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+    <div className="bg-[var(--rx-surface)] rounded-[var(--rx-radius-extra-large)] p-4 border-[1.5px] border-[var(--rx-line)]">
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-sm text-gray-500 font-medium">{label}</p>
-          <p className="text-2xl font-bold text-gray-900 mr-1" style={{ fontFamily: "DM Sans, sans-serif" }}>{value}</p>
+          <p className="text-sm text-[color:var(--rx-ink-secondary)] font-medium">{label}</p>
+          <p className="text-2xl font-bold text-[color:var(--rx-ink)] mr-1" style={{ fontFamily: 'var(--rx-font)' }}>{value}</p>
           {trend && (
-            <p className={`text-xs mr-1.5 font-medium ${trend.positive ? "text-emerald-600" : "text-red-500"}`}>
+            <p className={`text-xs mr-1.5 font-medium ${trend.positive ? "text-[color:var(--rx-success)]" : "text-[color:var(--rx-danger)]"}`}>
               {trend.positive ? "↑" : "↓"} {trend.value} vs. mes anterior
             </p>
           )}
         </div>
-        <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `${accent}18` }}>
+        <div className="w-11 h-11 rounded-[var(--rx-radius-medium)] flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `color-mix(in srgb, ${accent} 12%, var(--rx-surface))` }}>
           <div style={{ color: accent }}>{icon}</div>
         </div>
       </div>

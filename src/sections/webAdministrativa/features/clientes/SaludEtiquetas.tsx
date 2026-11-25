@@ -50,7 +50,7 @@ export default function ListaSalud({ label, items, onChange }: {
     <div className="text-sm font-medium">
       {label} <span className="rx-help-text">(opcional)</span>
       <div className="flex gap-2 mt-2">
-        <input aria-label={label} value={texto} maxLength={60} className="w-full rounded-xl border border-gray-200 px-3 py-2"
+        <input aria-label={label} value={texto} maxLength={60} className="w-full rounded-[var(--rx-radius-medium)] border border-[var(--rx-line)] px-3 py-2"
           placeholder="Escribe y presiona Enter o Agregar"
           onChange={e => setTexto(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); agregar(); } }}

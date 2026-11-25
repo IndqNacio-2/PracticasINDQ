@@ -103,7 +103,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const hasRole = (roles: UserRole[]) => (user ? roles.includes(user.rol) : false);
 
   if (!ready) {
-    return <div role="status" className="min-h-screen flex items-center justify-center text-gray-500">Validando sesión...</div>;
+  return <div role="status" className="min-h-screen flex items-center justify-center text-[color:var(--rx-ink-secondary)]">Validando sesión...</div>;
   }
 
   return (

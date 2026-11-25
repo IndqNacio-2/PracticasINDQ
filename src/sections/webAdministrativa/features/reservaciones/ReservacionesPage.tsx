@@ -82,24 +82,27 @@ export function ReservacionesPage() {
   const enEspera = reservaciones.filter(r => r.capacityStatus === 'espera' && r.status !== 'cancelado').length;
 
   return (
-    <div className="w-full min-w-0 space-y-5">
-      <div className="flex items-center justify-between">
+    <div className="rx-admin-module rx-admin-reservations">
+      <header className="rx-page-header rx-module-header">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>Reservaciones</h1>
-          <p className="text-gray-500 text-sm mt-0.5">{reservaciones.length} registradas en Cobro · {pendientes} pendientes de pago · {enEspera} en espera</p>
+          <h1 className="rx-page-title">Reservaciones</h1>
+          <p className="rx-page-subtitle">{reservaciones.length} registradas en Cobro · {pendientes} pendientes de pago · {enEspera} en espera</p>
         </div>
-        <button onClick={() => void cargar()} disabled={loading}
-          className="rx-btn rx-btn--outline">
-          <svg className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-          Actualizar
-        </button>
-      </div>
+        <div className="rx-module-header-actions">
+          <button onClick={() => void cargar()} disabled={loading}
+            className="rx-btn rx-btn--outline">
+            <svg className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+            Actualizar
+          </button>
+        </div>
+      </header>
 
-      <p className="text-xs text-gray-400 -mt-3">
+      <div className="rx-admin-module-content space-y-5">
+      <p className="text-xs text-[color:var(--rx-ink-muted)] -mt-3">
         Vista de solo lectura: las reservaciones se capturan y cobran en el módulo de Cobro (recepción).
       </p>
 
-      <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit">
+      <div className="flex gap-1 bg-[var(--rx-surface-soft)] p-1 rounded-[var(--rx-radius-medium)] w-fit">
         {filterTabs.map(tab => (
           <button key={tab.value} onClick={() => setFilter(tab.value)}
             className={`rx-tab ${filter === tab.value ? 'rx-tab--active' : ''}`}>
@@ -120,7 +123,7 @@ export function ReservacionesPage() {
                 const r = row as unknown as ReservaCobro;
                 return (
                   <div className="flex items-center gap-2">
-                    <p className="font-medium text-gray-800">{r.client} {r.clienteId ? `#${r.clienteId}` : ''}</p>
+                    <p className="font-medium text-[color:var(--rx-ink)]">{r.client} {r.clienteId ? `#${r.clienteId}` : ''}</p>
                     <Badge variant="cliente" label={r.type === 'visitante' ? 'Visitante' : 'Socio'} />
                   </div>
                 );
@@ -132,8 +135,8 @@ export function ReservacionesPage() {
                 const r = row as unknown as ReservaCobro;
                 return (
                   <div>
-                    <p className="font-medium text-gray-800">{r.class}</p>
-                    <p className="text-xs text-gray-400">
+                    <p className="font-medium text-[color:var(--rx-ink)]">{r.class}</p>
+                    <p className="text-xs text-[color:var(--rx-ink-muted)]">
                       {r.fecha ? `${r.fecha} · ` : ''}Hora {r.time}
                     </p>
                   </div>
@@ -146,7 +149,7 @@ export function ReservacionesPage() {
                 const r = row as unknown as ReservaCobro;
                 const badge = estatusBadge[r.status] ?? { variant: 'pendiente' as const, label: r.status };
                 return <div className="space-y-1"><Badge variant={badge.variant} label={badge.label} />
-                  <p className="text-xs text-gray-500">{r.paymentStatus === 'pagado' ? 'Pago registrado' : 'Pago pendiente'} · {r.attendanceStatus === 'pendiente' ? 'Asistencia pendiente' : r.attendanceStatus === 'asistido' ? 'Asistio' : 'No asistio'}</p>
+                  <p className="text-xs text-[color:var(--rx-ink-secondary)]">{r.paymentStatus === 'pagado' ? 'Pago registrado' : 'Pago pendiente'} · {r.attendanceStatus === 'pendiente' ? 'Asistencia pendiente' : r.attendanceStatus === 'asistido' ? 'Asistio' : 'No asistio'}</p>
                 </div>;
               }
             },
@@ -162,11 +165,12 @@ export function ReservacionesPage() {
             },
             {
               key: 'price', header: 'Precio',
-              render: row => <span className="font-medium text-gray-800">${Number((row as unknown as ReservaCobro).price).toFixed(2)}</span>
+              render: row => <span className="font-medium text-[color:var(--rx-ink)]">${Number((row as unknown as ReservaCobro).price).toFixed(2)}</span>
             },
           ]}
         />
       </DataState>
+      </div>
     </div>
   );
 }

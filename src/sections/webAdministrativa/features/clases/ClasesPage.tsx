@@ -129,7 +129,7 @@ export function ClasesPage() {
               <div className="p-5">
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `${clase.color}20` }}>
+                    <div className="w-10 h-10 rounded-[var(--rx-radius-medium)] flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `${clase.color}20` }}>
                       <svg className="w-5 h-5" style={{ color: clase.color }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                       </svg>
@@ -149,21 +149,21 @@ export function ClasesPage() {
                   </div>
                 </div>
 
-                <p className="text-sm text-gray-500 line-clamp-2 mb-4">{clase.descripcion}</p>
+                <p className="text-sm text-[color:var(--rx-ink-secondary)] line-clamp-2 mb-4">{clase.descripcion}</p>
 
                 <div className="flex items-center justify-between text-sm">
-                  <div className="flex items-center gap-1.5 text-gray-500">
+                  <div className="flex items-center gap-1.5 text-[color:var(--rx-ink-secondary)]">
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                     <span>{clase.capacidad} lugares</span>
                   </div>
                   {/* La clase ya no tiene hora fija: la fecha y el intervalo
                       se programan en el modulo Horarios. */}
-                  <span className="text-gray-400 text-xs">Ver Horarios</span>
+                  <span className="text-[color:var(--rx-ink-muted)] text-xs">Ver Horarios</span>
                 </div>
 
                 <div className="flex items-center justify-between text-sm mt-2">
-                  <span className="text-gray-500">Precio</span>
-                  <span className="font-semibold text-[#6B7280]">${clase.precio ?? 0}</span>
+                  <span className="text-[color:var(--rx-ink-secondary)]">Precio</span>
+                  <span className="font-semibold text-[color:var(--rx-ink-secondary)]">${clase.precio ?? 0}</span>
                 </div>
               </div>
             </article>
@@ -180,15 +180,15 @@ export function ClasesPage() {
             <InputField label="Capacidad" required type="number" min="1" step="1" value={form.capacidad} onChange={e => setForm(f => ({ ...f, capacidad: e.target.value }))} />
             <InputField label="Precio" required type="number" min="0" step="0.01" value={form.precio} onChange={e => setForm(f => ({ ...f, precio: e.target.value }))} />
           </div>
-          <p className="text-sm text-gray-500">El entrenador se selecciona en la programacion semanal o en cada sesion.</p>
+          <p className="text-sm text-[color:var(--rx-ink-secondary)]">El entrenador se selecciona en la programacion semanal o en cada sesion.</p>
           <SelectField label="Estatus" value={form.estatus} onChange={e => setForm(f => ({ ...f, estatus: e.target.value as Estatus }))}
             options={[{ value: 'activo', label: 'Activo' }, { value: 'inactivo', label: 'Inactivo' }]} />
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Color identificador</label>
+            <label className="block text-sm font-medium text-[color:var(--rx-ink-secondary)] mb-2">Color identificador</label>
             <div className="flex gap-2 flex-wrap">
               {COLORS.map(c => (
                 <button key={c} onClick={() => setForm(f => ({ ...f, color: c }))}
-                  className={`w-7 h-7 rounded-full transition-transform hover:scale-110 ${form.color === c ? 'ring-2 ring-offset-2 ring-gray-400 scale-110' : ''}`}
+                  className={`w-7 h-7 rounded-full transition-transform hover:scale-110 ${form.color === c ? 'ring-2 ring-offset-2 ring-[var(--rx-line-strong)] scale-110' : ''}`}
                   style={{ backgroundColor: c }} />
               ))}
             </div>

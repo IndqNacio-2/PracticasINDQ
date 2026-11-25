@@ -13,7 +13,10 @@ export default function RecepcionTabla({ reservas, clientes, seleccion, onSelecc
   return (
     <div className="rx-table-wrap">
       <table className="rx-table rx-reservations-table">
-        <thead><tr>{['Código Usuario', 'Cliente', 'Código', 'Edad', 'Lesiones', 'Cobro', 'Estatus', 'Hora'].map(titulo => <th key={titulo} scope="col">{titulo}</th>)}</tr></thead>
+        <thead><tr>
+          <th scope="col" className="rx-client-code-column"><span>Código</span><span>Usuario</span></th>
+          {['Cliente', 'Código', 'Edad', 'Lesiones', 'Cobro', 'Estatus', 'Hora'].map(titulo => <th key={titulo} scope="col">{titulo}</th>)}
+        </tr></thead>
         <tbody>{reservas.map(reserva => {
           const cliente = reserva.clienteId == null ? undefined : clientes.find(c => c.id != null && String(c.id) === String(reserva.clienteId));
           // Es el mismo formato que resuelve el checador. Nunca usar el código

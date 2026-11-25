@@ -60,8 +60,8 @@ export default function ModuleGuard({ allowedRole, children }: ModuleGuardProps)
 
   if (!authorized) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#111827] text-white">
-        <div className="flex items-center gap-3 rounded-2xl bg-white/10 px-5 py-4">
+      <div className="flex min-h-screen items-center justify-center bg-[var(--rx-dark)] text-[color:var(--rx-surface)]">
+        <div className="flex items-center gap-3 rounded-[var(--rx-radius-extra-large)] bg-white/10 px-5 py-4">
           <MaterialIcon name="progress_activity" className="animate-spin text-2xl" />
           <span className="text-sm font-semibold">Validando tu acceso...</span>
         </div>

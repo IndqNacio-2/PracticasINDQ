@@ -41,23 +41,20 @@ export default function ClasesHorariosPage({ recepcion = false }: { recepcion?: 
   };
 
   return (
-    <section className={recepcion ? 'rx-admin-dashboard rx-reception-programacion' : 'w-full min-w-0 space-y-5'}>
-      <header className={recepcion ? 'rx-page-header rx-admin-dashboard-header' : undefined}>
-      <div className={recepcion ? 'rx-page-heading rx-page-heading--stacked' : undefined}>
-        <h1
-          className={recepcion ? 'rx-page-title' : 'text-2xl font-bold text-gray-900'}
-          style={recepcion ? undefined : { fontFamily: 'DM Sans, sans-serif' }}
-        >
+    <section className={recepcion ? 'rx-admin-dashboard rx-reception-programacion' : 'rx-admin-module rx-admin-classes-schedule'}>
+      <header className="rx-page-header rx-module-header">
+      <div>
+        <h1 className="rx-page-title">
           Clases y horarios
         </h1>
-        <p className={recepcion ? 'rx-page-subtitle' : 'mt-1 text-sm text-gray-500'}>
+        <p className="rx-page-subtitle">
           Administra el catálogo y la programación desde un solo lugar.
         </p>
       </div>
       </header>
 
-      <div className={recepcion ? 'rx-reception-programacion-content' : 'space-y-5'}>
-      <div className="rounded-2xl border border-gray-100 bg-white p-2 shadow-sm">
+      <div className={recepcion ? 'rx-reception-programacion-content' : 'rx-admin-module-content space-y-5'}>
+      <div className="rounded-[var(--rx-radius-extra-large)] border border-[var(--rx-line)] bg-[var(--rx-surface)] p-2">
         <div className="grid gap-2 md:grid-cols-3" role="tablist" aria-label="Vistas de clases y horarios">
           {VISTAS.map(item => {
             const activa = item.id === vista;
@@ -71,7 +68,7 @@ export default function ClasesHorariosPage({ recepcion = false }: { recepcion?: 
                 className={`rx-tab flex-col whitespace-normal ${activa ? 'rx-tab--active' : ''}`}
               >
                 <span className="block text-sm font-semibold">{item.label}</span>
-                <span className={`mt-1 block text-xs ${activa ? 'text-gray-300' : 'text-gray-400'}`}>
+                <span className={`mt-1 block text-xs ${activa ? 'text-[color:var(--rx-line-strong)]' : 'text-[color:var(--rx-ink-muted)]'}`}>
                   {item.descripcion}
                 </span>
               </button>
@@ -84,8 +81,8 @@ export default function ClasesHorariosPage({ recepcion = false }: { recepcion?: 
         {vista === 'agenda' && <HorariosPage />}
         {vista === 'catalogo' && <ClasesPage />}
         {vista === 'cambios' && (
-          <div className="rounded-2xl border border-gray-100 bg-white px-6 py-12 text-center shadow-sm">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-gray-100 text-gray-500">
+          <div className="rounded-[var(--rx-radius-extra-large)] border border-[var(--rx-line)] bg-[var(--rx-surface)] px-6 py-12 text-center">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-[var(--rx-radius-extra-large)] bg-[var(--rx-surface-soft)] text-[color:var(--rx-ink-secondary)]">
               <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path
                   strokeLinecap="round"
@@ -95,8 +92,8 @@ export default function ClasesHorariosPage({ recepcion = false }: { recepcion?: 
                 />
               </svg>
             </div>
-            <h2 className="mt-4 text-lg font-semibold text-gray-900">Cambios y excepciones</h2>
-            <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-gray-500">
+            <h2 className="mt-4 text-lg font-semibold text-[color:var(--rx-ink)]">Cambios y excepciones</h2>
+            <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-[color:var(--rx-ink-secondary)]">
               La programación semanal ya está activa. Esta vista mostrará las sesiones movidas,
               canceladas o extraordinarias cuando se implemente el historial de excepciones.
               Por ahora, los cambios se realizan desde la agenda.

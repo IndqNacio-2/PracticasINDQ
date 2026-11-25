@@ -8,12 +8,14 @@ import { api, apiCobro } from '../../lib/api';
 import { useNavigate } from 'react-router';
 import { MembresiasCliente, type MembresiaComprada } from './MembresiasCliente';
 import ListaSalud, { ListaLesiones, SaludEtiquetas } from './SaludEtiquetas';
+import { ApartadoMenor, DOCUMENTOS_VACIOS, type DocumentosMenor } from './DocumentosMenor';
 import { esNombreValido, esTelefonoValido, esCorreoValido, errorCodigoCliente } from './validacionCliente';
 
 // Un cliente tal como lo devuelve GET /cobro/api/clientes. Estos registros
 // viven en la tabla webcobro.clientes (PostgreSQL): son los mismos socios que
 // usa el módulo de Cobro (front desk) para reservar clases.
 interface SocioCobro {
+  documentosMenor?: DocumentosMenor;
   fechaNacimiento?: string;
   nombreTutor?: string;
   claveElectorTutor?: string;
@@ -30,6 +32,7 @@ interface SocioCobro {
 }
 
 interface SocioForm {
+  documentosMenor: DocumentosMenor;
   fechaNacimiento: string;
   nombreTutor: string;
   claveElectorTutor: string;
@@ -44,6 +47,7 @@ interface SocioForm {
 }
 
 const FORM_VACIO: SocioForm = {
+  documentosMenor: { ...DOCUMENTOS_VACIOS },
   fechaNacimiento: '', nombreTutor: '', claveElectorTutor: '', estadoDocumentacion: 'pendiente',
   codigo: '',
   enfermedades: [],
@@ -174,6 +178,7 @@ export function ClientesPage({ soloRegistro = false, rutaClientes = '/clientes',
     setAvisos({});
     setEditando(s);
     setForm({
+      documentosMenor: { ...DOCUMENTOS_VACIOS, ...s.documentosMenor },
       fechaNacimiento: s.fechaNacimiento ?? '', nombreTutor: s.nombreTutor ?? '',
       claveElectorTutor: s.claveElectorTutor ?? '', estadoDocumentacion: s.estadoDocumentacion ?? 'pendiente',
       codigo: s.codigo || `CLI-${s.id}`,
@@ -222,6 +227,7 @@ export function ClientesPage({ soloRegistro = false, rutaClientes = '/clientes',
     setGuardando(true);
     try {
       const cuerpo = {
+        documentosMenor: form.documentosMenor,
         fechaNacimiento: form.fechaNacimiento, nombreTutor: form.nombreTutor,
         claveElectorTutor: form.claveElectorTutor, estadoDocumentacion: form.estadoDocumentacion,
         ...(form.codigo !== undefined && (!editando || codigoLimpio !== (editando.codigo || `CLI-${editando.id}`)) ? { codigo: codigoLimpio } : {}),
@@ -284,7 +290,7 @@ export function ClientesPage({ soloRegistro = false, rutaClientes = '/clientes',
   const hoy = new Date();
   const hoyISO = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
   const edad = form.fechaNacimiento ? hoy.getFullYear() - Number(form.fechaNacimiento.slice(0, 4)) - (hoyISO.slice(5) < form.fechaNacimiento.slice(5) ? 1 : 0) : null;
-  const requiereTutor = edad !== null && edad < 18;
+  const requiereTutor = edad !== null && edad >= 0 && edad < 18 && form.fechaNacimiento <= hoyISO;
 
   const habilitarMovil = async (s: SocioCobro) => {
     if (procesando !== null) return;
@@ -300,7 +306,7 @@ export function ClientesPage({ soloRegistro = false, rutaClientes = '/clientes',
   };
 
   return (
-    <section className="rx-admin-dashboard rx-clientes w-full min-w-0">
+    <section className="rx-clientes w-full min-w-0">
       {activacion && (
         <Modal open title="Activar cuenta móvil" onClose={() => setActivacion(null)} size="sm">
           <p>Entrega este código únicamente a {activacion.nombre} después de comprobar su identidad.</p>
@@ -309,11 +315,16 @@ export function ClientesPage({ soloRegistro = false, rutaClientes = '/clientes',
           <button type="button" className="rx-btn rx-btn--outline mt-4" onClick={() => setActivacion(null)}>Cerrar</button>
         </Modal>
       )}
-      <header className="rx-page-header rx-admin-dashboard-header">
-        <div className="rx-page-heading rx-page-heading--stacked">
-          <span className="rx-section-eyebrow">Atención de clientes</span>
+      <header className="rx-page-header rx-module-header">
+        <div>
           <h1 className="rx-page-title">Clientes</h1>
           <p className="rx-page-subtitle">{activos} {activos === 1 ? 'cliente activo' : 'clientes activos'} · {clientes.length} {clientes.length === 1 ? 'cliente en total' : 'clientes en total'}</p>
+        </div>
+        <div className="rx-module-header-actions">
+          <button onClick={abrirNuevo} className="rx-btn rx-btn--accent">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+            Nuevo cliente
+          </button>
         </div>
       </header>
 
@@ -322,13 +333,6 @@ export function ClientesPage({ soloRegistro = false, rutaClientes = '/clientes',
         <div>
           <h2>Clientes registrados</h2>
           <p>Consulta los datos de contacto, las membresías compradas y el estatus de cada cliente.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={abrirNuevo}
-            className="rx-btn rx-btn--accent">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-            Nuevo cliente
-          </button>
         </div>
       </div>
 
@@ -347,7 +351,9 @@ export function ClientesPage({ soloRegistro = false, rutaClientes = '/clientes',
           emptyMessage="No hay clientes que mostrar"
           columns={[
             {
-              key: 'codigo', header: 'Código Usuario',
+              key: 'codigo',
+              header: <><span className="block">Código</span><span className="block">Usuario</span></>,
+              className: 'rx-client-code-column',
               render: row => <span className="rx-code">{String(row.codigo ?? '—')}</span>,
             },
             {
@@ -418,10 +424,14 @@ export function ClientesPage({ soloRegistro = false, rutaClientes = '/clientes',
         <fieldset disabled={guardando} className="rx-form-stack rx-membership-fields">
           <InputField label="Fecha de nacimiento" type="date" required={!editando} max={hoyISO} value={form.fechaNacimiento} onChange={e => setForm(f => ({ ...f, fechaNacimiento: e.target.value }))} />
           {requiereTutor && <>
-            <InputField label="Nombre completo del tutor" required maxLength={200} value={form.nombreTutor} onChange={e => setForm(f => ({ ...f, nombreTutor: e.target.value }))} />
-            <InputField label="Clave de elector del tutor" required maxLength={18} value={form.claveElectorTutor} onChange={e => setForm(f => ({ ...f, claveElectorTutor: e.target.value.toUpperCase() }))} />
+            <ApartadoMenor nombre={form.nombreTutor} clave={form.claveElectorTutor} documentos={form.documentosMenor}
+              onNombre={nombreTutor => setForm(f => ({ ...f, nombreTutor }))}
+              onClave={claveElectorTutor => setForm(f => ({ ...f, claveElectorTutor }))}
+              onDocumentos={documentosMenor => setForm(f => ({ ...f, documentosMenor,
+                estadoDocumentacion: Object.values(documentosMenor).every(Boolean) ? f.estadoDocumentacion : 'pendiente' }))} />
+            {Object.values(form.documentosMenor).every(Boolean) &&
             <SelectField label="Validación documental" value={form.estadoDocumentacion} onChange={e => setForm(f => ({ ...f, estadoDocumentacion: e.target.value as 'pendiente' | 'validada' }))} options={[{ value: 'pendiente', label: 'Documentos pendientes' }, { value: 'validada', label: 'Documentación validada' }]} />
-            <p className="rx-help-text">Se permite registrar con documentos pendientes. El expediente se conserva en las renovaciones. La lista de cuatro documentos está pendiente de confirmación; este estado no sustituye su revisión.</p>
+            }
           </>}
           <InputField label="Código Usuario" aria-label="Código Usuario" autoComplete="off" maxLength={30}
             value={form.codigo ?? ''} placeholder="Automático si se deja vacío (CLI-ID)"

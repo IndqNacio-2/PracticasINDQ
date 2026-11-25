@@ -19,17 +19,17 @@ export default function ModulePlaceholder({
     icon,
 }: ModulePlaceholderProps) {
     return (
-        <section className="flex h-full flex-1 items-center justify-center bg-[#F3F4F6] p-8">
-            <div className="w-full max-w-lg rounded-2xl border border-[#E5E7EB] bg-white p-10 text-center shadow-sm">
-                <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-[#F3F4F6] text-[#111827]">
+        <section className="flex h-full flex-1 items-center justify-center bg-[var(--rx-surface-soft)] p-8">
+      <div className="w-full max-w-lg rounded-[var(--rx-radius-extra-large)] border border-[var(--rx-line)] bg-[var(--rx-surface)] p-10 text-center">
+                <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-[var(--rx-radius-extra-large)] bg-[var(--rx-surface-soft)] text-[color:var(--rx-dark)]">
                     <MaterialIcon name={icon} className="text-4xl" filled />
                 </div>
 
-                <h2 className="mb-2 text-2xl font-bold text-[#0D0F14]">
+                <h2 className="mb-2 text-2xl font-bold text-[color:var(--rx-ink)]">
                     {title}
                 </h2>
 
-                <p className="text-sm leading-6 text-[#6B7280]">
+                <p className="text-sm leading-6 text-[color:var(--rx-ink-secondary)]">
                     {description}
                 </p>
             </div>

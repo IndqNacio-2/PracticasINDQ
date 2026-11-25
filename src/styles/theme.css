@@ -1,0 +1,129 @@
+/* Valores documentados en diseñoParaQueTodosLosModulosTenganLoMismo.md. */
+:root {
+  --rx-page: #f5f4f0;
+  --rx-surface: #ffffff;
+  --rx-surface-soft: #f5f4f0;
+  --rx-ink: #16181d;
+  --rx-ink-secondary: #5b606b;
+  --rx-ink-muted: #9298a3;
+  --rx-line: #e6e4de;
+  --rx-line-strong: #cfccc4;
+  --rx-dark: #16181d;
+  --rx-dark-secondary: #23262d;
+  --rx-accent: #c6f24e;
+  --rx-success: #2e9e5b;
+  --rx-success-bg: #eaf8c8;
+  --rx-success-ink: #3c520c;
+  --rx-warning: #e8803a;
+  --rx-warning-bg: #fdeee2;
+  --rx-warning-ink: #8a4415;
+  --rx-danger: #d64545;
+  --rx-danger-bg: #fce8e8;
+  --rx-danger-ink: #b42323;
+  --rx-info-bg: #e2edfb;
+  --rx-info-ink: #2459a3;
+  --rx-special-bg: #efeafb;
+  --rx-special-ink: #5b3fb0;
+  --rx-font: "Plus Jakarta Sans", system-ui, sans-serif;
+  --rx-radius-small: 10px;
+  --rx-radius-medium: 12px;
+  --rx-radius-large: 14px;
+  --rx-radius-extra-large: 16px;
+  --rx-selected-shadow: 0 0 0 3px rgba(22, 24, 29, 0.06);
+  --rx-floating-shadow: 0 12px 30px rgba(0, 0, 0, 0.2);
+
+  --rx-button-danger: #E03131;
+  --rx-button-danger-hover: #C92A2A;
+  --rx-control-focus: rgba(198, 242, 78, 0.45);
+  --rx-badge-warning-bg: #FCEFB4;
+  --rx-badge-warning-ink: #7A5B00;
+  --rx-nav-text: #C9CDD4;
+  --rx-user-muted: #A8ADB7;
+  --rx-avatar-bg: #3A3E47;
+  --rx-radius-pill: 999px;
+  --rx-menu-shadow: 0 8px 24px rgb(0 0 0 / .12);
+  --rx-title-size: 24px;
+  --rx-catalog-title-size: 20px;
+  --rx-card-title-size: 16px;
+  --rx-subtitle-size: 13px;
+  --rx-table-heading-size: 11px;
+  --rx-control-size: 14px;
+  --rx-help-size: 12px;
+  --rx-control-height: 42px;
+  --rx-control-padding: 10px 14px;
+  --rx-card-padding: 18px;
+  --rx-filter-padding: 14px;
+  --rx-catalog-padding: 22px 28px;
+  --rx-modal-header-padding: 16px 20px;
+  --rx-table-cell-padding: 12px;
+  --rx-table-heading-padding: 6px 12px;
+  --rx-table-row-gap: 6px;
+}
+
+/* Encabezado estándar para módulos de catálogo y gestión. */
+@layer components {
+  .rx-page-header.rx-module-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 16px;
+    min-width: 0;
+    padding: 18px 28px;
+  }
+
+  .rx-module-header > :first-child {
+    min-width: 0;
+  }
+
+  .rx-module-header .rx-page-title {
+    margin: 0;
+    color: var(--rx-ink);
+    font-family: var(--rx-font);
+    font-size: var(--rx-catalog-title-size);
+    font-weight: 700;
+    line-height: 1.25;
+    letter-spacing: -.02em;
+  }
+
+  .rx-module-header .rx-page-subtitle {
+    margin: 6px 0 0;
+    color: var(--rx-ink-secondary);
+    font-family: var(--rx-font);
+    font-size: var(--rx-subtitle-size);
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+  }
+
+  .rx-module-header-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  @media (max-width: 899px) {
+    .rx-page-header.rx-module-header {
+      align-items: stretch;
+      flex-direction: column;
+      padding: 18px;
+    }
+
+    .rx-module-header-actions {
+      justify-content: flex-start;
+    }
+  }
+
+  @media (max-width: 479px) {
+    .rx-module-header-actions {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .rx-module-header-actions > .rx-btn {
+      width: 100%;
+    }
+  }
+}

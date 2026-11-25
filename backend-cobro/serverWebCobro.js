@@ -515,6 +515,8 @@ app.post('/api/reservas', async (req, res) => {
 app.get('/api/clientes', async (req, res) => {
   const resultado = await pool.query(
     `SELECT id, nombre, membresia, telefono, correo, activo, enfermedades, lesiones,
+             to_jsonb(clientes)->>'fecha_registro' AS "fechaRegistro",
+             COALESCE(to_jsonb(clientes)->'documentos_menor', '{}'::jsonb) AS "documentosMenor",
              to_char(fecha_nacimiento, 'YYYY-MM-DD') AS "fechaNacimiento",
              nombre_tutor AS "nombreTutor", clave_elector_tutor AS "claveElectorTutor", estado_documentacion AS "estadoDocumentacion",
             EXISTS (SELECT 1 FROM webcobro.membresias_compras mc WHERE mc.cliente_id = webcobro.clientes.id) AS "tieneCompras",
@@ -589,14 +591,16 @@ app.post('/api/clientes', async (req, res) => {
   const vig = typeof vigencia_hasta === 'string' ? vigencia_hasta : '';
   const nuevo = (
     await pool.query(
-      `INSERT INTO webcobro.clientes (nombre, membresia, telefono, correo, activo, vigencia_hasta, enfermedades, lesiones, fecha_nacimiento, nombre_tutor, clave_elector_tutor, estado_documentacion${codigoUsuario ? ', codigo_usuario' : ''})
-       VALUES ($1, $2, $3, $4, $5, NULLIF($6, '')::date, $7::text[], $8::text[], NULLIF($9, '')::date, $10, $11, $12${codigoUsuario ? ', $13' : ''})
+       `INSERT INTO webcobro.clientes (nombre, membresia, telefono, correo, activo, vigencia_hasta, enfermedades, lesiones, fecha_nacimiento, nombre_tutor, clave_elector_tutor, estado_documentacion, documentos_menor${codigoUsuario ? ', codigo_usuario' : ''})
+        VALUES ($1, $2, $3, $4, $5, NULLIF($6, '')::date, $7::text[], $8::text[], NULLIF($9, '')::date, $10, $11, $12, $13::jsonb${codigoUsuario ? ', $14' : ''})
        RETURNING id, nombre, membresia, telefono, correo, activo, enfermedades, lesiones,
+                  to_jsonb(clientes)->>'fecha_registro' AS "fechaRegistro",
+                  documentos_menor AS "documentosMenor",
                  to_char(fecha_nacimiento, 'YYYY-MM-DD') AS "fechaNacimiento",
                  nombre_tutor AS "nombreTutor", clave_elector_tutor AS "claveElectorTutor", estado_documentacion AS "estadoDocumentacion",
                  COALESCE(to_jsonb(clientes)->>'codigo_usuario', 'CLI-' || id::text) AS codigo,
                  to_char(vigencia_hasta, 'YYYY-MM-DD') AS vigencia_hasta`,
-      [nombre.trim(), plan, tel, correoLimpio || null, activo === false ? false : true, vig, salud.enfermedades ?? [], salud.lesiones ?? [], menor.fechaNacimiento, menor.nombreTutor, menor.claveElectorTutor, menor.estadoDocumentacion, ...(codigoUsuario ? [codigoUsuario] : [])],
+      [nombre.trim(), plan, tel, correoLimpio || null, activo === false ? false : true, vig, salud.enfermedades ?? [], salud.lesiones ?? [], menor.fechaNacimiento, menor.nombreTutor, menor.claveElectorTutor, menor.estadoDocumentacion, JSON.stringify(menor.documentosMenor), ...(codigoUsuario ? [codigoUsuario] : [])],
     )
   ).rows[0];
 
@@ -876,7 +880,8 @@ app.patch('/api/clientes/:id', async (req, res) => {
 
   const existe = (
     await pool.query(`SELECT id, to_char(fecha_nacimiento, 'YYYY-MM-DD') AS "fechaNacimiento",
-      nombre_tutor AS "nombreTutor", clave_elector_tutor AS "claveElectorTutor", estado_documentacion AS "estadoDocumentacion"
+      nombre_tutor AS "nombreTutor", clave_elector_tutor AS "claveElectorTutor", estado_documentacion AS "estadoDocumentacion",
+      COALESCE(to_jsonb(clientes)->'documentos_menor', '{}'::jsonb) AS "documentosMenor"
       FROM webcobro.clientes WHERE id = $1`, [id])
   ).rows[0];
   if (!existe) {
@@ -886,12 +891,15 @@ app.patch('/api/clientes/:id', async (req, res) => {
   const { nombre, membresia, telefono, correo, activo, vigencia_hasta } = req.body ?? {};
   const campos = [];
   const valores = [];
-  if (['fechaNacimiento', 'nombreTutor', 'claveElectorTutor', 'estadoDocumentacion'].some(c => req.body?.[c] !== undefined)) {
+  if (['fechaNacimiento', 'nombreTutor', 'claveElectorTutor', 'estadoDocumentacion', 'documentosMenor'].some(c => req.body?.[c] !== undefined)) {
     let menor;
     try { menor = normalizarMenor(req.body, existe); }
     catch (error) { return res.status(400).json({ error: error.message }); }
     for (const [campo, valor] of [['fecha_nacimiento', menor.fechaNacimiento || null], ['nombre_tutor', menor.nombreTutor], ['clave_elector_tutor', menor.claveElectorTutor], ['estado_documentacion', menor.estadoDocumentacion]]) {
       valores.push(valor); campos.push(`${campo} = $${valores.length}`);
+    }
+    if (req.body?.documentosMenor !== undefined) {
+      valores.push(JSON.stringify(menor.documentosMenor)); campos.push(`documentos_menor = $${valores.length}::jsonb`);
     }
   }
   if (req.body?.codigo !== undefined) {
@@ -963,6 +971,8 @@ app.patch('/api/clientes/:id', async (req, res) => {
     await pool.query(
       `UPDATE webcobro.clientes SET ${campos.join(', ')} WHERE id = $${valores.length}
        RETURNING id, nombre, membresia, telefono, correo, activo, enfermedades, lesiones,
+                 to_jsonb(clientes)->>'fecha_registro' AS "fechaRegistro",
+                 COALESCE(to_jsonb(clientes)->'documentos_menor', '{}'::jsonb) AS "documentosMenor",
                  to_char(fecha_nacimiento, 'YYYY-MM-DD') AS "fechaNacimiento",
                  nombre_tutor AS "nombreTutor", clave_elector_tutor AS "claveElectorTutor", estado_documentacion AS "estadoDocumentacion",
                  COALESCE(to_jsonb(clientes)->>'codigo_usuario', 'CLI-' || id::text) AS codigo,

@@ -4,19 +4,19 @@ interface BadgeProps {
 }
 
 const configs: Record<string, string> = {
-  activo: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200',
-  inactivo: 'bg-gray-100 text-gray-500 ring-1 ring-gray-200',
-  confirmada: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200',
-  pendiente: 'bg-amber-50 text-amber-700 ring-1 ring-amber-200',
-  cancelada: 'bg-red-50 text-red-600 ring-1 ring-red-200',
-  asistencia: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200',
-  retardo: 'bg-amber-50 text-amber-700 ring-1 ring-amber-200',
-  falta: 'bg-red-50 text-red-600 ring-1 ring-red-200',
-  administrador: 'bg-[#F3F4F6] text-[#6B7280] ring-1 ring-[#6B7280]',
-  entrenador: 'bg-[#F3F4F6] text-[#6B7280] ring-1 ring-[#6B7280]',
-  recepcion: 'bg-[#F3F4F6] text-[#6B7280] ring-1 ring-[#6B7280]',
-  vendedor: 'bg-[#F3F4F6] text-[#6B7280] ring-1 ring-[#6B7280]',
-  cliente: 'bg-gray-50 text-gray-600 ring-1 ring-gray-200',
+  activo: 'rx-badge--success',
+  inactivo: 'rx-badge--neutral',
+  confirmada: 'rx-badge--success',
+  pendiente: 'rx-badge--warning',
+  cancelada: 'rx-badge--danger',
+  asistencia: 'rx-badge--success',
+  retardo: 'rx-badge--warning',
+  falta: 'rx-badge--danger',
+  administrador: 'rx-badge--neutral',
+  entrenador: 'rx-badge--neutral',
+  recepcion: 'rx-badge--neutral',
+  vendedor: 'rx-badge--neutral',
+  cliente: 'rx-badge--neutral',
 };
 
 const defaultLabels: Record<string, string> = {
@@ -28,7 +28,7 @@ const defaultLabels: Record<string, string> = {
 
 export function Badge({ variant, label }: BadgeProps) {
   return (
-    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${configs[variant]}`}>
+    <span className={`rx-badge ${configs[variant]}`}>
       {label ?? defaultLabels[variant]}
     </span>
   );

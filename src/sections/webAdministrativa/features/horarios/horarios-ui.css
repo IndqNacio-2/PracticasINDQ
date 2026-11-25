@@ -33,7 +33,7 @@
         padding: 1px 6px;
         color: var(--rx-ink-secondary);
         background: var(--rx-surface-soft);
-        border-radius: 999px;
+        border-radius: var(--rx-radius-pill);
         font-size: 11px;
         font-weight: 800;
         line-height: 1.5;
@@ -180,7 +180,7 @@
         height: 5px;
         overflow: hidden;
         background: color-mix(in srgb, var(--rx-ink) 10%, transparent);
-        border-radius: 999px;
+        border-radius: var(--rx-radius-pill);
     }
 
     .hz-meter>b {
@@ -227,7 +227,7 @@
     }
 
     .hz-tag--full {
-        color: #fff;
+        color: var(--rx-surface);
         background: var(--rx-dark);
     }
 
@@ -356,7 +356,7 @@
         padding: 1px 8px;
         color: var(--rx-ink-secondary);
         background: rgba(255, 255, 255, 0.72);
-        border-radius: 999px;
+        border-radius: var(--rx-radius-pill);
         font-size: 11px;
         font-weight: 700;
     }
@@ -430,7 +430,7 @@
         padding: 3px;
         background: var(--rx-surface-soft);
         border: 1px solid var(--rx-line);
-        border-radius: 999px;
+        border-radius: var(--rx-radius-pill);
     }
 
     .hz-page .rx-calendar-navigation button {
@@ -443,7 +443,7 @@
         color: var(--rx-ink-secondary);
         background: transparent;
         border: 0;
-        border-radius: 999px;
+        border-radius: var(--rx-radius-pill);
         font: inherit;
         font-size: 18px;
         line-height: 1;
@@ -470,7 +470,7 @@
         padding: 3px;
         background: var(--rx-surface-soft);
         border: 1px solid var(--rx-line);
-        border-radius: 999px;
+        border-radius: var(--rx-radius-pill);
     }
 
     .hz-page .rx-calendar-toolbar .rx-calendar-view-switch button {
@@ -478,7 +478,7 @@
         color: var(--rx-ink-secondary);
         background: transparent;
         border: 0;
-        border-radius: 999px;
+        border-radius: var(--rx-radius-pill);
         font: inherit;
         font-size: 12px;
         font-weight: 700;
@@ -508,7 +508,7 @@
     /* ---- Etiquetas (Llena / Modificada / Cancelada) ---- */
     .hz-page .rx-calendar-tag {
         padding: 1px 8px;
-        border-radius: 999px;
+        border-radius: var(--rx-radius-pill);
         font-size: 10px;
         font-weight: 800;
         letter-spacing: 0.02em;
@@ -558,7 +558,7 @@
 
     .hz-page .rx-calendar-week-head.is-today span,
     .hz-page .rx-calendar-week-head.is-today strong {
-        color: #fff;
+        color: var(--rx-surface);
     }
 
     .hz-page .rx-calendar-hours span {
@@ -686,13 +686,13 @@
         display: inline-grid;
         place-items: center;
         align-self: flex-start;
-        border-radius: 999px;
+        border-radius: var(--rx-radius-pill);
         font-size: 13px;
         font-weight: 800;
     }
 
     .hz-page .rx-calendar-month-day.is-today .rx-calendar-month-number {
-        color: #fff;
+        color: var(--rx-surface);
         background: var(--rx-dark);
     }
 
@@ -701,7 +701,7 @@
         padding: 1px 8px;
         color: var(--rx-ink-secondary);
         background: var(--rx-surface-soft);
-        border-radius: 999px;
+        border-radius: var(--rx-radius-pill);
         font-size: 10px;
         font-weight: 800;
     }

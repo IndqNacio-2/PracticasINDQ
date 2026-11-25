@@ -174,12 +174,12 @@ export default function InventoryPage({ products, onUpdateProduct, onAddProduct,
 
   return (
     <section className="rx-inventory">
-      <header className="rx-page-header">
+      <header className="rx-page-header rx-module-header">
         <div>
           <h1 className="rx-page-title">Inventario</h1>
           <p className="rx-page-subtitle">{readOnly ? 'Consulta los productos y existencias del punto de venta.' : 'Gestiona los productos y existencias del punto de venta.'}</p>
         </div>
-        <div className="rx-inventory-header-actions">
+        <div className="rx-module-header-actions">
           <button type="button" onClick={downloadInventory} disabled={products.length === 0} title="Exportar todo el inventario, sin aplicar los filtros, con columnas vacías para el conteo físico y observaciones" className="rx-btn rx-btn--outline">
             <MaterialIcon name="download" className="text-xl" />Exportar a Excel
           </button>

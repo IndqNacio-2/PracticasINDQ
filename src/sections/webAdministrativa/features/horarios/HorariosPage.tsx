@@ -1188,18 +1188,18 @@ export function HorariosPage() {
             </div>
             <button type="button" onClick={() => { setWeeklyView('edit'); setWeeklyError(null); setWeeklyResult(null); }}
               className="rx-choice-card">
-              <span className="block text-sm font-semibold text-gray-900">Editar programación semanal</span>
-              <span className="mt-1 block text-xs text-gray-500">Cambiar clase, instructor, sala, horario, días o reservaciones.</span>
+              <span className="block text-sm font-semibold text-[color:var(--rx-ink)]">Editar programación semanal</span>
+              <span className="mt-1 block text-xs text-[color:var(--rx-ink-secondary)]">Cambiar clase, instructor, sala, horario, días o reservaciones.</span>
             </button>
             <button type="button" onClick={() => { setWeeklyView('deactivate'); setWeeklyError(null); setWeeklyResult(null); }}
               className="rx-choice-card rx-choice-card--warning">
-              <span className="block text-sm font-semibold text-amber-900">Desactivar programación</span>
-              <span className="mt-1 block text-xs text-amber-700">Las sesiones futuras libres quedarán inactivas.</span>
+              <span className="block text-sm font-semibold text-[color:var(--rx-warning-ink)]">Desactivar programación</span>
+              <span className="mt-1 block text-xs text-[color:var(--rx-warning-ink)]">Las sesiones futuras libres quedarán inactivas.</span>
             </button>
             <button type="button" onClick={() => { setWeeklyView('delete'); setWeeklyError(null); setWeeklyResult(null); }}
               className="rx-choice-card rx-choice-card--danger">
-              <span className="block text-sm font-semibold text-red-900">Eliminar programación futura</span>
-              <span className="mt-1 block text-xs text-red-700">Las sesiones futuras libres se eliminarán definitivamente.</span>
+              <span className="block text-sm font-semibold text-[color:var(--rx-danger-ink)]">Eliminar programación futura</span>
+              <span className="mt-1 block text-xs text-[color:var(--rx-danger-ink)]">Las sesiones futuras libres se eliminarán definitivamente.</span>
             </button>
           </div>
         )}
@@ -1252,11 +1252,11 @@ export function HorariosPage() {
           <div>
             <InputField label="Aplicar cambios desde" required type="date" min={obtenerFechaLocal()} value={weeklyForm.aplicarDesde}
               onChange={e => setWeeklyForm(f => ({ ...f, aplicarDesde: e.target.value }))} />
-            <div className={`mt-4 rounded-xl border p-4 ${weeklyView === 'delete' ? 'border-red-200 bg-red-50' : 'border-amber-200 bg-amber-50'}`}>
-              <p className={`text-sm font-semibold ${weeklyView === 'delete' ? 'text-red-900' : 'text-amber-900'}`}>
+            <div className={`mt-4 rounded-[var(--rx-radius-medium)] border p-4 ${weeklyView === 'delete' ? 'border-[var(--rx-danger)] bg-[var(--rx-danger-bg)]' : 'border-[var(--rx-warning)] bg-[var(--rx-warning-bg)]'}`}>
+              <p className={`text-sm font-semibold ${weeklyView === 'delete' ? 'text-[color:var(--rx-danger-ink)]' : 'text-[color:var(--rx-warning-ink)]'}`}>
                 {weeklyView === 'delete' ? 'Se eliminarán las sesiones futuras libres.' : 'Las sesiones futuras libres quedarán inactivas.'}
               </p>
-              <p className={`mt-1 text-xs ${weeklyView === 'delete' ? 'text-red-700' : 'text-amber-700'}`}>
+              <p className={`mt-1 text-xs ${weeklyView === 'delete' ? 'text-[color:var(--rx-danger-ink)]' : 'text-[color:var(--rx-warning-ink)]'}`}>
                 Las sesiones pasadas no cambiarán. Las sesiones con reservaciones vigentes permanecerán protegidas.
               </p>
             </div>
@@ -1264,8 +1264,8 @@ export function HorariosPage() {
         )}
 
         {weeklyView !== 'actions' && (
-          <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-3">
-            <p className="text-xs text-blue-800">Las reservaciones canceladas no bloquean el cambio.</p>
+          <div className="mt-4 rounded-[var(--rx-radius-medium)] border border-[var(--rx-info-ink)] bg-[var(--rx-info-bg)] p-3">
+            <p className="text-xs text-[color:var(--rx-info-ink)]">Las reservaciones canceladas no bloquean el cambio.</p>
           </div>
         )}
         {weeklyError && <p className="rx-schedule-message rx-schedule-message--error">{weeklyError}</p>}

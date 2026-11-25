@@ -192,27 +192,6 @@ export function Layout() {
       </aside>
 
       <div className="rx-admin-main">
-        <header className="rx-admin-topbar">
-          <div className="rx-admin-topbar-context">
-            <span className="rx-admin-topbar-kicker">Centro operativo</span>
-            <strong>Panel administrativo</strong>
-          </div>
-          <div className="rx-admin-topbar-user">
-            <div className="rx-admin-presence" aria-label="Sesión activa">
-              <span className="rx-admin-presence-dot" />
-              <span className="rx-admin-user-name">
-                {user?.nombre} {user?.apellidos}
-              </span>
-              <span className="rx-admin-user-role">
-                {rolLabel[user?.rol ?? ""]}
-              </span>
-            </div>
-            <div className="rx-user-avatar rx-user-avatar--topbar">
-              {user?.nombre[0]}
-              {user?.apellidos[0]}
-            </div>
-          </div>
-        </header>
         <main className="rx-admin-content">
           <Outlet />
         </main>
